@@ -9,7 +9,7 @@
   const kurzId = () => Math.random().toString(36).slice(2, 10);
   const klon = o => JSON.parse(JSON.stringify(o));
   const istNotiz = e => e && e.typ === 'notiz';
-  const istKasten = e => istNotiz(e) || (e && e.typ === 'bild');
+  const istKasten = e => istNotiz(e) || (e && (e.typ === 'bild' || e.typ === 'text'));
   const seitenInhalt = (id, sid) => ((Daten.get('ink:' + id + ':' + sid) || {}).e || []);
   const hatBrett = it => it.art === 'notizbuch' && it.papier === 'whiteboard';
 
@@ -100,8 +100,8 @@
           liste.forEach((el, i) => {
             if (!ueberlappt(umrisse[i], feld)) return;
             if (istKasten(el)) {
-              // Haftnotiz oder Bild: gehört zu der Seite, auf der ihre Mitte liegt
-              const mx = el.x + (el.zu ? 36 : el.b) / 2, my = el.y + (el.zu ? 36 : el.h) / 2;
+              // Haftnotiz, Bild oder Text: gehört zu der Seite, auf der seine Mitte liegt
+              const mx = (umrisse[i].x1 + umrisse[i].x2) / 2, my = (umrisse[i].y1 + umrisse[i].y2) / 2;
               if (mx < feld.x1 || mx >= feld.x2 || my < feld.y1 || my >= feld.y2) return;
               const k = klon(el);
               k.id = kurzId(); k.m = Date.now(); k.x = r1(el.x - feld.x1); k.y = r1(el.y - feld.y1);

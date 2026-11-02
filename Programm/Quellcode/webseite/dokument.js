@@ -62,7 +62,11 @@ Daten.bereit.then(function () {
     const F = { id, el, zuletzt: Date.now() };
     let it = Bibliothek.get(id);
     let lw = null, leiste = null, sl = null, pdf = null, token = 0, sichtbar = false, weg = false, gestartet = false, istVoll = false;
-    const cache = new Map();        // Seitennummer -> { canvas, massstab, modus }
+    const cache = new Map();        // Seitennummer -> { canvas (ImageBitmap oder Canvas), massstab, modus }
+    // Gerenderte PDF-Seiten liegen als ImageBitmap auf der Grafikkarte. Ein Canvas, aus dem gelesen wird
+    // (willReadFrequently), liegt dagegen im Arbeitsspeicher und musste bei jedem Neuzeichnen der Schreibfläche erneut
+    // hochgeladen werden: auf dem iPad ruckelte dadurch das Scrollen.
+    const gibFrei = bild => { if (!bild) return; if (bild.close) bild.close(); else bild.width = 0; };
     const hellWerte = new Map();    // Seitennummer -> Helligkeit
     let warteschlange = [], rendertLaeuft = false;
     let seiteTimer = 0, ansichtTimer = 0, anzeigeTimer = 0;
@@ -134,18 +138,23 @@ Daten.bereit.then(function () {
           const c = document.createElement('canvas');
           c.width = Math.max(1, Math.floor(vp.width));
           c.height = Math.max(1, Math.floor(vp.height));
-          const cx = c.getContext('2d', { willReadFrequently: true });
+          const modus = it.modus || 'original';
+          // Lesen müssen nur die Modi, die umfärben (helligkeit liest aus einer kleinen Kopie)
+          const cx = c.getContext('2d', modus === 'original' ? undefined : { willReadFrequently: true });
           cx.fillStyle = '#fff';
           cx.fillRect(0, 0, c.width, c.height);
           await seite.render({ canvasContext: cx, viewport: vp }).promise;
           if (t !== token || !sichtbar) { c.width = 0; continue; }
           const hell = PdfDienst.helligkeit(c);
           hellWerte.set(w.nr, hell);
-          const modus = it.modus || 'original';
           if (PdfDienst.umfaerbenNoetig(modus, hell)) PdfDienst.umfaerben(c, modus);
-          const alt = cache.get(w.nr);
-          if (alt) alt.canvas.width = 0;
-          cache.set(w.nr, { canvas: c, massstab: w.massstab, modus });
+          let bild = c;
+          if (window.createImageBitmap) {
+            try { bild = await createImageBitmap(c); c.width = 0; } catch (e) { bild = c; }
+          }
+          if (t !== token || !sichtbar) { gibFrei(bild); continue; }
+          gibFrei(cache.has(w.nr) ? cache.get(w.nr).canvas : null);
+          cache.set(w.nr, { canvas: bild, massstab: w.massstab, modus });
           aufraeumen();
           lw && lw.plane();
         } catch (e) { /* abgebrochen oder kaputte Seite */ }
@@ -153,15 +162,15 @@ Daten.bereit.then(function () {
       rendertLaeuft = false;
     }
 
-    // Weit entfernte Seiten wieder freigeben, sonst wird es bei dicken Skripten eng
+    // Weit entfernte Seiten wieder freigeben, sonst wird es bei dicken Skripten eng (auf dem iPad schon bei wenigen Seiten)
     function aufraeumen() {
       if (!lw) return;
       const jetzt = lw.aktuelleSeite() + 1;
-      for (const [nr, e] of cache) if (Math.abs(nr - jetzt) > 6) { e.canvas.width = 0; cache.delete(nr); }
+      for (const [nr, e] of cache) if (Math.abs(nr - jetzt) > 4) { gibFrei(e.canvas); cache.delete(nr); }
     }
     function freigeben() {
       warteschlange = [];
-      for (const e of cache.values()) e.canvas.width = 0;
+      for (const e of cache.values()) gibFrei(e.canvas);
       cache.clear();
     }
 

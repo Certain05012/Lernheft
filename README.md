@@ -30,7 +30,9 @@ signiert ist: *Weitere Informationen → Trotzdem ausführen*.
 
 **Schreiben**
 - Druck wie beim Apple Pencil: fliessende Strichbreite, die Druckkurve stellt sich selbst auf den Stift ein (eigene Kurve möglich); Neigung, Glättung (aus/niedrig/mittel/hoch), Stiftbreite in Millimetern
-- Werkzeuge: Stift, Marker, Radierer, Lasso, Haftnotiz, Laserpointer (leuchtet nur, solange Stift oder Taste gedrückt sind)
+- Werkzeuge: Stift, Marker, Radierer, Lasso, Haftnotiz, Text, Laserpointer (leuchtet nur, solange Stift oder Taste gedrückt sind)
+- **Text**: tippen und schreiben, Grösse (pt) und Farbe in der Werkzeugleiste, antippen bearbeitet, ziehen verschiebt
+- Satte Tinte und eine Linie, die direkt unter der Pencil-Spitze entsteht (vorhergesagte Punkte), auch in der Web-App
 - **Halten**: Stift am Strichende ruhig halten → gerade Linie; bei geschlossenen Strichen Dreieck, Viereck, Rechteck, Vieleck, Kreis oder Ellipse
 - **Überkritzeln** löscht Geschriebenes (ein-/ausschaltbar)
 

@@ -1,15 +1,16 @@
 'use strict';
-// Werkzeugleiste für eine Leinwand: Hand, Stift, Marker, Radierer, Lasso, Haftnotiz, Farben, Grösse, Verlauf
+// Werkzeugleiste für eine Leinwand: Hand, Stift, Marker, Radierer, Lasso, Haftnotiz, Text, Farben, Grösse, Verlauf
 (function () {
   const STANDARD = {
     werkzeug: 'stift', farbe: 'tinte', markerFarbe: 'gelb', eigeneFarben: [], eigeneMarker: [], dicke: 3, markerDicke: 3.5, radierGroesse: 14,
-    seite: 'lasso', radier: 'radierer', druck: true, druckModus: 'pencil', neigung: true, neigungAb: 30, druckKurve: 1, druckMin: 0, druckMax: 1,
-    finger: false, radiermodus: 'strich', notizFarbe: 'gelb', laserFarbe: '#ff2d2d',
-    glaettung: 'mittel', halteForm: true, halteMs: 700, kritzelLoeschen: true
+    seite: 'lasso', radier: 'radierer', druck: true, druckModus: 'pencil', neigung: false, neigungAb: 30, druckKurve: 1, druckMin: 0, druckMax: 1,
+    finger: false, radiermodus: 'strich', notizFarbe: 'gelb', laserFarbe: '#ff2d2d', textFarbe: 'tinte',
+    glaettung: 'niedrig', halteForm: true, halteMs: 700, kritzelLoeschen: true
   };
   // Drei Grössen je Werkzeug in Millimetern (Stift, Marker: Strichbreite; Radierer: Durchmesser), jede lässt sich mit
   // dem Regler einstellen und bleibt gespeichert
-  const PRESETS = { stift: { klein: 0.4, mittel: 0.8, gross: 1.6 }, marker: { klein: 0.5, mittel: 0.9, gross: 1.6 }, radierer: { klein: 3, mittel: 7, gross: 15 }, laser: { klein: 2.5, mittel: 4, gross: 7 } };
+  // Text: Schriftgrösse in Punkt
+  const PRESETS = { stift: { klein: 0.4, mittel: 0.8, gross: 1.6 }, marker: { klein: 0.5, mittel: 0.9, gross: 1.6 }, radierer: { klein: 3, mittel: 7, gross: 15 }, laser: { klein: 2.5, mittel: 4, gross: 7 }, text: { klein: 12, mittel: 18, gross: 28 } };
   // Frühere Version: dieselben Grössen in Einheiten der Schreibfläche (px bei 100 %), der Radierer als Radius
   const PRESETS_PX = { stift: { klein: 1.5, mittel: 3, gross: 6 }, marker: { klein: 2, mittel: 3.5, gross: 6 }, radierer: { klein: 6, mittel: 14, gross: 28 }, laser: { klein: 9, mittel: 15, gross: 26 } };
   const PRESET_NAMEN = { klein: 'Klein', mittel: 'Mittel', gross: 'Gross' };
@@ -19,12 +20,13 @@
     stift: { k: 'dicke', min: 0.2, max: 5, step: 0.1, titel: 'Stiftbreite', px: mm => mm * 6 },
     marker: { k: 'markerDicke', min: 0.5, max: 8, step: 0.1, titel: 'Markerbreite', px: mm => mm * 9 },
     radierer: { k: 'radierGroesse', min: 1, max: 30, step: 0.5, titel: 'Radierer-Durchmesser', px: mm => mm * 3 },
-    laser: { k: 'laserGroesse', min: 1.5, max: 12, step: 0.5, titel: 'Laserpunkt-Durchmesser', px: mm => mm * 2.4 }
+    laser: { k: 'laserGroesse', min: 1.5, max: 12, step: 0.5, titel: 'Laserpunkt-Durchmesser', px: mm => mm * 2.4 },
+    text: { k: 'textGroesse', min: 8, max: 96, step: 1, titel: 'Schriftgrösse', px: pt => pt * 0.55, einheit: 'pt' }
   };
   // Was auf allen Geräten gleich sein soll (Datei Einstellungen, liegt im Speicherort), und was am Gerät hängt
   // (Stift, Bildschirm, Treiber: Druckkurve, Tastenbelegung, Finger, Glättung)
-  const SYNC = ['presets', 'preset', 'einheit', 'farbe', 'markerFarbe', 'eigeneFarben', 'eigeneMarker', 'radiermodus', 'notizFarbe', 'laserFarbe'];
-  const ABGELEITET = ['dicke', 'markerDicke', 'radierGroesse', 'laserGroesse'];
+  const SYNC = ['presets', 'preset', 'einheit', 'farbe', 'markerFarbe', 'eigeneFarben', 'eigeneMarker', 'radiermodus', 'notizFarbe', 'laserFarbe', 'textFarbe'];
+  const ABGELEITET = ['dicke', 'markerDicke', 'radierGroesse', 'laserGroesse', 'textGroesse'];
   // Farben des Laserpunkts (Standard: Rot)
   const LASERFARBEN = { rot: '#ff2d2d', gruen: '#22e06a', blau: '#3d8bff', gelb: '#ffe030', magenta: '#ff3df0', weiss: '#ffffff' };
   const LASERNAMEN = { rot: 'Rot', gruen: 'Grün', blau: 'Blau', gelb: 'Gelb', magenta: 'Magenta', weiss: 'Weiss' };
@@ -56,6 +58,7 @@
     const alt = einst.presets && typeof einst.presets === 'object' ? einst.presets : null;
     const neu = {};
     for (const art of Object.keys(GROESSE)) {
+      if (!PRESETS_PX[art]) continue;
       const einzel = Number(einst[GROESSE[art].k]);
       const quelle = alt && alt[art] ? alt[art] : Object.assign({}, PRESETS_PX[art], einzel > 0 ? { mittel: einzel } : {});
       neu[art] = {};
@@ -74,6 +77,7 @@
       // Früher hiess Schwarz "tinte" und Blau war Standard; beides bleibt gültig
       if (!Leinwand.TINTE.hell[einst.farbe] && !istHex(einst.farbe)) einst.farbe = 'tinte';
       if (!Leinwand.MARKER[einst.markerFarbe] && !istHex(einst.markerFarbe)) einst.markerFarbe = 'gelb';
+      if (!Leinwand.TINTE.hell[einst.textFarbe] && !istHex(einst.textFarbe)) einst.textFarbe = 'tinte';
       if (!istHex(einst.laserFarbe)) einst.laserFarbe = STANDARD.laserFarbe;
       // Früher drei feste Radiergrössen, jetzt ein Regler
       const alt = { klein: 6, mittel: 14, gross: 28 }[einst.radiermodus];
@@ -82,7 +86,15 @@
       // Bisherige Grössen (Pixel, ein Wert je Werkzeug oder drei) werden in Millimeter umgerechnet
       aufMillimeter();
       ordnePresets();
-      if (!GLAETTUNGEN.includes(einst.glaettung)) einst.glaettung = 'mittel';
+      if (!GLAETTUNGEN.includes(einst.glaettung)) einst.glaettung = 'niedrig';
+      // Version 3.9: einmal auf das neue Schreibgefühl umstellen (weniger Nachziehen, Breite ohne Neigung wie beim
+      // Stift in Apple Notizen). Beides lässt sich im Stift-Panel wieder ändern.
+      if (!einst.schreibgefuehl2) {
+        if (einst.glaettung === 'mittel' || einst.glaettung === 'hoch') einst.glaettung = 'niedrig';
+        einst.neigung = false;
+        einst.schreibgefuehl2 = true;
+        speichereEinst();
+      }
       for (const k of ['eigeneFarben', 'eigeneMarker']) einst[k] = (Array.isArray(einst[k]) ? einst[k] : []).filter(istHex).slice(-MAX_EIGENE);
       if (!geteilt || geteilt.einheit !== 'mm') speichereEinst();
     }
@@ -121,6 +133,7 @@
     radierer: '<path d="M15 4l5 5-9 9H7l-3-3z"/><path d="M9 10l5 5"/><path d="M11 20h9"/>',
     lasso: '<ellipse cx="12" cy="9" rx="8" ry="5" stroke-dasharray="3 2.5"/><path d="M7 13c-1 3 0 6 3 7"/>',
     notiz: '<path d="M5 4h14v11l-5 5H5z"/><path d="M14 20v-5h5"/>',
+    text: '<path d="M5 7V4.5h14V7"/><path d="M12 4.5v15"/><path d="M9 19.5h6"/>',
     laser: '<circle cx="12" cy="12" r="3"/><path d="M12 3.5v3M12 17.5v3M3.5 12h3M17.5 12h3M6 6l2.1 2.1M15.9 15.9L18 18M18 6l-2.1 2.1M8.1 15.9L6 18"/>',
     plus: '<path d="M12 6v12M6 12h12"/>',
     undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/>',
@@ -129,14 +142,14 @@
     eigenschaften: '<path d="M12 3.5a8.5 8.5 0 100 17c1.2 0 1.8-.8 1.8-1.7 0-1.3-1-1.6-1-2.7 0-1 .8-1.6 1.8-1.6h2.1c2 0 3.8-1.6 3.8-3.8C20.5 6.6 16.7 3.5 12 3.5z"/><circle cx="7.8" cy="11.5" r="1.2"/><circle cx="10" cy="7.6" r="1.2"/><circle cx="14.6" cy="7.6" r="1.2"/>'
   };
   const icon = n => `<svg viewBox="0 0 24 24" aria-hidden="true">${SVG[n]}</svg>`;
-  const WERKZEUGE = [['hand', 'Hand: Fläche verschieben (H)'], ['stift', 'Stift (P)'], ['marker', 'Textmarker (M)'], ['radierer', 'Radierer (E)'], ['lasso', 'Lasso: auswählen, verschieben, grösser/kleiner (L)'], ['notiz', 'Haftnotiz (N)'], ['laser', 'Laserpointer: leuchtender Punkt mit Spur, nichts wird gezeichnet (R)']];
+  const WERKZEUGE = [['hand', 'Hand: Fläche verschieben (H)'], ['stift', 'Stift (P)'], ['marker', 'Textmarker (M)'], ['radierer', 'Radierer (E)'], ['lasso', 'Lasso: auswählen, verschieben, grösser/kleiner (L)'], ['notiz', 'Haftnotiz (N)'], ['text', 'Text: tippen und schreiben, Grösse und Farbe wählen (T)'], ['laser', 'Laserpointer: leuchtender Punkt mit Spur, nichts wird gezeichnet (R)']];
   const zahl = w => String(w).replace('.', ',');
   const GLAETTUNGEN = ['aus', 'niedrig', 'mittel', 'hoch'];
 
   function baue(leiste, lw) {
     const e = lw.einst;
     const fl = () => Leinwand.flaecheThema();
-    const plus = art => `<label class="wz plus" title="Weitere Farbe wählen" aria-label="Weitere ${art === 'marker' ? 'Markerfarbe' : 'Stiftfarbe'}">${icon('plus')}<input type="color" data-plus="${art}" tabindex="-1"></label>`;
+    const plus = art => `<label class="wz plus" title="Weitere Farbe wählen" aria-label="Weitere ${art === 'marker' ? 'Markerfarbe' : art === 'text' ? 'Textfarbe' : 'Stiftfarbe'}">${icon('plus')}<input type="color" data-plus="${art}" tabindex="-1"></label>`;
     leiste.classList.add('werkzeugleiste');
     leiste.innerHTML = `
       <div class="leiste-anfang" data-anfang></div>
@@ -162,6 +175,11 @@
         ${Object.keys(Leinwand.TINTE.hell).map(f => `<button class="wz" type="button" data-farbe="${f}" title="${Leinwand.FARBNAMEN[f]}" aria-label="${Leinwand.FARBNAMEN[f]}"><span class="farbpunkt"></span></button>`).join('')}
         <span class="eigene" data-eigene="stift"></span>
         ${plus('stift')}
+      </div>
+      <div class="gruppe farbreihe" role="group" aria-label="Textfarbe" data-nur="text" data-eig>
+        ${Object.keys(Leinwand.TINTE.hell).map(f => `<button class="wz" type="button" data-textfarbe="${f}" title="Text ${Leinwand.FARBNAMEN[f]}" aria-label="Text ${Leinwand.FARBNAMEN[f]}"><span class="farbpunkt"></span></button>`).join('')}
+        <span class="eigene" data-eigene="text"></span>
+        ${plus('text')}
       </div>
       <div class="gruppe farbreihe" role="group" aria-label="Markerfarbe" data-farben="marker" data-eig>
         ${Object.entries(Leinwand.MARKER).map(([f, c]) => `<button class="wz" type="button" data-markerfarbe="${f}" title="Marker ${Leinwand.MARKERNAMEN[f]}" aria-label="Marker ${Leinwand.MARKERNAMEN[f]}"><span class="farbpunkt marker" style="--farbe: ${c}"></span></button>`).join('')}
@@ -223,7 +241,7 @@
         </div>
       </div>
       <label class="haken-label"><input type="checkbox" data-t="druck"> Drucksensibel: fester drücken gibt dickere Linien</label>
-      <label class="haken-label"><input type="checkbox" data-t="neigung"> Neigung: flach gehalten gibt breitere, weichere Linien</label>
+      <label class="haken-label"><input type="checkbox" data-t="neigung"> Neigung: flach gehalten gibt breitere Linien (wie ein Bleistift)</label>
       <label>Neigung ab <span class="diag-wert" data-w="neigungAb"></span><input type="range" data-t="neigungAb" min="10" max="60" step="1"></label>
 
       <h3>Tasten und Finger</h3>
@@ -239,6 +257,7 @@
     function farbenMalen() {
       const palette = Leinwand.TINTE[fl()];
       leiste.querySelectorAll('[data-farbe] .farbpunkt').forEach(p => { p.style.setProperty('--farbe', hexVon(p.parentElement.dataset.farbe, palette)); });
+      leiste.querySelectorAll('[data-textfarbe] .farbpunkt').forEach(p => { p.style.setProperty('--farbe', hexVon(p.parentElement.dataset.textfarbe, palette)); });
     }
 
     // Eigene Farben hinter den Grundfarben; Rechtsklick (oder lange drücken) entfernt eine wieder
@@ -247,9 +266,10 @@
       const stand = e.eigeneFarben.join() + '|' + e.eigeneMarker.join();
       if (stand === eigeneStand) return;
       eigeneStand = stand;
-      const knopf = (art, c) => `<button class="wz" type="button" ${art === 'marker' ? 'data-markerfarbe' : 'data-farbe'}="${c}" data-eigen="${art}" title="Eigene Farbe ${c} (Rechtsklick entfernt sie)" aria-label="Eigene Farbe ${c}"><span class="farbpunkt${art === 'marker' ? ' marker' : ''}" style="--farbe: ${c}"></span></button>`;
+      const knopf = (art, c) => `<button class="wz" type="button" ${art === 'marker' ? 'data-markerfarbe' : art === 'text' ? 'data-textfarbe' : 'data-farbe'}="${c}" data-eigen="${art}" title="Eigene Farbe ${c} (Rechtsklick entfernt sie)" aria-label="Eigene Farbe ${c}"><span class="farbpunkt${art === 'marker' ? ' marker' : ''}" style="--farbe: ${c}"></span></button>`;
       leiste.querySelector('[data-eigene="stift"]').innerHTML = e.eigeneFarben.map(c => knopf('stift', c)).join('');
       leiste.querySelector('[data-eigene="marker"]').innerHTML = e.eigeneMarker.map(c => knopf('marker', c)).join('');
+      leiste.querySelector('[data-eigene="text"]').innerHTML = e.eigeneFarben.map(c => knopf('text', c)).join('');
     }
 
     function aktualisiere() {
@@ -257,24 +277,26 @@
       leiste.querySelectorAll('[data-werkzeug]').forEach(k => k.setAttribute('aria-pressed', String(k.dataset.werkzeug === e.werkzeug)));
       leiste.querySelectorAll('[data-farbe]').forEach(k => k.setAttribute('aria-pressed', String(k.dataset.farbe === e.farbe)));
       leiste.querySelectorAll('[data-markerfarbe]').forEach(k => k.setAttribute('aria-pressed', String(k.dataset.markerfarbe === e.markerFarbe)));
+      leiste.querySelectorAll('[data-textfarbe]').forEach(k => k.setAttribute('aria-pressed', String(k.dataset.textfarbe === e.textFarbe)));
       leiste.querySelectorAll('[data-laserfarbe]').forEach(k => k.setAttribute('aria-pressed', String(k.dataset.laserfarbe === String(e.laserFarbe).toLowerCase())));
       regler();
       leiste.querySelectorAll('[data-radiermodus]').forEach(k => k.setAttribute('aria-pressed', String(k.dataset.radiermodus === e.radiermodus)));
       leiste.querySelectorAll('[data-notizfarbe]').forEach(k => k.setAttribute('aria-pressed', String(k.dataset.notizfarbe === e.notizFarbe)));
       leiste.querySelectorAll('[data-nur]').forEach(g => { g.hidden = g.dataset.nur !== e.werkzeug; });
       // Beim Textmarker seine Farben, sonst die Stiftfarben
-      leiste.querySelectorAll('[data-farben]').forEach(g => { g.hidden = g.dataset.farben === 'marker' ? e.werkzeug !== 'marker' : (e.werkzeug === 'marker' || e.werkzeug === 'laser'); });
+      leiste.querySelectorAll('[data-farben]').forEach(g => { g.hidden = g.dataset.farben === 'marker' ? e.werkzeug !== 'marker' : ['marker', 'laser', 'text'].includes(e.werkzeug); });
       leiste.querySelector('[data-aktion="finger"]').setAttribute('aria-pressed', String(!!e.finger));
       leiste.querySelector('[data-aktion="undo"]').disabled = !lw.kannRueckgaengig();
       leiste.querySelector('[data-aktion="redo"]').disabled = !lw.kannWiederholen();
       leiste.querySelector('[data-plus="stift"]').value = hexVon(e.farbe, Leinwand.TINTE[fl()]);
       leiste.querySelector('[data-plus="marker"]').value = hexVon(e.markerFarbe, Leinwand.MARKER);
       leiste.querySelector('[data-plus="laser"]').value = istHex(e.laserFarbe) ? e.laserFarbe : STANDARD.laserFarbe;
+      leiste.querySelector('[data-plus="text"]').value = hexVon(e.textFarbe, Leinwand.TINTE[fl()]);
       panelWerte();
     }
 
     // Drei Grössen und ein Regler; was sie einstellen, hängt vom Werkzeug ab (Stift, Textmarker, Radierer je für sich)
-    function reglerArt() { return ['marker', 'radierer', 'laser'].includes(e.werkzeug) ? e.werkzeug : 'stift'; }
+    function reglerArt() { return ['marker', 'radierer', 'laser', 'text'].includes(e.werkzeug) ? e.werkzeug : 'stift'; }
     function regler() {
       const art = reglerArt(), g = GROESSE[art];
       const name = e.preset[art], werte = e.presets[art];
@@ -286,18 +308,19 @@
       inp.title = g.titel + ' (für die gewählte Grösse)';
       inp.setAttribute('aria-label', `${g.titel}, ${PRESET_NAMEN[name]}`);
       inp.style.setProperty('--anteil', ((wert - g.min) / (g.max - g.min) * 100) + '%');
-      const farbe = art === 'marker' ? hexVon(e.markerFarbe, Leinwand.MARKER) : art === 'laser' ? e.laserFarbe : hexVon(e.farbe, Leinwand.TINTE[fl()]);
+      const farbe = art === 'marker' ? hexVon(e.markerFarbe, Leinwand.MARKER) : art === 'laser' ? e.laserFarbe : art === 'text' ? hexVon(e.textFarbe, Leinwand.TINTE[fl()]) : hexVon(e.farbe, Leinwand.TINTE[fl()]);
+      const masz = g.einheit || 'mm';
       const gruppe = leiste.querySelector('.presets');
       gruppe.dataset.art = art;
       leiste.querySelectorAll('[data-preset]').forEach(k => {
         const n = k.dataset.preset, v = werte[n];
         k.setAttribute('aria-checked', String(n === name));
-        k.querySelector('.preset-wert').textContent = zahl(v) + ' mm';
+        k.querySelector('.preset-wert').textContent = zahl(v) + ' ' + masz;
         const punkt = k.querySelector('.preset-punkt');
         punkt.style.setProperty('--g', Math.max(3, Math.min(24, g.px(v))) + 'px');
         punkt.style.setProperty('--farbe', farbe);
       });
-      leiste.querySelector('.dicke-wert').textContent = art === 'radierer' && e.radiermodus === 'strich' ? '' : zahl(wert) + ' mm';
+      leiste.querySelector('.dicke-wert').textContent = art === 'radierer' && e.radiermodus === 'strich' ? '' : zahl(wert) + ' ' + masz;
     }
 
     const zoom = s => { leiste.querySelector('[data-aktion="zoom"]').textContent = Math.round(s * 100) + ' %'; };
@@ -310,7 +333,7 @@
         lw.setzeWerkzeug(k.dataset.werkzeug);
         // Vollbild: Stift, Marker, Radierer und Notiz klappen ihre Farben und Grössen auf (nochmal tippen schliesst sie)
         if (document.documentElement.classList.contains('vollbild')) {
-          const hat = ['stift', 'marker', 'radierer', 'notiz', 'laser'].includes(k.dataset.werkzeug);
+          const hat = ['stift', 'marker', 'radierer', 'notiz', 'laser', 'text'].includes(k.dataset.werkzeug);
           const auf = hat && (vorher === k.dataset.werkzeug ? !leiste.classList.contains('eig-offen') : true);
           leiste.classList.toggle('eig-offen', auf);
         }
@@ -323,6 +346,7 @@
       else if (k.dataset.farbe) lw.setzeFarbe(k.dataset.farbe);
       else if (k.dataset.markerfarbe) lw.setzeMarkerFarbe(k.dataset.markerfarbe);
       else if (k.dataset.laserfarbe) lw.setzeLaserFarbe(k.dataset.laserfarbe);
+      else if (k.dataset.textfarbe) lw.setzeTextFarbe(k.dataset.textfarbe);
       else if (k.dataset.radiermodus) lw.setzeRadiermodus(k.dataset.radiermodus);
       else if (k.dataset.notizfarbe) lw.setzeNotizFarbe(k.dataset.notizfarbe);
       else if (k.dataset.aktion === 'finger') lw.setzeFinger(!e.finger);
@@ -355,26 +379,38 @@
       if (art === 'laser') { lw.setzeLaserFarbe(c); aktualisiere(); return; }
       const liste = art === 'marker' ? e.eigeneMarker : e.eigeneFarben;
       const grund = art === 'marker' ? Leinwand.MARKER : Leinwand.TINTE[fl()];
+      lw.halteTextFokus && lw.halteTextFokus();
       if (!Object.values(grund).includes(c)) {
         const i = liste.indexOf(c);
         if (i >= 0) liste.splice(i, 1);
         liste.push(c);
         while (liste.length > MAX_EIGENE) liste.shift();
       }
-      if (art === 'marker') lw.setzeMarkerFarbe(c); else lw.setzeFarbe(c);
+      if (art === 'marker') lw.setzeMarkerFarbe(c); else if (art === 'text') lw.setzeTextFarbe(c); else lw.setzeFarbe(c);
       aktualisiere();
     });
+    // Während ein Text geschrieben wird: Farbe und Grösse wählen, ohne dass das Textfeld den Fokus (und auf dem iPad
+    // die Tastatur) verliert
+    leiste.addEventListener('pointerdown', ev => {
+      if (!lw.textBearbeitung || !lw.textBearbeitung()) return;
+      const k = ev.target.closest('[data-textfarbe], [data-preset], [data-regler], [data-plus], .farbreihe, .groesse-gruppe');
+      if (!k) return;
+      lw.halteTextFokus();
+      if (!ev.target.closest('input')) ev.preventDefault();
+    }, true);
+    lw.on('text', aktualisiere);
     leiste.addEventListener('contextmenu', ev => {
       const k = ev.target.closest('[data-eigen]');
       if (!k) return;
       ev.preventDefault();
       const art = k.dataset.eigen;
-      const c = art === 'marker' ? k.dataset.markerfarbe : k.dataset.farbe;
+      const c = art === 'marker' ? k.dataset.markerfarbe : art === 'text' ? k.dataset.textfarbe : k.dataset.farbe;
       const liste = art === 'marker' ? e.eigeneMarker : e.eigeneFarben;
       const i = liste.indexOf(c);
       if (i >= 0) liste.splice(i, 1);
       if (art === 'marker' && e.markerFarbe === c) e.markerFarbe = 'gelb';
-      if (art === 'stift' && e.farbe === c) e.farbe = 'tinte';
+      if (art !== 'marker' && e.farbe === c) e.farbe = 'tinte';
+      if (art !== 'marker' && e.textFarbe === c) e.textFarbe = 'tinte';
       speichereEinst();
       if (window.UI) UI.meldung('Eigene Farbe entfernt');
     });
@@ -388,13 +424,13 @@
     function panelWerte() {
       panel.querySelector('[data-t="seite"]').value = e.seite;
       panel.querySelector('[data-t="radier"]').value = e.radier;
-      panel.querySelector('[data-t="glaettung"]').value = GLAETTUNGEN.includes(e.glaettung) ? e.glaettung : 'mittel';
+      panel.querySelector('[data-t="glaettung"]').value = GLAETTUNGEN.includes(e.glaettung) ? e.glaettung : 'niedrig';
       const eigen = e.druckModus === 'eigen';
       panel.querySelector('[data-t="druckModus"]').value = eigen ? 'eigen' : 'pencil';
       panel.querySelector('.diag-pencil').hidden = eigen;
       panel.querySelector('.diag-eigen').hidden = !eigen;
       panel.querySelector('[data-w="druckTypisch"]').textContent = e.druckTypisch ? Math.round(e.druckTypisch * 100) + ' %' : 'noch nicht gelernt (40 %)';
-      for (const k of ['druck', 'neigung', 'finger', 'halteForm', 'kritzelLoeschen']) panel.querySelector(`[data-t="${k}"]`).checked = ['neigung', 'halteForm', 'kritzelLoeschen'].includes(k) ? e[k] !== false : !!e[k];
+      for (const k of ['druck', 'neigung', 'finger', 'halteForm', 'kritzelLoeschen']) panel.querySelector(`[data-t="${k}"]`).checked = ['halteForm', 'kritzelLoeschen'].includes(k) ? e[k] !== false : !!e[k];
       for (const k of Object.keys(WERT_TEXT)) {
         const r = panel.querySelector(`[data-t="${k}"]`);
         if (document.activeElement !== r) r.value = e[k];
@@ -463,7 +499,7 @@
       if (ev.pointerType === 'pen' && ev.pressure > 0) feldStrich.roh = ev.pressure;
       const pen = ev.pointerType === 'pen' && e.druck;
       const druck = pen ? Leinwand.druckAbbildung(feldStrich.roh, e) : 0.5;
-      const neig = pen && e.neigung !== false ? Math.max(0, Math.min(1, (Leinwand.neigungWinkel(ev) - e.neigungAb) / (80 - e.neigungAb))) : 0;
+      const neig = pen && e.neigung === true ? Math.max(0, Math.min(1, (Leinwand.neigungWinkel(ev) - e.neigungAb) / (80 - e.neigungAb))) : 0;
       c.lineCap = 'round';
       c.strokeStyle = cs().getPropertyValue('--tinte').trim() || '#000';
       c.globalAlpha = Leinwand.neigungAlpha(neig);

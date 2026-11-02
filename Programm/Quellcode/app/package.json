@@ -1,7 +1,7 @@
 {
   "name": "lernheft",
   "productName": "Lernheft",
-  "version": "3.8.0",
+  "version": "3.9.0",
   "description": "Lernheft: Skripte, Notizbücher und Whiteboards mit Handschrift, komplett lokal im Lernheft-Ordner",
   "main": "main.js",
   "private": true,

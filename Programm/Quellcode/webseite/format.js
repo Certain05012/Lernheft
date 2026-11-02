@@ -26,6 +26,7 @@
   const rund2 = n => Math.round(n * 100) / 100;
   const istNotiz = e => e && (e.typ === 'notiz' || e.k === 'n');
   const istBild = e => e && (e.typ === 'bild' || e.k === 'b');
+  const istText = e => e && (e.typ === 'text' || e.k === 't');
 
   /* ---------- Striche ---------- */
 
@@ -118,6 +119,7 @@
 
   function kodiereElement(e) {
     if (istBild(e)) { const { typ, id, ...rest } = e; return { k: 'b', i: id, ...rest }; }
+    if (istText(e)) { const { typ, id, ...rest } = e; return { k: 't', i: id, ...rest }; }
     if (!istNotiz(e)) return kodiereStrich(e);
     const { typ, e: striche, id, ...rest } = e;
     const o = { k: 'n', i: id, ...rest };
@@ -126,6 +128,7 @@
   }
   function dekodiereElement(o) {
     if (o.k === 'b') { const { k, i, ...rest } = o; return { typ: 'bild', id: i || kurzId(), ...rest }; }
+    if (o.k === 't') { const { k, i, ...rest } = o; return { typ: 'text', id: i || kurzId(), ...rest }; }
     if (o.k !== 'n') return dekodiereStrich(o);
     const { k, i, e: striche, ...rest } = o;
     const n = { typ: 'notiz', id: i || kurzId(), ...rest };

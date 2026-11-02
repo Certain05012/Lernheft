@@ -67,6 +67,14 @@ fehlt das Feld, gibt es keine). Beim Zusammenführen gilt wie bei allen Eigensch
 * Ältere Versionen (vor den Bildern) lesen `k: "b"` als leeren Strich: wer dort die Seite ändert, verliert das Bild. Alle Geräte
   (auch das iPad) sollten daher dieselbe Version haben.
 
+**Text** (ab 3.9.0) `{ "k": "t", "i": Id, "x", "y", "b", "t": Text, "gr", "f", "erstellt", "m" }`
+
+* `x`, `y` = linke obere Ecke der ersten Zeile, `gr` = Schriftgrösse in Einheiten (18 pt = 24), `f` = Farbe wie bei Strichen
+  (Name wie `tinte`, `rot` oder `#rrggbb`; Namen passen sich hellem und dunklem Papier an), `t` = Text mit `\n` für neue Zeilen.
+* `b` = so breit darf eine Zeile höchstens werden, danach wird an Leerzeichen umgebrochen (ein zu langes Wort Zeichen für
+  Zeichen). Schrift Atkinson Hyperlegible, Zeilenhöhe 1,3 × `gr`. Die Höhe steht nicht in der Datei, sie folgt aus dem Umbruch.
+* Wie bei Bildern: Versionen vor 3.9.0 kennen `k: "t"` nicht und lesen es als leeren Strich.
+
 ## Punkte vereinfachen
 
 Die Schreibfläche lässt beim Abschliessen eines Strichs Punkte weg, die auf der Verbindung ihrer Nachbarn liegen (Douglas-Peucker,

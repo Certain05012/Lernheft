@@ -146,6 +146,20 @@
     }
     for (const e of liste) {
       if (Leinwand.istBild(e)) continue;
+      if (Leinwand.istText(e)) {
+        // Zeilen genau wie auf dem Bildschirm umgebrochen (Leinwand.textLayout), in der Schrift des PDFs
+        const gr = e.gr || 24, zh = gr * 1.3;
+        const farbe = hexZuRgb(lib, Leinwand.farbeVon(e, Leinwand.flaecheFuer(e, seite, liste, flSeite, 'hell')));
+        const p0 = punkt(e.x, e.y), p1 = punkt(e.x + 10, e.y);
+        const winkel = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]) * 180 / Math.PI;
+        Leinwand.textLayout(e).zeilen.forEach((z, i) => {
+          if (!z) return;
+          // Grundlinie: Mitte der Zeile plus etwa ein Drittel der Schriftgrösse
+          const [px, py] = punkt(e.x, e.y + zh * (i + 0.5) + gr * 0.33);
+          page.drawText(sichererText(font, z), { x: px, y: py, size: gr * massstab, font, color: farbe, rotate: lib.degrees(winkel) });
+        });
+        continue;
+      }
       if (e.typ === 'notiz') {
         const g = Leinwand.sicht(e);
         const rechteck = (y0, h) => pfad([[e.x, y0], [e.x + g.b, y0], [e.x + g.b, y0 + h], [e.x, y0 + h]].map(([x, y]) => punkt(x, y))) + ' Z';

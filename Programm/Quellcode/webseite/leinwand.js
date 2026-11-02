@@ -5,8 +5,8 @@
 // werden in deren Koordinaten gespeichert (Einheit: CSS-Pixel bei 100 %, A4 = 794 breit).
 (function () {
   const TINTE = {
-    hell: { tinte: '#1b2232', blau: '#1f4fd1', rot: '#d0342c', gruen: '#1c8a4a', gelb: '#e0a800', lila: '#7a45cf' },
-    dunkel: { tinte: '#eef1f7', blau: '#8aabff', rot: '#ff7a6e', gruen: '#6fd69b', gelb: '#ffd84a', lila: '#bb9cff' }
+    hell: { tinte: '#000000', blau: '#1f4fd1', rot: '#d0342c', gruen: '#1c8a4a', gelb: '#e0a800', lila: '#7a45cf' },
+    dunkel: { tinte: '#ffffff', blau: '#8aabff', rot: '#ff7a6e', gruen: '#6fd69b', gelb: '#ffd84a', lila: '#bb9cff' }
   };
   const FARBNAMEN = { tinte: 'Schwarz / Weiss', blau: 'Blau', rot: 'Rot', gruen: 'Grün', gelb: 'Gelb', lila: 'Lila' };
   // Textmarker leuchten in eigenen Farben, auf hellem und dunklem Papier gleich
@@ -35,7 +35,8 @@
   // im Verhältnis zum Blatt. Gespeichert wird weiter in Einheiten (Format 2), umgerechnet wird nur an der Oberfläche.
   const MM = 96 / 25.4;
   // Millimeter -> Einheiten der Schreibfläche. Der Radierer wird als Durchmesser angegeben, gerechnet wird mit dem Radius.
-  const einheit = (art, mm) => mm * MM * (art === 'radierer' ? 0.5 : 1);
+  // Text: Schriftgrösse in Punkt (1 pt = 1/72 Zoll = 96/72 Einheiten)
+  const einheit = (art, mm) => (art === 'text' ? mm * 96 / 72 : mm * MM * (art === 'radierer' ? 0.5 : 1));
 
   // Glättung der Handschrift: One-Euro-Filter auf den Stiftpunkten (Bildschirm-Pixel). minF = Grenzfrequenz bei
   // langsamer Bewegung in Hz (kleiner = ruhiger), beta = wie schnell der Filter bei schnellen Zügen nachgibt, damit
@@ -47,6 +48,8 @@
 
   const LASER_NACHLEUCHTEN = 1400;   // ms, bis die Spur des Laserpunkts ganz verblasst ist
   const LASER_STANDARD = '#ff2d2d';
+  // Grösste Zeichenfläche in Pixeln: Safari (iPad, iPhone) malt ab 16 777 216 Pixeln nichts mehr
+  const CANVAS_MAX = 16e6;
 
   const r1 = n => Math.round(n * 10) / 10;
   const kurzId = () => Math.random().toString(36).slice(2, 10);
@@ -54,8 +57,12 @@
   const istNotiz = e => e && e.typ === 'notiz';
   // Bild: { typ: 'bild', id, x, y, b, h, src (data-URL), erstellt, m }, liegt unter der Schrift
   const istBild = e => e && e.typ === 'bild';
-  // Elemente mit Lage und Grösse (x, y, b, h) statt Punkten
-  const istKasten = e => istNotiz(e) || istBild(e);
+  // Text: { typ: 'text', id, x, y, b (so breit darf eine Zeile höchstens werden, danach wird umgebrochen), t, gr
+  // (Schriftgrösse in Einheiten), f (Farbe wie bei Strichen: Name oder #rrggbb), erstellt, m }. Die Höhe ergibt sich aus
+  // dem Umbruch (textLayout), x/y ist die linke obere Ecke der ersten Zeile.
+  const istText = e => e && e.typ === 'text';
+  // Elemente mit Lage (x, y) statt Punkten
+  const istKasten = e => istNotiz(e) || istBild(e) || istText(e);
   const istHex = f => typeof f === 'string' && /^#[0-9a-f]{6}$/i.test(f);
   // Sichtbare Grösse einer Haftnotiz: zugeklappt nur ein kleines Quadrat
   const sicht = n => (n.zu ? { b: NOTIZ_ZU, h: NOTIZ_ZU } : { b: n.b, h: n.h });
@@ -84,7 +91,7 @@
     lernheftDesktop.vorSchliessen(() => {
       const a = document.activeElement;
       if (a && a.classList && a.classList.contains('lw-notiz-editor')) a.blur();
-      alleLeinwaende.forEach(l => l.sichern());
+      alleLeinwaende.forEach(l => { l.beendeText(); l.sichern(); });
       if (window.Daten && Daten.flush) Daten.flush();
     });
   }
@@ -235,7 +242,7 @@
 
   new MutationObserver(() => { leseThema(); alleLeinwaende.forEach(l => l.plane()); })
     .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-bib-hg'] });
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => alleLeinwaende.forEach(l => l.plane()));
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (typeof textSpeicher !== 'undefined') textSpeicher.clear(); alleLeinwaende.forEach(l => l.plane()); });
 
   const flaecheThema = () => (thema.hell ? 'hell' : 'dunkel');
   // Eigene Farben (#rrggbb) gelten auf jedem Papier, die Grundfarben passen sich hell/dunkel an
@@ -272,19 +279,75 @@
     return c;
   }
 
+  /* ---------- Text ---------- */
+
+  // Gleiche Schrift auf der Schreibfläche und im Eingabefeld (style.css .lw-text-editor), damit beim Bearbeiten nichts springt
+  const TEXT_SCHRIFT = '"Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  const TEXT_ZEILE = 1.3;             // Zeilenhöhe im Verhältnis zur Schriftgrösse
+  const TEXT_STANDARD = 18 * 96 / 72; // 18 pt
+  const textMass = document.createElement('canvas').getContext('2d');
+  const textSpeicher = new Map();
+  // Umbruch wie im Eingabefeld (white-space: pre-wrap): an Leerzeichen, ein zu langes Wort in Stücken; Zeilenumbrüche
+  // aus dem Text bleiben. Ergebnis zwischengespeichert: { zeilen, b (breiteste Zeile), h, umgebrochen }
+  function textLayout(e) {
+    const gr = e.gr || TEXT_STANDARD, max = Math.max(gr, e.b || 600), t = String(e.t || '');
+    const schluessel = gr + '|' + max + '|' + t;
+    let r = textSpeicher.get(schluessel);
+    if (r) return r;
+    textMass.font = `${gr}px ${TEXT_SCHRIFT}`;
+    const w = z => textMass.measureText(z).width;
+    const zeilen = [];
+    let umgebrochen = false;
+    for (const absatz of t.split('\n')) {
+      let z = '';
+      for (const teil of absatz.split(/(\s+)/)) {
+        if (!teil) continue;
+        if (z && !/^\s+$/.test(teil) && w(z + teil) > max) { zeilen.push(z.replace(/\s+$/, '')); z = teil; umgebrochen = true; }
+        else z += teil;
+        // Ein Wort, das allein nicht in die Zeile passt: Zeichen für Zeichen umbrechen
+        while (z.length > 1 && w(z.replace(/\s+$/, '')) > max) {
+          let n = z.length - 1;
+          while (n > 1 && w(z.slice(0, n)) > max) n--;
+          zeilen.push(z.slice(0, n)); z = z.slice(n); umgebrochen = true;
+        }
+      }
+      zeilen.push(z.replace(/\s+$/, ''));
+    }
+    let breit = 0;
+    for (const z of zeilen) breit = Math.max(breit, w(z));
+    r = { zeilen, b: Math.max(gr * 0.5, breit), h: zeilen.length * gr * TEXT_ZEILE, umgebrochen };
+    if (textSpeicher.size > 800) textSpeicher.clear();
+    textSpeicher.set(schluessel, r);
+    return r;
+  }
+  function malText(ctx, e, farbe) {
+    const L = textLayout(e), gr = e.gr || TEXT_STANDARD, zh = gr * TEXT_ZEILE;
+    ctx.save();
+    ctx.font = `${gr}px ${TEXT_SCHRIFT}`;
+    ctx.fillStyle = farbe;
+    ctx.textBaseline = 'middle';
+    L.zeilen.forEach((z, i) => { if (z) ctx.fillText(z, e.x, e.y + zh * (i + 0.5)); });
+    ctx.restore();
+  }
+  // Schriften kommen manchmal erst nach dem ersten Malen an: dann stimmen die Breiten nicht mehr
+  if (document.fonts && document.fonts.addEventListener) {
+    document.fonts.addEventListener('loadingdone', () => { textSpeicher.clear(); alleLeinwaende.forEach(l => l.plane()); });
+  }
+
   /* ---------- Zeichnen einzelner Elemente (auch für Vorschaubilder und Export) ---------- */
 
-  // Leichter Druck gibt feine, fester Druck dicke Linien. Starke Neigung (flach gehaltener Stift) macht den
-  // Strich breiter und weicher, wie die Seite einer Bleistiftmine.
-  const NEIGUNG_BREITE = 1.6;
-  const NEIGUNG_WEICH = 0.45;
+  // Leichter Druck gibt feine, fester Druck dicke Linien. Starke Neigung (flach gehaltener Stift) macht den Strich
+  // etwas breiter, wie die Seite einer Bleistiftmine. Durchsichtig wird er dabei nie: Tinte bleibt satt, beim
+  // Schreiben genau wie danach (früher machte die Neigung den Strich bis 45 % durchsichtig, mit dem Apple Pencil in
+  // normaler Schreibhaltung fast immer).
+  const NEIGUNG_BREITE = 0.9;
   const DRUCK_STUFEN = 32, NEIGUNG_STUFEN = 7;   // so fein wird beides gespeichert (siehe format.js)
   const breite = (s, druck, neigung) => {
     if (s.w === 'marker') return s.d * 4;
     const b = s.d * (0.2 + 1.5 * Math.pow(druck == null ? 0.5 : druck, 0.8));
     return neigung ? b * (1 + NEIGUNG_BREITE * neigung) : b;
   };
-  const neigungAlpha = n => (n ? 1 - NEIGUNG_WEICH * n : 1);
+  const neigungAlpha = () => 1;
   // Punkt mit neuer Lage, Druck und Neigung bleiben erhalten
   const punktMit = (q, x, y) => (q.length > 3 ? [x, y, q[2], q[3]] : [x, y, q[2]]);
 
@@ -617,8 +680,8 @@
 
   // In welcher Farbwelt liegt ein Element: auf einer Haftnotiz (hell), auf der Seite oder daneben
   function flaecheFuer(e, seite, liste, flSeite, flAussen) {
-    if (istNotiz(e) || !e.p || !e.p.length) return 'hell';
-    const [x, y] = e.p[0];
+    if (istNotiz(e) || (!istText(e) && (!e.p || !e.p.length))) return 'hell';
+    const [x, y] = istText(e) ? [e.x, e.y] : e.p[0];
     for (const n of liste) {
       if (!istNotiz(n)) continue;
       const g = sicht(n);
@@ -641,6 +704,7 @@
     for (const e of liste) {
       if (istBild(e) || !zuSehen(e)) continue;
       if (istNotiz(e)) malNotiz(ctx, e, e !== ausser, bedienung);
+      else if (istText(e)) { if (e !== ausser) malText(ctx, e, farbeVon(e, flaecheFuer(e, seite, liste, flSeite, flAussen))); }
       else malStrich(ctx, e, farbeVon(e, flaecheFuer(e, seite, liste, flSeite, flAussen)));
     }
   }
@@ -648,6 +712,7 @@
   function grenzen(e) {
     if (istNotiz(e)) { const g = sicht(e); return { x1: e.x, y1: e.y, x2: e.x + g.b, y2: e.y + g.h }; }
     if (istBild(e)) return { x1: e.x, y1: e.y, x2: e.x + e.b, y2: e.y + e.h };
+    if (istText(e)) { const L = textLayout(e); return { x1: e.x, y1: e.y, x2: e.x + L.b, y2: e.y + Math.max(L.h, (e.gr || TEXT_STANDARD) * TEXT_ZEILE) }; }
     let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity, nMax = 0;
     for (const q of e.p) if (q[3] > nMax) nMax = q[3];
     const rand = breite(e, 1, nMax) / 2;
@@ -666,6 +731,7 @@
   function umriss(e) {
     if (istNotiz(e)) { const g = grenzen(e); return { x1: g.x1 - 2, y1: g.y1 - 2, x2: g.x2 + 6, y2: g.y2 + 8 }; }
     if (istBild(e)) { const g = grenzen(e); return { x1: g.x1 - 1, y1: g.y1 - 1, x2: g.x2 + 1, y2: g.y2 + 1 }; }
+    if (istText(e)) { const g = grenzen(e), r = (e.gr || TEXT_STANDARD) * 0.3; return { x1: g.x1 - r, y1: g.y1 - r, x2: g.x2 + r, y2: g.y2 + r }; }
     const p = e.p, n = p.length;
     if (!n) return { x1: 0, y1: 0, x2: 0, y2: 0 };
     const z = umrissSpeicher.get(e), l = p[n - 1];
@@ -708,8 +774,8 @@
     const seite = o.seite, fl = o.flaeche || 'hell';
     const a = o.ausschnitt || { x1: 0, y1: 0, x2: seite.b, y2: seite.h };
     const w0 = Math.max(1, a.x2 - a.x1), h0 = Math.max(1, a.y2 - a.y1);
-    // Nicht mehr als etwa 40 Megapixel und 12000 Pixel je Seite
-    const m = Math.min(o.massstab || 2, 12000 / Math.max(w0, h0), Math.sqrt(40e6 / (w0 * h0)));
+    // Nicht mehr als CANVAS_MAX Pixel (Safari auf dem iPad) und 12000 Pixel je Seite
+    const m = Math.min(o.massstab || 2, 12000 / Math.max(w0, h0), Math.sqrt(CANVAS_MAX / (w0 * h0)));
     cv.width = Math.max(1, Math.round(w0 * m));
     cv.height = Math.max(1, Math.round(h0 * m));
     const c = cv.getContext('2d');
@@ -751,6 +817,10 @@
     canvas.className = 'lw-canvas';
     const live = document.createElement('canvas');
     live.className = 'lw-live';
+    // "spitze" liegt über "live" und trägt nur das letzte Stück des Strichs bis genau unter den Stift (dazu die vom
+    // Browser vorhergesagten Punkte). Es wird jedes Bild neu gemalt, damit die Linie nicht hinter dem Stift herläuft.
+    const spitze = document.createElement('canvas');
+    spitze.className = 'lw-live lw-spitze';
     const menue = document.createElement('div');
     menue.className = 'lw-menue';
     menue.hidden = true;
@@ -758,6 +828,12 @@
     editor.className = 'lw-notiz-editor';
     editor.hidden = true;
     editor.setAttribute('aria-label', 'Text der Haftnotiz');
+    const textFeld = document.createElement('textarea');
+    textFeld.className = 'lw-text-editor';
+    textFeld.hidden = true;
+    textFeld.setAttribute('aria-label', 'Text');
+    textFeld.setAttribute('autocapitalize', 'sentences');
+    textFeld.spellcheck = true;
     const hinweis = document.createElement('p');
     hinweis.className = 'lw-hinweis';
     hinweis.textContent = opt.hinweis || 'Stift schreibt · ein Finger verschiebt · zwei Finger zoomen · 0 zentriert';
@@ -771,9 +847,10 @@
     // Bewegt sich die Ansicht von selbst (Öffnen an der gemerkten Stelle, Tab-Wechsel, Fenstergrösse), bleibt der Schieber unsichtbar
     let schieberStillBis = 0;
     const schieberStill = () => { schieberStillBis = performance.now() + 500; };
-    host.append(canvas, live, menue, editor, hinweis, schieber);
+    host.append(canvas, live, spitze, menue, editor, textFeld, hinweis, schieber);
     const ctx = canvas.getContext('2d');
     const lctx = live.getContext('2d');
+    const sctx = spitze.getContext('2d');
 
     const einst = opt.einst;
     let seiten = [];
@@ -781,7 +858,8 @@
     const ansicht = { x: 0, y: 0, s: 1 };
     let b = 0, h = 0, dpr = 1;
     let hostRect = { left: 0, top: 0 };  // Lage der Fläche, nicht bei jedem Punkt neu erfragen (das erzwingt ein Layout)
-    let rand = 0;                        // so viel ist "canvas" ringsum grösser als das Bild (CSS-px)
+    let rand = 0;                        // so viel ist "canvas" links und rechts grösser als das Bild (CSS-px)
+    let randY = 0;                       // ... und oben und unten (mehr: gescrollt wird meist senkrecht)
     let basis = null;                    // Ansicht, mit der "canvas" zuletzt gemalt wurde
     let inhaltVoll = true;               // das Blatt muss ganz neu gemalt werden
     let schmutz = null;                  // nur dieser Bereich (Dokument-Koordinaten) muss neu gemalt werden
@@ -790,6 +868,9 @@
     let schaerfeTimer = 0;
     let gesamtHoehe = 0;
     let aktion = null, lassoPunkte = null, radiererPunkt = null;
+    let transformStand = '';             // zuletzt gesetzte CSS-Verschiebung von canvas
+    let spitzeRect = null;               // wo die Spitze des Strichs zuletzt gemalt wurde (Pixel von "spitze")
+    let textEdit = null, textOffenSeit = 0, textHalten = 0, textFingerTipp = null;   // Text, der gerade geschrieben wird
     let geplant = false, penZeit = 0;
     let diagProbe = null, diagGeplant = false;
     const auswahl = new Map();           // Element -> Seiten-Id
@@ -879,7 +960,7 @@
       if (e.pressure > 0) { letzterRoh = e.pressure; if (rohProben.length < 2000) rohProben.push(e.pressure); }
       const p = druckAbbildung(letzterRoh, einst);
       let n = 0;
-      if (einst.neigung !== false) {
+      if (einst.neigung === true) {
         const ab = einst.neigungAb == null ? 30 : Number(einst.neigungAb);
         n = Math.max(0, Math.min(1, (neigungWinkel(e) - ab) / (80 - ab)));
       }
@@ -951,18 +1032,32 @@
       hostRect = { left: r.left, top: r.top };
       dpr = Math.min(window.devicePixelRatio || 1, 3);
       // Ringsum Reserve zum Verschieben ohne Neuzeichnen, aber nicht mehr Pixel, als die Grafikkarte sinnvoll trägt
-      rand = Math.round(Math.max(96, Math.min(320, Math.min(b, h) * 0.3)));
-      while (dpr > 1 && (b + 2 * rand) * (h + 2 * rand) * dpr * dpr > 40e6) dpr = Math.max(1, dpr - 0.25);
-      const cb = b + 2 * rand, ch = h + 2 * rand;
+      // Oben und unten viel Reserve: beim Scrollen mit dem Finger wird so nur etwa alle 1000 px neu gemalt statt alle
+      // 300 px (jedes volle Neumalen ist auf dem iPad ein kleiner Ruck); seitlich reicht weniger
+      rand = Math.round(Math.max(64, Math.min(200, Math.min(b, h) * 0.15)));
+      randY = Math.round(Math.max(160, Math.min(1000, h * 0.9)));
+      // Safari (iPad) malt eine Zeichenfläche über 16,7 Millionen Pixel gar nicht mehr: darunter bleiben, erst mit
+      // weniger Reserve oben und unten, dann seitlich, zuletzt mit weniger Auflösung
+      const pixel = () => (b + 2 * rand) * (h + 2 * randY) * dpr * dpr;
+      while (randY > 160 && pixel() > CANVAS_MAX) randY = Math.max(160, Math.round(randY * 0.9));
+      while (rand > 48 && pixel() > CANVAS_MAX) rand = Math.max(48, Math.round(rand * 0.85));
+      while (dpr > 1 && pixel() > CANVAS_MAX) dpr = Math.max(1, dpr - 0.25);
+      const cb = b + 2 * rand, ch = h + 2 * randY;
       canvas.style.width = cb + 'px';
       canvas.style.height = ch + 'px';
-      canvas.style.left = canvas.style.top = -rand + 'px';
+      canvas.style.left = -rand + 'px';
+      canvas.style.top = -randY + 'px';
       canvas.width = Math.round(cb * dpr);
       canvas.height = Math.round(ch * dpr);
       live.style.width = b + 'px';
       live.style.height = h + 'px';
       live.width = Math.round(b * dpr);
       live.height = Math.round(h * dpr);
+      spitze.style.width = b + 'px';
+      spitze.style.height = h + 'px';
+      spitze.width = live.width;
+      spitze.height = live.height;
+      spitzeRect = null;
       basis = null; inhaltVoll = true; overlayNeu = true; ol.leer = true;
       if (!vorher && seiten.length) einpassen();
       else if (umschalt.bis > performance.now()) {
@@ -1143,8 +1238,8 @@
 
     /* ----- Zeichnen ----- */
 
-    // "canvas" ist mit der Ansicht "basis" gemalt; seine Pixel beginnen "rand" CSS-px links und oberhalb des Bildes
-    const basisTransform = () => ctx.setTransform(dpr * basis.s, 0, 0, dpr * basis.s, dpr * (basis.x + rand), dpr * (basis.y + rand));
+    // "canvas" ist mit der Ansicht "basis" gemalt; seine Pixel beginnen "rand" CSS-px links und "randY" oberhalb des Bildes
+    const basisTransform = () => ctx.setTransform(dpr * basis.s, 0, 0, dpr * basis.s, dpr * (basis.x + rand), dpr * (basis.y + randY));
     const liveTransform = () => lctx.setTransform(dpr * ansicht.s, 0, 0, dpr * ansicht.s, dpr * ansicht.x, dpr * ansicht.y);
 
     function flaecheSeite(s) { return opt.flaeche ? opt.flaeche(s) : flaecheThema(); }
@@ -1344,7 +1439,7 @@
         if (!liste.length) continue;
         ctx.save();
         ctx.translate(s.x, s.y);
-        malElemente(ctx, liste, s, flaecheSeite(s), flAussen, editiert ? editiert.n : null, true,
+        malElemente(ctx, liste, s, flaecheSeite(s), flAussen, editiert ? editiert.n : textEdit ? textEdit.el : null, true,
           { x1: links - s.x, y1: oben - s.y, x2: rechts - s.x, y2: unten - s.y });
         ctx.restore();
       }
@@ -1360,7 +1455,7 @@
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       basisTransform();
-      zeichneInhalt({ x1: (-rand - basis.x) / basis.s, y1: (-rand - basis.y) / basis.s, x2: (b + rand - basis.x) / basis.s, y2: (h + rand - basis.y) / basis.s });
+      zeichneInhalt({ x1: (-rand - basis.x) / basis.s, y1: (-randY - basis.y) / basis.s, x2: (b + rand - basis.x) / basis.s, y2: (h + randY - basis.y) / basis.s });
     }
 
     // Nur einen Bereich neu malen (Dokument-Koordinaten): löschen, Hintergrund und alles, was hineinragt.
@@ -1370,7 +1465,7 @@
     function rendereBereich(r) {
       if (Math.abs(ansicht.s - basis.s) > 1e-9) { rendereBasis(); return; }
       zaehl.bereich++;
-      const k = dpr * basis.s, ox = dpr * (basis.x + rand), oy = dpr * (basis.y + rand);
+      const k = dpr * basis.s, ox = dpr * (basis.x + rand), oy = dpr * (basis.y + randY);
       const X1 = Math.max(0, Math.floor(r.x1 * k + ox) - 2), Y1 = Math.max(0, Math.floor(r.y1 * k + oy) - 2);
       const X2 = Math.min(canvas.width, Math.ceil(r.x2 * k + ox) + 2), Y2 = Math.min(canvas.height, Math.ceil(r.y2 * k + oy) + 2);
       if (X2 <= X1 || Y2 <= Y1) return;
@@ -1388,23 +1483,24 @@
     // Wie "canvas" (CSS) verschoben und skaliert werden muss, damit es zur aktuellen Ansicht passt
     function abweichung() {
       const k = ansicht.s / basis.s;
-      return { k, tx: ansicht.x - basis.x * k - rand * k + rand, ty: ansicht.y - basis.y * k - rand * k + rand };
+      return { k, tx: ansicht.x - basis.x * k - rand * k + rand, ty: ansicht.y - basis.y * k - randY * k + randY };
     }
     function deckt() {
       const a = abweichung();
-      const links = -rand + a.tx, oben = -rand + a.ty;
-      return links <= 0.5 && oben <= 0.5 && links + (b + 2 * rand) * a.k >= b - 0.5 && oben + (h + 2 * rand) * a.k >= h - 0.5;
+      const links = -rand + a.tx, oben = -randY + a.ty;
+      return links <= 0.5 && oben <= 0.5 && links + (b + 2 * rand) * a.k >= b - 0.5 && oben + (h + 2 * randY) * a.k >= h - 0.5;
     }
     function wendeTransformAn() {
       const a = abweichung();
       const tx = a.k === 1 ? Math.round(a.tx * dpr) / dpr : a.tx, ty = a.k === 1 ? Math.round(a.ty * dpr) / dpr : a.ty;
-      canvas.style.transform = a.k === 1 ? `translate(${tx}px, ${ty}px)` : `translate(${tx}px, ${ty}px) scale(${a.k})`;
+      const t = a.k === 1 ? `translate(${tx}px, ${ty}px)` : `translate(${tx}px, ${ty}px) scale(${a.k})`;
+      if (t !== transformStand) { canvas.style.transform = t; transformStand = t; }
       return a;
     }
     // Ist "canvas" gegenüber der Ansicht verschoben oder skaliert, kommt kurz nach der Bewegung ein scharfes Neuzeichnen
     function pruefeSchaerfe(a) {
       clearTimeout(schaerfeTimer);
-      if (Math.abs(a.k - 1) < 0.002 && Math.abs(a.tx) < rand * 0.4 && Math.abs(a.ty) < rand * 0.4) return;
+      if (Math.abs(a.k - 1) < 0.002 && Math.abs(a.tx) < rand * 0.4 && Math.abs(a.ty) < randY * 0.4) return;
       const los = () => { if (aktion) { schaerfeTimer = setTimeout(los, 250); return; } plane(); };
       schaerfeTimer = setTimeout(los, Math.abs(a.k - 1) < 0.002 ? 220 : 130);
     }
@@ -1435,6 +1531,7 @@
       aktualisiereSeite(zuDok(0, 0)[1]);
       positioniereMenue();
       positioniereEditor();
+      positioniereText();
       zeichneOverlay();
       pruefeSchaerfe(a);
     }
@@ -1445,6 +1542,53 @@
       lctx.setTransform(1, 0, 0, 1, 0, 0);
       lctx.clearRect(0, 0, live.width, live.height);
       ol.leer = true;
+      leereSpitze();
+    }
+
+    // Die Spitze: vom zuletzt auf "live" gemalten Punkt bis unter den Stift. Nur der Bereich, in dem sie zuletzt lag,
+    // wird geleert (Bildschirm-px der Zeichenfläche).
+    function leereSpitze() {
+      if (!spitzeRect) return;
+      const r = spitzeRect;
+      spitzeRect = null;
+      sctx.setTransform(1, 0, 0, 1, 0, 0);
+      sctx.clearRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+    }
+    function zeichneSpitze() {
+      leereSpitze();
+      const a = aktion;
+      if (!a || a.art !== 'zeichnen' || a.fertig || a.formFertig || a.strich.w === 'marker') return;
+      const s = seiteMitId(a.sid);
+      if (!s) return;
+      const p = a.strich.p, extra = a.spitze || [];
+      const q = extra.length ? p.concat(extra) : p;
+      if (!q.length) return;
+      const ox = s.x + (a.notiz ? a.notiz.x : 0), oy = s.y + (a.notiz ? a.notiz.y : 0);
+      const k = dpr * ansicht.s, dx = dpr * ansicht.x, dy = dpr * ansicht.y;
+      sctx.setTransform(k, 0, 0, k, dx, dy);
+      sctx.translate(ox, oy);
+      sctx.lineCap = sctx.lineJoin = 'round';
+      sctx.strokeStyle = sctx.fillStyle = a.farbe != null ? a.farbe : (a.farbe = strichFarbeLive(s, a));
+      const von = Math.max(0, p.length - 1);
+      let wMax = 0;
+      if (q.length === 1) {
+        const w = breite(a.strich, q[0][2], q[0][3]);
+        wMax = w;
+        sctx.beginPath();
+        sctx.arc(q[0][0], q[0][1], w / 2, 0, Math.PI * 2);
+        sctx.fill();
+      } else {
+        for (let i = Math.max(0, von - 1); i < q.length; i++) wMax = Math.max(wMax, breite(a.strich, q[i][2], q[i][3]));
+        malAbschnitte(sctx, { ...a.strich, p: q }, von, q.length);
+      }
+      // Bereich merken, damit das nächste Bild genau ihn leert
+      let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+      for (let i = Math.max(0, von - 1); i < q.length; i++) {
+        const x = (q[i][0] + ox) * k + dx, y = (q[i][1] + oy) * k + dy;
+        if (x < x1) x1 = x; if (x > x2) x2 = x; if (y < y1) y1 = y; if (y > y2) y2 = y;
+      }
+      const r = wMax * k / 2 + 3;
+      spitzeRect = { x1: Math.max(0, Math.floor(x1 - r)), y1: Math.max(0, Math.floor(y1 - r)), x2: Math.min(spitze.width, Math.ceil(x2 + r)), y2: Math.min(spitze.height, Math.ceil(y2 + r)) };
     }
 
     /* ----- Laserpointer: leuchtender Punkt mit kurzer Spur, die nach etwa 1,4 s verblasst ----- */
@@ -1546,7 +1690,9 @@
         // Textmarker leuchtet durch: Deckkraft der ganzen Ebene, damit sich überlappende Stücke nicht aufaddieren
         live.style.opacity = aktion.strich.w === 'marker' ? '0.35' : '';
         zeichneLiveStrich();
+        zeichneSpitze();
       } else {
+        leereSpitze();
         const etwas = auswahl.size || lassoPunkte || radiererPunkt, laserDa = laserSichtbar();
         if (!etwas && !laserDa && ol.leer) { overlayNeu = false; return; }
         live.style.opacity = '';
@@ -1819,7 +1965,7 @@
     // sondern mit dem anderen zusammengeführt: so geht nichts verloren, auch wenn gerade geschrieben wurde.
     L.neuLaden = sid => {
       if (!seiteMitId(sid)) return;
-      if (aktion || editiert) { neuZuLaden.add(sid); return; }
+      if (aktion || editiert || textEdit) { neuZuLaden.add(sid); return; }
       const extern = normalisiere(opt.ladeInk(sid));
       let ergebnis = extern, nachSichern = false;
       if (window.LHFormat) {
@@ -1847,6 +1993,7 @@
 
     L.einst = einst;
     L.setzeWerkzeug = w => {
+      if (w !== 'text' && textEdit) { textOffenSeit = textHalten = 0; beendeText(); }
       einst.werkzeug = w;
       if (w !== 'laser') laserLeeren();
       if (w !== 'lasso') auswahl.clear();
@@ -1854,10 +2001,10 @@
       emit('werkzeug', w);
       plane();
     };
-    const keinSchreibwerkzeug = () => ['radierer', 'lasso', 'notiz', 'hand', 'laser'].includes(einst.werkzeug);
+    const keinSchreibwerkzeug = () => ['radierer', 'lasso', 'notiz', 'hand', 'laser', 'text'].includes(einst.werkzeug);
     L.setzeFarbe = f => {
       einst.farbe = f;
-      if (!aendereAuswahl(el => { if (!istKasten(el)) el.f = f; })) {
+      if (!aendereAuswahl(el => { if (!istKasten(el) || istText(el)) el.f = f; })) {
         if (keinSchreibwerkzeug() || einst.werkzeug === 'marker') einst.werkzeug = 'stift';
       }
       opt.einstGeaendert && opt.einstGeaendert();
@@ -1882,13 +2029,13 @@
       plane();
     };
     // Nur die ausgewählten Striche umfärben (Menü an der Auswahl), ohne die Stiftfarbe zu ändern
-    L.faerbeAuswahl = f => { aendereAuswahl(el => { if (!istKasten(el)) el.f = f; }); };
+    L.faerbeAuswahl = f => { aendereAuswahl(el => { if (!istKasten(el) || istText(el)) el.f = f; }); };
     L.setzeFinger = an => { einst.finger = !!an; opt.einstGeaendert && opt.einstGeaendert(); emit('werkzeug', einst.werkzeug); };
     // Dicke per Schieberegler, getrennt für Stift, Textmarker und Radierer.
     // anwenden: erst beim Loslassen des Reglers auch die ausgewählten Striche ändern (ein Schritt im Verlauf)
     // Der Regler ändert immer auch den Wert der gerade gewählten Grösse (Klein, Mittel, Gross) dieses Werkzeugs.
-    const GROESSE = { stift: 'dicke', marker: 'markerDicke', radierer: 'radierGroesse', laser: 'laserGroesse' };
-    const groesseArt = () => (['marker', 'radierer', 'laser'].includes(einst.werkzeug) ? einst.werkzeug : 'stift');
+    const GROESSE = { stift: 'dicke', marker: 'markerDicke', radierer: 'radierGroesse', laser: 'laserGroesse', text: 'textGroesse' };
+    const groesseArt = () => (['marker', 'radierer', 'laser', 'text'].includes(einst.werkzeug) ? einst.werkzeug : 'stift');
     // Der Regler und die drei Grössen gelten in Millimetern (Stift und Marker: Strichbreite, Radierer: Durchmesser);
     // die Schreibfläche rechnet in Einheiten um (einheit). So ist 1 mm auf jedem Gerät und bei jedem Zoom gleich dick.
     L.setzeDicke = (mm, anwenden) => {
@@ -1897,6 +2044,7 @@
       if (w === 'radierer' && einst.radiermodus === 'strich') einst.radiermodus = 'bereich';
       if (einst.presets && einst.preset) einst.presets[art][einst.preset[art]] = mm;
       if (anwenden && w === 'lasso') aendereAuswahl(el => { if (!istKasten(el)) el.d = einheit('stift', mm); });
+      if (art === 'text') wendeTextGroesseAn(anwenden);
       opt.einstGeaendert && opt.einstGeaendert();
       emit('werkzeug', einst.werkzeug);
     };
@@ -1907,6 +2055,7 @@
       einst.preset[art] = name;
       einst[GROESSE[art]] = einheit(art, einst.presets[art][name]);
       if (einst.werkzeug === 'radierer' && einst.radiermodus === 'strich') einst.radiermodus = 'bereich';
+      if (art === 'text') wendeTextGroesseAn(true);
       opt.einstGeaendert && opt.einstGeaendert();
       emit('werkzeug', einst.werkzeug);
     };
@@ -2177,6 +2326,131 @@
     }
     const meldung = text => { if (window.UI && UI.meldung) UI.meldung(text); };
 
+    /* ----- Text ----- */
+
+    // Tippen mit dem Text-Werkzeug: auf einen Text = ihn bearbeiten, sonst ein neuer Text an dieser Stelle. Bearbeitet wird
+    // in einem Eingabefeld genau über dem Text (gleiche Schrift, Grösse und Farbe), die Schreibfläche lässt ihn solange aus.
+    function textBei(dx, dy) {
+      for (let k = seiten.length - 1; k >= 0; k--) {
+        const s = seiten[k];
+        const [x, y] = lokal(s, dx, dy);
+        const liste = inhalt(s.id).e;
+        for (let i = liste.length - 1; i >= 0; i--) {
+          const el = liste[i];
+          if (!istText(el)) continue;
+          const g = umriss(el);
+          if (x >= g.x1 && x <= g.x2 && y >= g.y1 && y <= g.y2) return { el, sid: s.id };
+        }
+      }
+      return null;
+    }
+    const textFarbeVon = (el, sid) => {
+      const s = seiteMitId(sid);
+      return farbeVon(el, s ? flaecheFuer(el, s, inhalt(sid).e, flaecheSeite(s), flaecheThema()) : flaecheThema());
+    };
+    function textTippBei(dx, dy) {
+      const t = textBei(dx, dy);
+      if (t) { bearbeiteText(t.el, t.sid); return; }
+      const s = seiteBeiY(dy);
+      if (!s || (opt.begrenzt && !aufSeite(s, dx, dy))) return;
+      const [x, y] = lokal(s, dx, dy);
+      const gr = r1(einst.textGroesse || TEXT_STANDARD);
+      // Zeilen dürfen bis kurz vor den rechten Blattrand gehen (daneben und auf dem Whiteboard bis 600 Einheiten)
+      const aufBlatt = !s.unendlich && x >= 0 && x < s.b;
+      const b = Math.max(gr * 3, Math.min(600, aufBlatt ? s.b - x - 20 : 600));
+      const el = { typ: 'text', id: kurzId(), x: r1(x), y: r1(y - gr * TEXT_ZEILE / 2), b: r1(b), t: '', gr, f: einst.textFarbe || 'tinte', erstellt: Date.now() };
+      if (opt.begrenzt) el.y = r1(Math.max(0, Math.min(s.endlos ? el.y : s.h - gr * TEXT_ZEILE, el.y)));
+      beginne();
+      beruehre(s.id);
+      inhalt(s.id).e.push(el);
+      bearbeiteText(el, s.id, true);
+    }
+    function bearbeiteText(el, sid, begonnen) {
+      if (editiert) beendeEditor();
+      if (textEdit) beendeText();
+      if (!begonnen) { beginne(); beruehre(sid); }
+      auswahl.clear();
+      textEdit = { el, sid };
+      textOffenSeit = performance.now();
+      textFeld.value = el.t || '';
+      textFeld.hidden = false;
+      positioniereText();
+      try { textFeld.focus({ preventScroll: true }); } catch (e) { textFeld.focus(); }
+      const ende = textFeld.value.length;
+      try { textFeld.setSelectionRange(ende, ende); } catch (e) { /* ohne Cursor ans Ende */ }
+      emit('text', true);
+      plane();
+    }
+    function positioniereText() {
+      if (!textEdit) return;
+      const { el, sid } = textEdit, s = seiteMitId(sid);
+      if (!s) { beendeText(); return; }
+      const L = textLayout(el), gr = el.gr || TEXT_STANDARD, k = ansicht.s;
+      const [x, y] = zuSchirm(s.x + el.x, s.y + el.y);
+      // Schon umgebrochen: genau so breit wie erlaubt (dann bricht auch das Feld dort um), sonst etwas Platz für den Cursor
+      const breite = L.umgebrochen ? (el.b || 600) : L.b + gr * 0.6;
+      const farbe = textFarbeVon(el, sid);
+      const stand = [x, y, breite * k, L.h * k, gr * k, farbe].join('|');
+      if (stand === textFeld.dataset.stand) return;
+      textFeld.dataset.stand = stand;
+      Object.assign(textFeld.style, {
+        left: x + 'px', top: y + 'px', width: breite * k + 'px', height: Math.max(gr * TEXT_ZEILE, L.h) * k + 'px',
+        fontSize: gr * k + 'px', color: farbe, caretColor: farbe
+      });
+    }
+    function beendeText() {
+      if (!textEdit) return;
+      const { el, sid } = textEdit;
+      textEdit = null;
+      el.t = textFeld.value.replace(/\s+$/, '');
+      textFeld.hidden = true;
+      textFeld.value = '';
+      textFeld.dataset.stand = '';
+      // Leer geblieben: der Text verschwindet wieder (ein neuer hinterlässt dann auch keinen Schritt im Verlauf)
+      if (!el.t) { const liste = inhalt(sid).e, i = liste.indexOf(el); if (i >= 0) liste.splice(i, 1); }
+      beende();
+      emit('text', false);
+      plane();
+      ausstehendeLaden();
+    }
+    // Ein Wechsel in die Werkzeugleiste (Farbe, Grösse) beendet das Schreiben nicht
+    L.halteTextFokus = () => { textHalten = performance.now(); };
+    L.textBearbeitung = () => !!textEdit;
+    textFeld.addEventListener('input', () => {
+      if (!textEdit) return;
+      textEdit.el.t = textFeld.value;
+      textEdit.el.m = Date.now();
+      positioniereText();
+    });
+    textFeld.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (!textEdit || document.activeElement === textFeld) return;
+        const jetzt = performance.now();
+        // Gleich nach dem Öffnen (iPad: Maus-Ereignisse nach dem Tippen) oder beim Griff in die Werkzeugleiste: weiter schreiben
+        if (jetzt - textOffenSeit < 350 || jetzt - textHalten < 700) { try { textFeld.focus({ preventScroll: true }); } catch (e) { /* weiter ohne Fokus */ } return; }
+        beendeText();
+      }, 0);
+    });
+    textFeld.addEventListener('keydown', e => {
+      if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); textOffenSeit = textHalten = 0; textFeld.blur(); beendeText(); }
+      e.stopPropagation();
+    });
+    textFeld.addEventListener('pointerdown', e => e.stopPropagation());
+    L.setzeTextFarbe = f => {
+      einst.textFarbe = f;
+      if (textEdit) { textEdit.el.f = f; positioniereText(); plane(); }
+      else aendereAuswahl(el => { if (istText(el)) el.f = f; });
+      if (einst.werkzeug !== 'text' && !auswahl.size && !textEdit) einst.werkzeug = 'text';
+      opt.einstGeaendert && opt.einstGeaendert();
+      emit('werkzeug', einst.werkzeug);
+    };
+    // Schriftgrösse des Textes, der gerade bearbeitet wird, oder der ausgewählten Texte
+    function wendeTextGroesseAn(anwenden) {
+      const gr = r1(einst.textGroesse || TEXT_STANDARD);
+      if (textEdit) { textEdit.el.gr = gr; positioniereText(); plane(); return; }
+      if (anwenden && auswahl.size) aendereAuswahl(el => { if (istText(el)) el.gr = gr; });
+    }
+
     // Bild (Datei oder Zwischenablage) einfügen; wo = Punkt in Dokument-Koordinaten (Mitte des Bildes), sonst die Mitte
     // des Bildausschnitts. Es kommt in natürlicher Grösse, höchstens aber so gross, dass es gut ins Bild und aufs Blatt
     // passt, und ist danach ausgewählt: an den Ecken ziehen ändert die Grösse, in der Mitte ziehen verschiebt es.
@@ -2332,7 +2606,8 @@
 
     function baueMenue() {
       const notizen = [...auswahl.keys()].filter(istNotiz);
-      const striche = [...auswahl.keys()].filter(e => !istKasten(e));
+      const striche = [...auswahl.keys()].filter(e => !istKasten(e) || istText(e));
+      const texte = [...auswahl.keys()].filter(istText);
       const bilder = [...auswahl.keys()].filter(istBild);
       // Nur Textmarker ausgewählt: Markerfarben anbieten, sonst die Stiftfarben
       const nurMarker = striche.length && striche.every(e => e.w === 'marker');
@@ -2341,6 +2616,7 @@
         : Object.entries(TINTE[flaecheThema()]).map(([f, c]) => [f, c, FARBNAMEN[f]]).concat((einst.eigeneFarben || []).map(c => [c, c, 'Eigene Farbe']));
       menue.innerHTML = `
         ${notizen.length === 1 && auswahl.size === 1 ? '<button type="button" data-m="text">Text</button>' : ''}
+        ${texte.length === 1 && auswahl.size === 1 ? '<button type="button" data-m="textbearbeiten">Bearbeiten</button>' : ''}
         ${striche.length ? `<span class="lw-menue-farben">${farben.map(([f, c, n]) => `<button type="button" data-tf="${f}" title="${n}" aria-label="Farbe ${n}" style="--farbe:${c}"></button>`).join('')}</span>` : ''}
         ${notizen.length ? `<span class="lw-menue-farben">${Object.entries(NOTIZFARBEN).map(([f, c]) => `<button type="button" data-nf="${f}" title="${NOTIZNAMEN[f]}" aria-label="Notiz ${NOTIZNAMEN[f]}" style="--farbe:${c}"></button>`).join('')}</span>` : ''}
         ${bilder.length === 1 && auswahl.size === 1 && window.ClipboardItem && navigator.clipboard && navigator.clipboard.write ? '<button type="button" data-m="kopieren" title="Bild in die Zwischenablage kopieren">Kopieren</button>' : ''}
@@ -2357,13 +2633,14 @@
       else if (k.dataset.m === 'dup') dupliziereAuswahl();
       else if (k.dataset.m === 'kopieren') kopiereBild([...auswahl.keys()].find(istBild));
       else if (k.dataset.m === 'text') { const [[n, sid]] = [...auswahl]; auswahl.clear(); bearbeiteNotiz(n, sid); }
+      else if (k.dataset.m === 'textbearbeiten') { const [[el, sid]] = [...auswahl]; auswahl.clear(); bearbeiteText(el, sid); }
     });
     let menueInhalt = '';
     function positioniereMenue() {
-      const r = !aktion && !geste && !editiert ? auswahlRahmen() : null;
+      const r = !aktion && !geste && !editiert && !textEdit ? auswahlRahmen() : null;
       menue.hidden = !r;
       if (!r) { menueInhalt = ''; return; }
-      const sig = [...auswahl.keys()].map(e => (istNotiz(e) ? 'n' : istBild(e) ? 'b' : e.w === 'marker' ? 'm' : 's')).join('') + flaecheThema();
+      const sig = [...auswahl.keys()].map(e => (istNotiz(e) ? 'n' : istBild(e) ? 'b' : istText(e) ? 't' : e.w === 'marker' ? 'm' : 's')).join('') + flaecheThema();
       if (sig !== menueInhalt) { baueMenue(); menueInhalt = sig; }
       const [x, y] = zuSchirm(r.x1, r.y1);
       const [, y2] = zuSchirm(r.x2, r.y2);
@@ -2596,6 +2873,13 @@
       const [sx, sy] = lokalPunkt(e);
       const [dx, dy] = zuDok(sx, sy);
       const touch = e.pointerType === 'touch';
+      // Stift oder Maus neben das Textfeld: fertig geschrieben (mit dem Text-Werkzeug ist das Tippen damit erledigt).
+      // Finger verschieben und zoomen weiter, ohne das Schreiben zu beenden; ein Tippen beendet es (siehe ende).
+      if (textEdit && !touch) {
+        textOffenSeit = textHalten = 0;
+        beendeText();
+        if (einst.werkzeug === 'text') { e.preventDefault(); return; }
+      }
 
       if (touch) {
         // Handballen werden während und kurz nach dem Stift ignoriert
@@ -2604,6 +2888,12 @@
         if (Math.max(e.width || 0, e.height || 0) > 72) return;
         touchPos.set(e.pointerId, [sx, sy]);
         langDruckAus();
+        // Text: ein Finger tippt einen Text an oder setzt einen neuen (erst beim Loslassen, Wischen scrollt weiter).
+        // Ohne die Maus-Ereignisse danach, sonst verliert das Textfeld auf dem iPad gleich wieder den Fokus.
+        if (einst.werkzeug === 'text' || textEdit) {
+          e.preventDefault();
+          textFingerTipp = !finger.size && !aktion ? { id: e.pointerId, x: sx, y: sy, bewegt: false } : null;
+        }
         if (aktion) {
           // Schreibt schon ein Finger, macht ein zweiter daraus eine Geste (verschieben, zoomen)
           if (!aktion.touch || finger.size) return;
@@ -2738,6 +3028,11 @@
         plane();
         return;
       }
+      // Text: tippen setzt oder bearbeitet (beim Loslassen), auf einem Text ziehen verschiebt ihn
+      if (wz === 'text') {
+        aktion = { art: 'textTipp', id: e.pointerId, x: dx, y: dy, treffer: textBei(dx, dy), touch };
+        return;
+      }
       const marker = wz === 'marker';
       const strich = { id: kurzId(), w: marker ? 'marker' : 'stift', f: marker ? einst.markerFarbe || 'gelb' : einst.farbe, d: marker ? einst.markerDicke || einst.dicke : einst.dicke };
       // Auf einer Haftnotiz gehört der Strich zur Notiz: er wandert mit, wird mit ihr zugeklappt und gelöscht
@@ -2758,7 +3053,7 @@
 
     // Glättung und Haltezeit für einen neuen Strich
     function schreibStart(a, sx, sy, e) {
-      const par = GLAETTUNG[einst.glaettung == null ? 'mittel' : einst.glaettung];
+      const par = GLAETTUNG[einst.glaettung == null ? 'niedrig' : einst.glaettung];
       if (par) { a.filter = neuerFilter(par); a.filter(sx, sy, e.timeStamp); }
       halteStarten(a, sx, sy);
       emit('schreibstart');
@@ -2837,6 +3132,7 @@
       if (finger.has(e.pointerId)) {
         finger.set(e.pointerId, [sx, sy]);
         if (knopfTipp && knopfTipp.id === e.pointerId && Math.hypot(sx - knopfTipp.x, sy - knopfTipp.y) > 8) knopfTipp.bewegt = true;
+        if (textFingerTipp && (textFingerTipp.id !== e.pointerId || Math.hypot(sx - textFingerTipp.x, sy - textFingerTipp.y) > 8)) textFingerTipp.bewegt = true;
         if (langDruck && langDruck.id === e.pointerId && Math.hypot(sx - langDruck.x, sy - langDruck.y) > LANG_TOL) langDruckAus();
         if (geste) bewegeGeste();
         return;
@@ -2872,6 +3168,17 @@
         } else if (aktion.art === 'lasso') {
           lassoPunkte.push([dx, dy]);
           anfordern();
+        } else if (aktion.art === 'textTipp') {
+          if (aktion.treffer && Math.hypot(dx - aktion.x, dy - aktion.y) * ansicht.s > 6) {
+            const { el, sid } = aktion.treffer, x0 = aktion.x, y0 = aktion.y;
+            auswahl.clear();
+            auswahl.set(el, sid);
+            starteVerschieben(ev, x0, y0);
+            aktion.bewegt = true;
+            el.x += dx - x0; el.y += dy - y0;
+            aktion.x = dx; aktion.y = dy;
+            plane();
+          }
         } else if (aktion.art === 'verschieben' || aktion.art === 'notiz') {
           const ddx = dx - aktion.x, ddy = dy - aktion.y;
           if (!aktion.bewegt && Math.hypot(ddx, ddy) * ansicht.s < 4) continue;
@@ -2893,6 +3200,11 @@
               el.gr = Math.max(6, (o.gr || 18) * f);
               // Die Zeichnung auf der Notiz wächst mit
               if (o.e) el.e = o.e.map(st => ({ ...st, d: Math.max(0.3, st.d * f), p: st.p.map(q => punktMit(q, q[0] * f, q[1] * f)) }));
+            } else if (istText(el)) {
+              // Schrift und Zeilenbreite wachsen mit, wie bei einem Bild
+              const ft = Math.max(f, 4 / Math.max(1, o.gr || TEXT_STANDARD));
+              el.x = ax + (o.x - ax) * ft; el.y = ay + (o.y - ay) * ft;
+              el.gr = (o.gr || TEXT_STANDARD) * ft; el.b = (o.b || 600) * ft;
             } else if (istBild(el)) {
               // Seitenverhältnis bleibt; nicht kleiner als 12 Einheiten an der kürzeren Seite
               const fb = Math.max(f, 12 / Math.max(1, Math.min(o.b, o.h)));
@@ -2915,7 +3227,31 @@
           plane();
         }
       }
+      if (aktion && aktion.art === 'zeichnen') { aktion.spitze = spitzenPunkte(e); anfordern(); }
     });
+
+    // Wo der Stift gerade wirklich ist (ohne Glättung) und wohin er laut Browser gleich geht (getPredictedEvents):
+    // nur für die Spitze, nie gespeichert. Druck und gelernter Druck bleiben davon unberührt.
+    function spitzenPunkte(e) {
+      const a = aktion, s = seiteMitId(a.sid);
+      if (!s || a.formFertig) return [];
+      const vorher = letzterRoh, proben = rohProben.length;
+      const punkt = ev => (a.notiz ? notizPunkt(ev, s, a.notiz) : stiftPunkt(ev, s));
+      const raus = [];
+      try {
+        const p = a.strich.p, letzter = p[p.length - 1];
+        const jetzt = glaette(letzter, punkt(e));
+        if (Math.hypot(jetzt[0] - letzter[0], jetzt[1] - letzter[1]) > 0.05) raus.push(jetzt);
+        const vor = e.getPredictedEvents ? e.getPredictedEvents() : [];
+        const [ex, ey] = lokalPunkt(e);
+        for (const ev of vor.slice(0, 2)) {
+          const [vx, vy] = lokalPunkt(ev);
+          if (Math.hypot(vx - ex, vy - ey) > 24) break;   // zu weit voraus geraten: lieber nicht
+          raus.push(glaette(raus[raus.length - 1] || letzter, punkt(ev)));
+        }
+      } finally { letzterRoh = vorher; rohProben.length = proben; }
+      return raus;
+    }
 
     function ende(e) {
       touchPos.delete(e.pointerId);
@@ -2925,6 +3261,14 @@
           const t = knopfTipp;
           knopfTipp = null;
           if (!t.bewegt && e.type === 'pointerup' && finger.size === 1 && opt.neueSeite) opt.neueSeite();
+        }
+        if (textFingerTipp && textFingerTipp.id === e.pointerId) {
+          const t = textFingerTipp;
+          textFingerTipp = null;
+          if (!t.bewegt && e.type === 'pointerup' && finger.size === 1) {
+            if (textEdit) { textOffenSeit = textHalten = 0; beendeText(); }
+            else if (einst.werkzeug === 'text') { const [tdx, tdy] = zuDok(t.x, t.y); textTippBei(tdx, tdy); }
+          }
         }
         finger.delete(e.pointerId);
         const keinerMehr = !finger.size;
@@ -3045,6 +3389,8 @@
         laserWeg();
         ausstehendeLaden();
         return;
+      } else if (a.art === 'textTipp') {
+        if (e && e.type === 'pointerup') { textTippBei(a.x, a.y); return; }
       } else if (a.art === 'radieren') {
         radiererPunkt = null;
         vereinfacheRadierStuecke();
@@ -3055,8 +3401,8 @@
           for (const s of seiten) {
             for (const el of inhalt(s.id).e) {
               if (istKasten(el)) {
-                const g = istNotiz(el) ? sicht(el) : el;
-                if (innen(s.x + el.x + g.b / 2, s.y + el.y + g.h / 2, lassoPunkte)) auswahl.set(el, s.id);
+                const g = grenzen(el);
+                if (innen(s.x + (g.x1 + g.x2) / 2, s.y + (g.y1 + g.y2) / 2, lassoPunkte)) auswahl.set(el, s.id);
               } else {
                 const drin = el.p.filter(([x, y]) => innen(s.x + x, s.y + y, lassoPunkte)).length;
                 if (drin >= Math.max(1, el.p.length / 2)) auswahl.set(el, s.id);
@@ -3068,14 +3414,21 @@
         if (!auswahl.size && lassoPunkte.length) {
           const xs = lassoPunkte.map(q => q[0]), ys = lassoPunkte.map(q => q[1]);
           if ((Math.max(...xs) - Math.min(...xs) + Math.max(...ys) - Math.min(...ys)) * ansicht.s < 12) {
-            const t = bildBei(lassoPunkte[0][0], lassoPunkte[0][1]);
+            const t = textBei(lassoPunkte[0][0], lassoPunkte[0][1]) || bildBei(lassoPunkte[0][0], lassoPunkte[0][1]);
             if (t) auswahl.set(t.el, t.sid);
           }
         }
         lassoPunkte = null;
+      } else if (a.art === 'verschieben' && !a.bewegt && e && e.type === 'pointerup' && einst.werkzeug === 'text' && auswahl.size === 1 && istText([...auswahl.keys()][0])) {
+        // Ausgewählten Text mit dem Text-Werkzeug nur angetippt: bearbeiten
+        tx = null;
+        const [[el, sid]] = [...auswahl];
+        bearbeiteText(el, sid);
+        return;
       } else if (a.art === 'verschieben' || a.art === 'skalieren') {
         for (const [el] of auswahl) {
-          if (istKasten(el)) {
+          if (istText(el)) { el.x = r1(el.x); el.y = r1(el.y); el.b = r1(el.b); el.gr = r1(el.gr); }
+          else if (istKasten(el)) {
             el.x = r1(el.x); el.y = r1(el.y); el.b = r1(el.b); el.h = r1(el.h);
             if (a.art === 'skalieren' && el.e) el.e = rundeStriche(el.e);
           } else { el.d = Math.round(el.d * 100) / 100; el.p = el.p.map(q => punktMit(q, r1(q[0]), r1(q[1]))); }
@@ -3141,7 +3494,7 @@
       if ((e.ctrlKey || e.metaKey) && (k === '+' || k === '=' || k === '-')) { e.preventDefault(); L.zoome(k === '-' ? 1 / 1.25 : 1.25); return true; }
       if (e.ctrlKey || e.metaKey || e.altKey) return false;
       if (k === ' ') { leertaste = true; host.classList.add('schiebbar'); aktualisiereCursor(); e.preventDefault(); return true; }
-      const w = { h: 'hand', p: 'stift', m: 'marker', e: 'radierer', l: 'lasso', n: 'notiz', r: 'laser' }[k];
+      const w = { h: 'hand', p: 'stift', m: 'marker', e: 'radierer', l: 'lasso', n: 'notiz', r: 'laser', t: 'text' }[k];
       if (w) { L.setzeWerkzeug(w); return true; }
       if (k === '0') { einpassen(true); return true; }
       if ((k === 'delete' || k === 'backspace') && auswahl.size) { loescheAuswahl(); return true; }
@@ -3200,13 +3553,16 @@
       schieberStill();
       if (!an) {
         if (editiert) editor.blur();
+        if (textEdit) L.beendeText();
         schliesseNotizMenue(); langDruckAus(); laserLeeren(); auswahl.clear(); aktion = null; lassoPunkte = null; finger.clear(); touchPos.clear(); geste = null; zug.px = 0; zug.erledigt = false; knopfTipp = null; stoppeAnim();
         sichernJetzt();
       }
       plane();
     };
     // Beim Schliessen des Fensters oder Wechsel der Anwendung ist nichts mehr aufzuschieben
-    const sichernBeiAbschied = () => { sichernJetzt(); if (window.Daten && Daten.flush) Daten.flush(); };
+    // Ein offenes Textfeld bleibt offen, sein Text wird aber schon mitgesichert
+    const sichernBeiAbschied = () => { if (textEdit) speichere(textEdit.sid); sichernJetzt(); if (window.Daten && Daten.flush) Daten.flush(); };
+    L.beendeText = () => { textOffenSeit = textHalten = 0; beendeText(); };
     const sichernWennVerborgen = () => { if (document.hidden) sichernBeiAbschied(); };
     window.addEventListener('pagehide', sichernBeiAbschied);
     window.addEventListener('beforeunload', sichernBeiAbschied);
@@ -3214,6 +3570,7 @@
     document.addEventListener('visibilitychange', sichernWennVerborgen);
     L.zerstoere = () => {
       if (editiert) beendeEditor();
+      if (textEdit) L.beendeText();
       schliesseNotizMenue();
       sichernJetzt();
       if (window.Daten && Daten.flush) Daten.flush();
@@ -3275,6 +3632,9 @@
   Leinwand.malBild = malBild;
   Leinwand.bilderBereit = bilderBereit;
   Leinwand.istBild = istBild;
+  Leinwand.istText = istText;
+  Leinwand.textLayout = textLayout;
+  Leinwand.TEXT_SCHRIFT = TEXT_SCHRIFT;
   Leinwand.MM = MM;
   Leinwand.einheit = einheit;
   Leinwand.GLAETTUNG = Object.keys(GLAETTUNG);

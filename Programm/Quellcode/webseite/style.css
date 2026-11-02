@@ -401,6 +401,13 @@ img.dunkelblau { filter: invert(1) hue-rotate(180deg); mix-blend-mode: screen; }
 .lw-canvas { position: absolute; top: 0; left: 0; display: block; touch-action: none; cursor: crosshair; -webkit-user-select: none; user-select: none; transform-origin: 0 0; will-change: transform; }
 /* Ebene darüber: Strich unter dem Stift, Auswahl, Lasso, Radierkreis; fängt keine Eingaben ab */
 .lw-live { position: absolute; top: 0; left: 0; display: block; pointer-events: none; -webkit-user-select: none; user-select: none; }
+/* Text schreiben: dieselbe Schrift wie auf der Schreibfläche (leinwand.js TEXT_SCHRIFT, TEXT_ZEILE), durchsichtig darüber */
+.lw-text-editor { position: absolute; z-index: 6; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; resize: none; overflow: hidden;
+  font-family: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-weight: 400; line-height: 1.3; letter-spacing: normal;
+  white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; tab-size: 4; -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+  outline: 1.5px dashed var(--fueller); outline-offset: 5px; box-shadow: none; -webkit-appearance: none; appearance: none; touch-action: manipulation; }
+.lw-text-editor:focus { outline: 1.5px dashed var(--fueller); }
+.lw-text-editor[hidden] { display: none; }
 .leinwand.schiebbar .lw-canvas, .leinwand.hand .lw-canvas { cursor: grab; }
 .leinwand.schiebt .lw-canvas { cursor: grabbing; }
 .lw-hinweis {
