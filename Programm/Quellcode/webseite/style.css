@@ -1,0 +1,1208 @@
+/* Lernheft: Dunkelblau als Standard, Weiss als helle Variante. Karopapier, Rotstift, Füller. */
+:root {
+  --papier: #0d1322;
+  --karo: #172139;
+  --blatt: #151d30;
+  --tinte: #e6eaf2;
+  --grau: #9ba5ba;
+  --linie: #26324b;
+  --rotstift: #ff7266;
+  --rot-hell: #36202a;
+  --fueller: #8aabff;
+  --fueller-hell: #1c2848;
+  --ok: #6fd69b;
+  --warn: #ffc15e;
+  --schatten: 0 1px 2px rgba(0, 0, 0, .35), 0 10px 28px rgba(0, 0, 0, .3);
+  --s-tinte: #e6eaf2;
+  --s-blau: #8aabff;
+  --s-rot: #ff7266;
+  --s-gruen: #6fd69b;
+  --s-gelb: #ffd84a;
+  --s-lila: #bb9cff;
+  --s-grau: #9ba5ba;
+  color-scheme: dark;
+
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-text: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --f-mathe: "STIX Two Text", "Cambria Math", Cambria, "Times New Roman", serif;
+  --f-hand: "Caveat", "Segoe Print", "Comic Sans MS", cursive;
+  --kasten: 20px;
+  --kopf-h: 56px;
+}
+:root[data-theme="light"] {
+  --papier: #f6f8fb;
+  --karo: #dfe6f0;
+  --blatt: #ffffff;
+  --tinte: #1b2232;
+  --grau: #596378;
+  --linie: #d3dbe7;
+  --rotstift: #cf3329;
+  --rot-hell: #fbe6e4;
+  --fueller: #2350c4;
+  --fueller-hell: #e7edfb;
+  --ok: #1b7a44;
+  --warn: #a86400;
+  --schatten: 0 1px 2px rgba(27, 34, 50, .06), 0 10px 28px rgba(27, 34, 50, .07);
+  --s-tinte: #1b2232;
+  --s-blau: #1f4fd1;
+  --s-rot: #d0342c;
+  --s-gruen: #1c8a4a;
+  --s-gelb: #f0bf00;
+  --s-lila: #7a45cf;
+  --s-grau: #6b7486;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  padding-inline: 16px;
+  background-color: var(--papier);
+  background-image:
+    linear-gradient(var(--karo) 1px, transparent 1px),
+    linear-gradient(90deg, var(--karo) 1px, transparent 1px);
+  background-size: var(--kasten) var(--kasten);
+  color: var(--tinte);
+  font-family: var(--f-text);
+  font-size: 17px;
+  line-height: 1.6;
+}
+a { color: var(--fueller); }
+h1 {
+  font-family: var(--f-display); font-weight: 800; font-size: clamp(30px, 6vw, 44px);
+  line-height: 1.08; letter-spacing: -.01em; margin: 12px 0 26px; text-wrap: balance;
+}
+sup, sub { font-size: .68em; line-height: 0; }
+.btn-primaer {
+  background: var(--fueller); color: var(--papier); border: none; border-radius: 8px; padding: 10px 22px;
+  font-family: var(--f-display); font-size: 17px; font-weight: 800; cursor: pointer; white-space: nowrap;
+}
+.btn-primaer:hover { filter: brightness(1.08); }
+.btn-primaer.klein { padding: 7px 14px; font-size: 15px; }
+.hand { font-family: var(--f-hand); font-size: 1.6em; font-weight: 600; margin-right: 6px; }
+.btn-leise {
+  background: transparent; border: 1px solid var(--linie); color: var(--fueller); padding: 6px 13px;
+  border-radius: 999px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; white-space: nowrap;
+}
+.btn-leise:hover { background: var(--fueller-hell); border-color: var(--fueller); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+button:focus-visible, summary:focus-visible, a:focus-visible { outline: 2px solid var(--fueller); outline-offset: 2px; }
+
+/* ================= Kopfzeile und Menü ================= */
+
+.app-kopf {
+  position: sticky; top: var(--wb-oben, 0px); z-index: 35; margin-inline: -16px; padding-inline: 16px;
+  background: color-mix(in srgb, var(--papier) 88%, transparent);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); border-bottom: 1px solid var(--linie);
+}
+.app-kopf-innen { max-width: 1180px; height: var(--kopf-h); margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.marke-wrap, .kopf-rechts { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.app-marke { display: flex; align-items: center; gap: 9px; color: var(--tinte); text-decoration: none; font-family: var(--f-display); font-weight: 800; font-size: 19px; }
+.marke-bild {
+  width: 30px; height: 30px; flex: none; border-radius: 8px;
+  background: url("icon.svg") center / cover;
+  box-shadow: 0 0 0 1px var(--linie);
+}
+.sync-status {
+  display: flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--blatt);
+  border: 1px solid var(--linie); font: inherit; font-size: 12px; font-weight: 700; color: var(--grau); white-space: nowrap; cursor: pointer;
+  max-width: 44vw; overflow: hidden; text-overflow: ellipsis;
+}
+.sync-status span { overflow: hidden; text-overflow: ellipsis; }
+.sync-status::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--grau); }
+.sync-status.ok::before { background: var(--ok); }
+.sync-status.weg::before { background: var(--rotstift); }
+.sync-status.warn { color: var(--warn); border-color: var(--warn); }
+.sync-status.warn::before { background: var(--warn); }
+.sync-status.info { color: var(--fueller); border-color: var(--fueller); }
+.sync-status.info::before { background: var(--fueller); }
+.sync-status.laeuft::before { background: var(--fueller); animation: pulsieren 1s ease-in-out infinite; }
+@keyframes pulsieren { 50% { opacity: .3; } }
+.rund-knopf {
+  width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--linie);
+  background: var(--blatt); color: var(--tinte); cursor: pointer; padding: 0;
+}
+.rund-knopf:hover { border-color: var(--fueller); color: var(--fueller); }
+.rund-knopf svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+:root[data-theme="light"] .rund-knopf .sonne, :root:not([data-theme="light"]) .rund-knopf .mond { display: none; }
+.menue-wrap { position: relative; }
+.menue-knopf {
+  display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border: 1px solid var(--linie);
+  border-radius: 999px; background: var(--blatt); color: var(--tinte); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer;
+}
+.menue-knopf:hover, .menue-knopf[aria-expanded="true"] { border-color: var(--fueller); color: var(--fueller); }
+.menue-knopf svg, .menue-liste svg:not(.ordner-symbol) { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.menue-knopf .pfeil { width: 16px; height: 16px; transition: transform .15s ease; }
+.menue-knopf[aria-expanded="true"] .pfeil { transform: rotate(180deg); }
+.menue-liste {
+  position: absolute; right: 0; top: calc(100% + 8px); min-width: 250px; max-height: calc(100vh - 90px); overflow-y: auto;
+  display: flex; flex-direction: column; padding: 6px; background: var(--blatt); border: 1px solid var(--linie); border-radius: 14px; box-shadow: var(--schatten);
+}
+.menue-liste a { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 9px; color: var(--tinte); text-decoration: none; font-weight: 700; }
+.menue-liste a:hover { background: var(--fueller-hell); }
+.menue-liste a[aria-current="page"] { color: var(--fueller); background: var(--fueller-hell); }
+.menue-sigma { width: 20px; text-align: center; font-family: var(--f-mathe); font-size: 22px; line-height: 1; color: var(--rotstift); }
+.menue-ordner a { padding: 7px 12px 7px 44px; font-weight: 400; font-size: 15px; }
+.menue-ordner:not(:empty) { margin-bottom: 4px; }
+.menue-ordner .ordner-symbol { width: 18px; height: 18px; }
+.menue-eintrag {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px; margin-top: 4px; border: none; border-top: 1px solid var(--linie);
+  border-radius: 0 0 9px 9px; background: none; color: var(--tinte); font: inherit; font-weight: 700; text-align: left; cursor: pointer;
+}
+.menue-eintrag + .menue-eintrag { margin-top: 0; border-top: none; border-radius: 9px; }
+.menue-eintrag:hover { background: var(--fueller-hell); }
+:root[data-theme="light"] .menue-eintrag .sonne, :root:not([data-theme="light"]) .menue-eintrag .mond { display: none; }
+
+/* Kopfzeile: Haus (Bibliothek) links, Tabs in der Mitte, ⋯ rechts */
+.kopf-mitte { flex: 1; min-width: 0; display: flex; align-items: center; }
+.haus-knopf { flex: none; text-decoration: none; }
+.haus-knopf svg { width: 21px; height: 21px; }
+:root[data-bereich="dok"] .app-kopf-innen { max-width: none; }
+.dialog-form .haken-label { display: flex; align-items: center; gap: 10px; font-weight: 700; cursor: pointer; }
+.dialog-form .haken-label + .dialog-klein { margin-top: -6px; padding-left: 28px; }
+
+/* Dokumente auswählen (Tabs öffnen, daneben andocken) */
+.dok-wahl-suche { display: flex; }
+.dok-wahl-suche input { flex: 1; font: inherit; padding: 8px 12px; border: 1px solid var(--linie); border-radius: 10px; background: var(--papier); color: var(--tinte); }
+.dok-wahl-liste { display: flex; flex-direction: column; gap: 2px; max-height: min(52vh, 460px); overflow-y: auto; margin: 0 -6px; }
+.dok-wahl { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; cursor: pointer; }
+.dok-wahl:hover { background: var(--fueller-hell); }
+.dok-wahl input { width: 18px; height: 18px; flex: none; accent-color: var(--fueller); }
+.dok-wahl-text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+.dok-wahl-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dok-wahl-text span { font-size: 12px; color: var(--grau); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dok-wahl-offen { flex: none; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--fueller-hell); color: var(--fueller); }
+@media (max-width: 560px) {
+  #menue-aktuell { display: none; }
+  .app-marke { font-size: 0; gap: 0; }
+}
+
+/* ================= Allgemeine Bausteine ================= */
+
+.ordner-symbol { width: 34px; height: 34px; flex: none; fill: var(--farbe); stroke: none; }
+.balken { display: block; height: 5px; border-radius: 999px; background: var(--linie); overflow: hidden; }
+.balken > span { display: block; height: 100%; border-radius: inherit; background: var(--fueller); }
+img.invertiert { filter: invert(1) hue-rotate(180deg); }
+/* Umgekehrt und aufs Dunkelblau des Hintergrunds gelegt: Weiss wird Dunkelblau, Schrift wird hell */
+img.dunkelblau { filter: invert(1) hue-rotate(180deg); mix-blend-mode: screen; }
+
+.vorschau { position: relative; display: block; aspect-ratio: 1 / 1.3; overflow: hidden; border-radius: 8px; border: 1px solid var(--linie); background: #fff; }
+.vorschau.modus-dunkel { background: #172139; }
+.vorschau.modus-dunkelgrau { background: #2b2d31; }
+.vorschau img, .vorschau canvas { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.vorschau.ohne::after { content: "PDF"; position: absolute; inset: 0; display: grid; place-items: center; color: var(--grau); font-weight: 700; background: var(--blatt); }
+.vorschau.mini { width: 44px; flex: none; border-radius: 5px; }
+.nb-vorschau { aspect-ratio: 1 / 1.414; background: var(--blatt); border-left: 6px solid var(--farbe); }
+.art-marke {
+  position: absolute; left: 16px; top: 16px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700;
+  letter-spacing: .04em; background: color-mix(in srgb, var(--papier) 82%, transparent); color: var(--tinte); border: 1px solid var(--linie);
+}
+.art-marke.notizbuch { color: var(--ok); }
+.art-marke.skript { color: var(--fueller); }
+
+.toast, .belohnung {
+  position: fixed; left: 50%; z-index: 80; transform: translate(-50%, 10px); max-width: calc(100vw - 32px);
+  padding: 9px 16px; border-radius: 999px; background: var(--tinte); color: var(--papier); font-size: 14px; font-weight: 700;
+  box-shadow: var(--schatten); opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease;
+}
+.toast { bottom: calc(24px + env(safe-area-inset-bottom, 0px)); display: flex; align-items: center; gap: 12px; }
+.toast.da { opacity: 1; transform: translate(-50%, 0); }
+.toast.mit-aktion.da { pointer-events: auto; }
+.toast button { border: none; background: none; color: var(--fueller-hell); font: inherit; font-weight: 800; text-decoration: underline; cursor: pointer; padding: 0; }
+:root[data-theme="light"] .toast button { color: #9fb8ff; }
+:root:not([data-theme="light"]) .toast button { color: #2350c4; }
+.belohnung { top: calc(var(--kopf-h) + 14px); font-family: var(--f-display); font-size: 16px; }
+.belohnung.gross { background: var(--fueller); padding: 11px 20px; font-size: 17px; }
+.belohnung.da { animation: belohnen 2.6s ease forwards; }
+@keyframes belohnen {
+  0% { opacity: 0; transform: translate(-50%, -8px) scale(.9); }
+  10% { opacity: 1; transform: translate(-50%, 0) scale(1.06); }
+  18% { transform: translate(-50%, 0) scale(1); }
+  85% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -6px); }
+}
+.tooltip { position: fixed; z-index: 60; padding: 5px 9px; border-radius: 6px; background: var(--tinte); color: var(--papier); font-size: 12px; white-space: nowrap; pointer-events: none; }
+
+/* ================= Dashboard ================= */
+
+.skripte-seite { max-width: 1180px; margin: 0 auto; padding: 26px 0 120px; }
+
+/* ================= Bibliothek ================= */
+
+.skripte-kopf { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.pfad { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; font-family: var(--f-display); font-weight: 800; font-size: 26px; line-height: 1.2; }
+.pfad a, .pfad span[data-ziel] { color: var(--grau); text-decoration: none; padding: 2px 6px; margin: -2px -6px; border-radius: 8px; }
+.pfad a:hover { color: var(--fueller); }
+.pfad [aria-current] { color: var(--tinte) !important; }
+.pfad .ziel { background: var(--fueller-hell); outline: 2px solid var(--fueller); }
+.pfad-trenner { color: var(--linie); }
+.skripte-aktionen { display: flex; gap: 8px; }
+.skripte-aktionen .btn-leise { padding: 9px 14px; }
+
+.reiter { display: flex; gap: 4px; margin: 16px 0 0; padding: 4px; border-radius: 12px; background: var(--blatt); border: 1px solid var(--linie); width: fit-content; max-width: 100%; overflow-x: auto; }
+.reiter button { border: none; background: none; color: var(--grau); font: inherit; font-size: 14px; font-weight: 700; padding: 7px 14px; border-radius: 9px; cursor: pointer; white-space: nowrap; }
+.reiter button:hover { color: var(--tinte); }
+.reiter button[aria-selected="true"] { background: var(--fueller-hell); color: var(--fueller); }
+
+.skripte-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 12px 0 6px; }
+.suche { flex: 1 1 260px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--linie); border-radius: 10px; background: var(--blatt); }
+.suche:focus-within { border-color: var(--fueller); outline: 2px solid var(--fueller-hell); }
+.suche svg { width: 18px; height: 18px; fill: none; stroke: var(--grau); stroke-width: 2; stroke-linecap: round; flex: none; }
+.suche input { flex: 1; min-width: 0; border: none; background: transparent; color: var(--tinte); font: inherit; padding: 10px 0; outline: none; }
+.sortierung { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--grau); }
+.sortierung select, .pdf-modus select {
+  font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--linie); border-radius: 9px; background: var(--blatt); color: var(--tinte);
+}
+.abschnitt-titel { margin: 22px 0 10px; font-family: var(--f-display); font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; color: var(--grau); }
+.raster { display: grid; gap: 12px; }
+.ordner-raster { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.datei-raster { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
+.karte { position: relative; background: var(--blatt); border: 1.5px solid var(--linie); border-radius: 14px; transition: border-color .15s ease, transform .15s ease; }
+.karte:hover { border-color: var(--fueller); }
+.karte.ziel { border-color: var(--fueller); background: var(--fueller-hell); transform: scale(1.02); }
+.karte.wird-gezogen { opacity: .45; }
+.karte-link { display: flex; align-items: center; gap: 12px; padding: 14px 44px 14px 14px; color: var(--tinte); text-decoration: none; min-width: 0; }
+.datei-karte .karte-link { flex-direction: column; align-items: stretch; gap: 8px; padding: 10px; }
+.karte-text { display: flex; flex-direction: column; min-width: 0; }
+.karte-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.datei-karte .karte-name { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; padding-right: 26px; }
+.karte-info { font-size: 13px; color: var(--grau); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.karte-mehr, .karte-stern {
+  position: absolute; width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: none; border-radius: 9px;
+  background: transparent; color: var(--grau); font-size: 20px; line-height: 1; cursor: pointer;
+}
+.karte-mehr:hover, .karte-stern:hover { background: var(--fueller-hell); color: var(--fueller); }
+.ordner-karte .karte-mehr { top: 50%; right: 6px; margin-top: -17px; }
+.datei-karte .karte-mehr { right: 4px; bottom: 6px; }
+.karte-stern { top: 16px; right: 16px; width: 30px; height: 30px; font-size: 17px; background: color-mix(in srgb, var(--blatt) 85%, transparent); box-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
+.karte-stern[aria-pressed="true"] { color: var(--s-gelb); }
+.leer { margin-top: 18px; padding: 44px 20px; border: 1.5px dashed var(--linie); border-radius: 16px; text-align: center; color: var(--grau); }
+.leer p { margin: 4px auto; max-width: 52ch; }
+.leer strong { color: var(--tinte); }
+.leer svg { width: 48px; height: 48px; fill: none; stroke: var(--grau); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.skripte-seite.ablegen .skripte-inhalt { outline: 2px dashed var(--fueller); outline-offset: 6px; border-radius: 14px; background: var(--fueller-hell); }
+.speicher-info { margin-top: 28px; font-size: 12px; color: var(--grau); }
+
+.kontext {
+  position: fixed; z-index: 70; min-width: 220px; display: flex; flex-direction: column; padding: 6px; background: var(--blatt);
+  border: 1px solid var(--linie); border-radius: 12px; box-shadow: var(--schatten); max-height: calc(100vh - 16px); overflow-y: auto;
+}
+.kontext > button { padding: 9px 12px; border: none; border-radius: 8px; background: none; color: var(--tinte); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.kontext > button:hover, .kontext > button:focus-visible { background: var(--fueller-hell); outline: none; }
+.kontext > button[aria-checked]::before { content: ""; display: inline-block; width: 20px; }
+.kontext > button[aria-checked="true"]::before { content: "✓"; color: var(--fueller); font-weight: 700; }
+.kontext .gefahr { color: var(--rotstift); }
+.kontext-titel { padding: 8px 12px 2px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--grau); }
+.kontext-farben { display: flex; gap: 8px; padding: 8px 12px; }
+.kontext-farben button { width: 24px; height: 24px; padding: 0; border: none; border-radius: 50%; background: var(--farbe); cursor: pointer; }
+.kontext-farben button[aria-pressed="true"] { outline: 2px solid var(--tinte); outline-offset: 2px; }
+
+/* ================= Dialoge ================= */
+
+.dialog { max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); padding: 0; border: none; border-radius: 18px; background: var(--blatt); color: var(--tinte); box-shadow: 0 20px 60px rgba(0, 0, 0, .4); }
+.dialog::backdrop { background: rgba(5, 9, 18, .55); }
+.dialog-form { width: min(460px, calc(100vw - 32px)); padding: 22px; display: flex; flex-direction: column; gap: 12px; }
+.dialog-form.breit { width: min(660px, calc(100vw - 32px)); }
+.dialog-form h2 { margin: 0; font-family: var(--f-display); font-size: 21px; font-weight: 800; }
+.dialog-form p { margin: 0; }
+.dialog-klein { font-size: 13px; color: var(--grau); overflow-wrap: anywhere; }
+.dialog-warnung { font-size: 13px; color: var(--rotstift); }
+.feld { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: 700; }
+.feld input { font: inherit; font-size: 16px; font-weight: 400; padding: 10px 12px; border: 1.5px solid var(--linie); border-radius: 9px; background: var(--papier); color: var(--tinte); }
+.feld select { font: inherit; font-size: 16px; font-weight: 400; padding: 10px 12px; border: 1.5px solid var(--linie); border-radius: 9px; background: var(--papier); color: var(--tinte); }
+.feld input:focus, .feld select:focus { outline: 2px solid var(--fueller); outline-offset: 1px; border-color: var(--fueller); }
+.dialog-knoepfe { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.dialog-knoepfe .btn-leise { padding: 9px 16px; }
+.btn-primaer.gefahr { background: var(--rotstift); }
+
+.neu-wahl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.neu-karte {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 16px; text-align: left; border-radius: 14px;
+  border: 1.5px solid var(--linie); background: var(--papier); color: var(--tinte); font: inherit; cursor: pointer;
+}
+.neu-karte:hover, .neu-karte:focus-visible { border-color: var(--fueller); background: var(--fueller-hell); }
+.neu-karte strong { font-family: var(--f-display); font-size: 18px; }
+.neu-karte > span:last-child { font-size: 13px; color: var(--grau); }
+.neu-bild { width: 56px; height: 72px; border-radius: 6px; margin-bottom: 4px; display: grid; place-items: center; font-weight: 800; font-size: 13px; }
+.neu-bild.pdf { background: #fff; color: #d0342c; border: 1px solid var(--linie); }
+.neu-bild.nb {
+  background-color: #172139; border-left: 6px solid var(--s-blau);
+  background-image: linear-gradient(rgba(150, 180, 240, .25) 1px, transparent 1px), linear-gradient(90deg, rgba(150, 180, 240, .25) 1px, transparent 1px);
+  background-size: 7px 7px;
+}
+.wahl-reihe { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; padding: 0; border: none; }
+.wahl-reihe legend { padding: 0; margin-bottom: 6px; font-weight: 700; font-size: 14px; }
+.wahl-karte { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; }
+.wahl-karte input { position: absolute; opacity: 0; pointer-events: none; }
+.wahl-karte input:checked ~ span:last-child { color: var(--fueller); font-weight: 700; }
+.wahl-karte input:checked + span { border-color: var(--fueller); box-shadow: 0 0 0 3px var(--fueller-hell); }
+.wahl-karte input:focus-visible + span { outline: 2px solid var(--fueller); outline-offset: 3px; }
+.format-bild, .papier-bild { display: block; border: 2px solid var(--linie); border-radius: 5px; background: var(--papier); }
+.format-bild.a4 { width: 42px; height: 59px; }
+.format-bild.a3 { width: 59px; height: 84px; }
+.papier-bild { width: 54px; height: 70px; background-color: var(--papier); }
+.papier-bild.karo { background-image: linear-gradient(var(--linie) 1px, transparent 1px), linear-gradient(90deg, var(--linie) 1px, transparent 1px); background-size: 7px 7px; }
+.papier-bild.linien { background-image: linear-gradient(var(--linie) 1px, transparent 1px), linear-gradient(90deg, transparent 10px, color-mix(in srgb, var(--rotstift) 60%, transparent) 10px, transparent 11px); background-size: 100% 9px, 100% 100%; }
+.papier-bild.punkte { background-image: radial-gradient(var(--grau) 0.9px, transparent 1.2px); background-size: 7px 7px; }
+.farben { gap: 8px; }
+.farb-wahl { position: relative; cursor: pointer; }
+.farb-wahl input { position: absolute; opacity: 0; }
+.farb-wahl span { display: block; width: 28px; height: 28px; border-radius: 50%; background: var(--farbe); }
+.farb-wahl input:checked + span { outline: 2px solid var(--tinte); outline-offset: 2px; }
+.farb-wahl input:focus-visible + span { outline: 2px solid var(--fueller); outline-offset: 3px; }
+
+.modus-wahl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 0; padding: 0; border: none; }
+.modus-wahl legend { padding: 0; margin-bottom: 8px; font-weight: 700; font-size: 14px; }
+.modus-karte { position: relative; display: flex; flex-direction: column; gap: 6px; cursor: pointer; }
+.modus-karte input { position: absolute; opacity: 0; pointer-events: none; }
+.modus-karte .vorschau { border-width: 2px; }
+.modus-karte input:checked + .vorschau { border-color: var(--fueller); box-shadow: 0 0 0 3px var(--fueller-hell); }
+.modus-karte input:focus-visible + .vorschau { outline: 2px solid var(--fueller); outline-offset: 3px; }
+.modus-name { font-size: 13px; text-align: center; }
+.modus-karte input:checked ~ .modus-name { color: var(--fueller); font-weight: 700; }
+
+.warten { display: flex; align-items: center; gap: 12px; font-weight: 700; }
+.kreisel { width: 20px; height: 20px; border-radius: 50%; border: 2.5px solid var(--linie); border-top-color: var(--fueller); animation: drehen .8s linear infinite; }
+@keyframes drehen { to { transform: rotate(360deg); } }
+.baum { max-height: 50vh; overflow-y: auto; border: 1px solid var(--linie); border-radius: 12px; padding: 4px; }
+.baum-zeile { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px calc(10px + var(--tiefe) * 22px); border-radius: 8px; cursor: pointer; }
+.baum-zeile:hover { background: var(--papier); }
+.baum-zeile.aus { opacity: .4; cursor: not-allowed; }
+.baum-zeile .ordner-symbol { width: 20px; height: 20px; }
+.baum-zeile input { accent-color: var(--fueller); }
+
+.sync-liste { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 14px; }
+.sync-liste dt { color: var(--grau); }
+.sync-liste dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
+.konflikt-wahl { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.konflikt-karte {
+  display: flex; flex-direction: column; gap: 4px; padding: 10px; border-radius: 12px; border: 1.5px solid var(--linie);
+  background: var(--papier); color: var(--tinte); font: inherit; text-align: left; cursor: pointer; min-width: 0;
+}
+.konflikt-karte:hover, .konflikt-karte:focus-visible { border-color: var(--fueller); background: var(--fueller-hell); }
+.konflikt-karte canvas { width: 100%; height: auto; max-height: 36vh; object-fit: contain; border-radius: 6px; border: 1px solid var(--linie); background: var(--blatt); }
+.konflikt-karte strong { font-family: var(--f-display); font-size: 16px; }
+.konflikt-karte span { font-size: 12px; color: var(--grau); }
+@media (max-width: 560px) {
+  .neu-wahl, .konflikt-wahl { grid-template-columns: 1fr; }
+  .modus-wahl { gap: 8px; }
+  .pfad { font-size: 21px; }
+  .skripte-aktionen { width: 100%; }
+  .skripte-aktionen > button { flex: 1; }
+  .datei-raster { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .navi-los { margin-left: 68px; }
+}
+
+/* ================= Schreibfläche ================= */
+
+.leinwand { position: relative; overflow: hidden; touch-action: none; background: var(--papier); }
+.lw-canvas { position: absolute; top: 0; left: 0; display: block; touch-action: none; cursor: crosshair; -webkit-user-select: none; user-select: none; transform-origin: 0 0; will-change: transform; }
+/* Ebene darüber: Strich unter dem Stift, Auswahl, Lasso, Radierkreis; fängt keine Eingaben ab */
+.lw-live { position: absolute; top: 0; left: 0; display: block; pointer-events: none; -webkit-user-select: none; user-select: none; }
+.leinwand.schiebbar .lw-canvas, .leinwand.hand .lw-canvas { cursor: grab; }
+.leinwand.schiebt .lw-canvas { cursor: grabbing; }
+.lw-hinweis {
+  position: absolute; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  width: max-content; max-width: calc(100% - 24px); margin: 0; padding: 6px 12px; border-radius: 999px;
+  background: var(--blatt); border: 1px solid var(--linie); color: var(--grau); font-size: 13px; text-align: center;
+  pointer-events: none; transition: opacity .4s ease;
+}
+.lw-hinweis.weg { opacity: 0; }
+.lw-menue {
+  position: absolute; z-index: 6; display: flex; align-items: center; gap: 4px; padding: 4px; background: var(--blatt);
+  border: 1px solid var(--linie); border-radius: 10px; box-shadow: var(--schatten);
+}
+.lw-menue button { background: transparent; border: none; border-radius: 7px; padding: 6px 10px; color: var(--tinte); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.lw-menue button:hover { background: var(--fueller-hell); color: var(--fueller); }
+.lw-menue .gefahr { color: var(--rotstift); }
+.lw-menue-farben { display: flex; gap: 4px; padding: 0 4px; border-right: 1px solid var(--linie); }
+.lw-menue-farben button { width: 22px; height: 22px; padding: 0; border-radius: 50%; background: var(--farbe); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .15); }
+.lw-notiz-editor {
+  position: absolute; z-index: 7; margin: 0; border: 2px solid var(--fueller); border-radius: 7px; resize: none; outline: none;
+  color: #1b2232; font-family: var(--f-text); box-shadow: 0 8px 24px rgba(0, 0, 0, .3); overflow: hidden;
+}
+
+/* Werkzeugleiste */
+.werkzeugleiste { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.gruppe { display: flex; align-items: center; gap: 2px; padding-right: 6px; border-right: 1px solid var(--linie); }
+.wz {
+  width: 38px; height: 38px; display: grid; place-items: center; padding: 0; border: 1.5px solid transparent;
+  border-radius: 9px; background: transparent; color: var(--tinte); cursor: pointer;
+}
+.wz:hover:not(:disabled) { background: var(--fueller-hell); }
+.wz[aria-pressed="true"] { border-color: var(--fueller); background: var(--fueller-hell); color: var(--fueller); }
+.wz:disabled { opacity: .35; cursor: default; }
+.wz.warnen { border-color: var(--rotstift); color: var(--rotstift); background: var(--rot-hell); }
+.wz svg, .stift-an svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.farbpunkt, .notizpunkt { width: 20px; height: 20px; border-radius: 50%; background: var(--farbe); box-shadow: inset 0 0 0 1px var(--linie); }
+.notizpunkt { border-radius: 4px; }
+.farbpunkt.marker { border-radius: 5px; width: 22px; height: 14px; transform: rotate(-12deg); }
+.eigene { display: contents; }
+.wz.plus { position: relative; overflow: hidden; color: var(--grau); border: 1.5px dashed var(--linie); }
+.wz.plus:hover { color: var(--fueller); border-color: var(--fueller); }
+.wz.plus input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; }
+.kontext-info { margin: 0; padding: 2px 12px 8px; font-size: 13px; line-height: 1.4; color: var(--tinte); max-width: 280px; }
+.dickepunkt { width: var(--g); height: var(--g); border-radius: 50%; background: currentColor; }
+.wz-text { width: auto; padding: 0 9px; font: inherit; font-size: 13px; font-weight: 700; }
+.radierkreis { width: var(--g); height: var(--g); border-radius: 50%; border: 1.5px dashed currentColor; }
+.wb-zoom {
+  min-width: 58px; height: 38px; padding: 0 8px; border: 1px solid var(--linie); border-radius: 9px; background: transparent;
+  color: var(--tinte); font: inherit; font-size: 13px; font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.wb-zoom:hover { border-color: var(--fueller); color: var(--fueller); }
+.tasten-panel {
+  position: absolute; top: 10px; right: 10px; z-index: 8; width: min(340px, calc(100% - 20px)); background: var(--blatt);
+  border: 1px solid var(--linie); border-radius: 12px; box-shadow: var(--schatten); padding: 12px 14px 14px; font-size: 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.tasten-panel h3 { font-family: var(--f-display); font-size: 16px; margin: 0; }
+.tasten-panel .diag-pencil, .tasten-panel .diag-eigen { display: flex; flex-direction: column; gap: 8px; }
+.tasten-panel .diag-pencil[hidden], .tasten-panel .diag-eigen[hidden] { display: none; }
+.tasten-panel p { margin: 0; color: var(--grau); }
+.tasten-panel label { display: flex; flex-direction: column; gap: 3px; font-weight: 700; }
+.tasten-panel select { font: inherit; font-weight: 400; padding: 6px 8px; border: 1px solid var(--linie); border-radius: 8px; background: var(--papier); color: var(--tinte); }
+.tasten-panel .haken-label { flex-direction: row; align-items: center; gap: 8px; font-weight: 400; }
+.haken-label input { width: 18px; height: 18px; accent-color: var(--fueller); }
+.tasten-test { padding: 8px 10px; border-radius: 8px; background: var(--papier); color: var(--tinte) !important; font-weight: 700; }
+
+/* ================= Skript und Notizbuch ================= */
+
+:root[data-bereich="dok"] body { overflow: hidden; }
+.dok-ansicht { position: fixed; top: var(--kopf-h); left: 0; right: 0; bottom: 0; z-index: 20; display: flex; flex-direction: column; background: var(--papier); }
+
+/* Tabs der offenen Dokumente, mitten in der Kopfzeile: nur der Name. Der aktive Tab hat den Hintergrund der Werkzeugleiste
+   darunter und überdeckt die Linie der Kopfzeile, so geht er ohne Trennung in die Fläche über. */
+:root[data-bereich="dok"] .app-kopf-innen { align-items: stretch; }
+:root[data-bereich="dok"] .haus-knopf, :root[data-bereich="dok"] .menue-wrap { align-self: center; }
+:root[data-bereich="dok"] .kopf-mitte { align-items: flex-end; margin-bottom: -1px; }
+.dok-tabs { flex: 1; height: 100%; display: flex; align-items: flex-end; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.dok-tabs::-webkit-scrollbar { display: none; }
+:root:not([data-bereich="dok"]) .dok-tabs { display: none; }
+.dok-tab {
+  position: relative; flex: 0 1 220px; min-width: 110px; display: flex; align-items: center; height: 40px;
+  border: 1px solid transparent; border-bottom: none; border-radius: 10px 10px 0 0; color: var(--grau); background: transparent;
+}
+.dok-tab:hover { background: var(--fueller-hell); color: var(--tinte); }
+.dok-tab.sichtbar { color: var(--tinte); }
+.dok-tab[aria-selected="true"] { height: 42px; background: var(--blatt); border-color: var(--linie); color: var(--tinte); }
+.dok-tab-link { flex: 1; min-width: 0; display: flex; align-items: center; padding: 0 2px 0 14px; height: 100%; color: inherit; text-decoration: none; font-size: 14px; font-weight: 700; }
+.dok-tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dok-tab-zu {
+  flex: none; width: 26px; height: 26px; margin-right: 5px; display: grid; place-items: center; padding: 0; border: none; border-radius: 7px;
+  background: none; color: inherit; font: inherit; font-size: 18px; line-height: 1; cursor: pointer; opacity: 0;
+}
+.dok-tab:hover .dok-tab-zu, .dok-tab[aria-selected="true"] .dok-tab-zu, .dok-tab-zu:focus-visible { opacity: .7; }
+.dok-tab-zu:hover { opacity: 1; background: var(--rot-hell); color: var(--rotstift); }
+.dok-tab-neu {
+  flex: none; width: 32px; height: 32px; margin: 0 0 4px 4px; display: grid; place-items: center; padding: 0; border: 1px dashed var(--linie);
+  border-radius: 9px; background: none; color: var(--fueller); font: inherit; font-size: 18px; cursor: pointer;
+}
+.dok-tab-neu:hover { border-color: var(--fueller); background: var(--fueller-hell); }
+
+/* Ein Dokument oder zwei nebeneinander */
+.dok-bereiche { position: relative; flex: 1; min-height: 0; display: flex; }
+.dok-bereich { position: relative; flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+/* Zwei Dokumente nebeneinander: die eine Werkzeugleiste steht mittig oben (.dok-leiste-slot), das Dokument im Fokus trägt oben einen Streifen */
+.geteilt .dok-bereich.fokus::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--fueller); z-index: 9; pointer-events: none; }
+.dok-leiste-slot { position: relative; flex: none; z-index: 12; }
+.dok-leiste-slot:empty { display: none; }
+.dok-teiler { order: 1; flex: none; width: 8px; position: relative; z-index: 5; background: var(--linie); cursor: col-resize; touch-action: none; -webkit-user-select: none; user-select: none; }
+/* Grosse Trefferfläche: der Griff ist schmal, die berührbare Fläche (36 px) reicht weit in beide Blätter, damit ein Finger oder Stift ihn
+   trifft und nicht daneben schreibt oder verschiebt */
+.dok-teiler::before { content: ""; position: absolute; top: 0; bottom: 0; left: -14px; right: -14px; }
+.dok-teiler::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 44px; margin: -22px 0 0 -2px; border-radius: 2px; background: var(--grau); opacity: .55; }
+.dok-teiler:hover::after, .teilt .dok-teiler::after { background: var(--tinte); opacity: .9; }
+/* Vorschau-Linie beim Ziehen (Varianten A und D): wird per transform bewegt, löst kein Layout aus */
+.dok-geist { position: absolute; left: 0; top: 0; width: 4px; height: 100%; z-index: 20; background: var(--fueller); opacity: .85; pointer-events: none; will-change: transform; }
+.dok-geist.quer { width: 100%; height: 4px; }
+/* Debug-Anzeige: FPS und Layout-Zeit (Menü ⋯ > Trennlinie (Entwickler)) */
+.dok-debug { position: absolute; left: 10px; top: 10px; z-index: 25; padding: 8px 10px; border-radius: 8px; background: rgba(0, 0, 0, .78); color: #d7f5d0; font: 12px/1.45 ui-monospace, Consolas, monospace; white-space: pre; pointer-events: none; max-width: calc(100% - 20px); overflow: hidden; }
+.dok-teiler:hover, .dok-teiler:focus-visible, .teilt .dok-teiler { background: var(--fueller); outline: none; }
+.teilt, .teilt * { cursor: col-resize !important; user-select: none; }
+.dok-ablage { position: absolute; top: 8px; bottom: 8px; z-index: 30; width: calc(50% - 12px); border: 2px dashed var(--fueller); border-radius: 14px; background: color-mix(in srgb, var(--fueller) 16%, transparent); pointer-events: none; }
+.dok-ablage[data-seite="links"] { left: 8px; }
+.dok-ablage[data-seite="rechts"] { right: 8px; }
+.rund-knopf.klein { width: 36px; height: 36px; flex: none; }
+@media (max-width: 760px) {
+  .dok-bereiche { flex-direction: column; }
+  .dok-teiler { width: auto; height: 8px; cursor: row-resize; }
+  .dok-bereich { flex: 1 1 0; }
+}
+
+/* Dokument in einem eigenen Fenster: ohne Kopfzeile und Tabs */
+.nur-dok .app-kopf, .nur-dok .stift-an { display: none !important; }
+.nur-dok .dok-ansicht { top: 0; }
+
+/* Ende der Werkzeugleiste: Seitenzahl, Lernzeit, Vollbild, ⋯ */
+.dok-leiste.werkzeugleiste { flex-wrap: wrap; row-gap: 6px; }
+.leiste-ende { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.leiste-ende:empty { display: none; }
+.leiste-ende .pdf-seite { padding: 0 6px; }
+.wz svg .voll, .rund-knopf svg .voll { fill: currentColor; stroke: none; }
+.wz[data-el="vollbild"] .zu, .wz[data-el="vollbild"][aria-pressed="true"] .auf { display: none; }
+.wz[data-el="vollbild"][aria-pressed="true"] .zu { display: inline; }
+
+/* Vollbild: nur das Blatt, die Werkzeuge schweben oben */
+.vollbild .app-kopf, .vollbild .stift-an { display: none !important; }
+.vollbild .dok-ansicht { top: 0; }
+/* Vollbild lässt zwei Dokumente nebeneinander zu: Teilung und Trennlinie bleiben, wie sie sind. Nur ein einzelnes Dokument füllt alles. */
+.vollbild .dok-ansicht:not(.geteilt) .dok-bereich.voll { flex: 1 1 0 !important; }
+.vollbild .dok-leiste-slot { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 12; width: max-content; max-width: calc(100% - 24px); }
+.vollbild .dok-leiste-slot .dok-leiste {
+  justify-content: center; padding: 6px 10px; border: 1px solid var(--linie); border-radius: 16px; box-shadow: var(--schatten); overflow: visible;
+}
+.vollbild .dok-leiste:not(.eig-offen) [data-eig] { display: none !important; }
+.vollbild .dok-leiste.eig-offen::before { content: ""; order: 4; flex-basis: 100%; height: 0; }
+.vollbild .dok-leiste.eig-offen [data-eig] { order: 5; }
+.vollbild .dok-leiste .pdf-seite, .vollbild .dok-leiste .nur-zeit, .vollbild .dok-leiste .wb-zoom { display: none; }
+.vollbild .leiste-ende { margin-left: 0; }
+.eig-knopf { display: none; }
+.vollbild .eig-knopf { display: grid; }
+
+/* Dicke per Regler */
+.dicke-gruppe { gap: 8px; padding-left: 4px; }
+.dicke-vorschau { width: 28px; height: 28px; flex: none; display: grid; place-items: center; }
+.dicke-vorschau span { width: var(--g, 6px); height: var(--g, 6px); border-radius: 50%; background: var(--farbe, currentColor); box-shadow: inset 0 0 0 1px var(--linie); }
+.dicke-vorschau[data-art="marker"] span { border-radius: 4px; opacity: .55; }
+.dicke-vorschau[data-art="radierer"] span { background: transparent; border: 1.5px dashed currentColor; box-shadow: none; }
+.dicke-regler {
+  -webkit-appearance: none; appearance: none; width: 120px; height: 28px; margin: 0; background: transparent; cursor: pointer; touch-action: none;
+}
+.dicke-regler::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 999px;
+  background: linear-gradient(90deg, var(--fueller) var(--anteil, 50%), var(--linie) var(--anteil, 50%));
+}
+.dicke-regler::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 20px; height: 20px; margin-top: -7px; border-radius: 50%; background: var(--blatt); border: 2px solid var(--fueller); box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+}
+.dicke-regler:focus-visible { outline: 2px solid var(--fueller); outline-offset: 2px; border-radius: 6px; }
+.dicke-wert { min-width: 46px; font-size: 12px; color: var(--grau); font-variant-numeric: tabular-nums; }
+
+/* Drei Grössen (Klein, Mittel, Gross), jede mit dem Regler einstellbar */
+.groesse-gruppe { gap: 6px; }
+.presets { display: flex; gap: 2px; }
+.preset {
+  min-width: 70px; height: 38px; display: grid; grid-template-columns: 28px auto; grid-template-rows: 1fr 1fr; align-items: center; column-gap: 4px;
+  padding: 0 8px 0 2px; border: 1.5px solid transparent; border-radius: 9px; background: transparent; color: var(--tinte); font: inherit; text-align: left; cursor: pointer;
+}
+.preset:hover { background: var(--fueller-hell); }
+.preset[aria-checked="true"] { border-color: var(--fueller); background: var(--fueller-hell); color: var(--fueller); }
+.preset-punkt { grid-row: 1 / 3; justify-self: center; width: var(--g, 6px); height: var(--g, 6px); border-radius: 50%; background: var(--farbe, currentColor); box-shadow: inset 0 0 0 1px var(--linie); }
+.presets[data-art="marker"] .preset-punkt { border-radius: 4px; opacity: .6; }
+.presets[data-art="radierer"] .preset-punkt { background: transparent; border: 1.5px dashed currentColor; box-shadow: none; }
+.preset-name { align-self: end; font-size: 12px; font-weight: 700; line-height: 1.1; }
+.preset-wert { align-self: start; font-size: 11px; line-height: 1.2; color: var(--grau); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.preset[aria-checked="true"] .preset-wert { color: inherit; }
+
+/* Diagnose und Druckkurve im Stift-Panel */
+.tasten-panel { max-height: calc(100% - 20px); overflow-y: auto; }
+.tasten-panel input[type="range"] { width: 100%; accent-color: var(--fueller); }
+.tasten-panel label .diag-wert { float: right; font-weight: 400; color: var(--grau); font-variant-numeric: tabular-nums; }
+.diag-feld { width: 100%; height: 110px; touch-action: none; border: 1.5px dashed var(--linie); border-radius: 10px; background: var(--papier); cursor: crosshair; }
+.diag-kurve { width: 100%; height: 74px; }
+.diag-werte { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; font-size: 13px; }
+.diag-werte dt { color: var(--grau); }
+.diag-werte dd { margin: 0; font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 8px; }
+.diag-balken { flex: 0 0 70px; height: 8px; border-radius: 999px; background: var(--linie); overflow: hidden; }
+.diag-balken > span { display: block; height: 100%; width: 0; background: var(--fueller); }
+.diag-hinweis { font-size: 13px; min-height: 0; }
+.diag-hinweis:empty { display: none; }
+.diag-enden { display: flex; justify-content: space-between; font-weight: 400; font-size: 11px; color: var(--grau); }
+.diag-knoepfe { display: flex; flex-wrap: wrap; gap: 6px; }
+.btn-leise.klein { padding: 5px 10px; font-size: 13px; }
+
+/* Lernzeit nur, wenn in den Einstellungen eingeschaltet */
+.zeit-aus .nur-zeit { display: none !important; }
+
+.dok-kopf { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 16px; border-bottom: 1px solid var(--linie); background: var(--blatt); }
+.pdf-zurueck {
+  width: 38px; height: 38px; flex: none; display: grid; place-items: center; border: 1px solid var(--linie); border-radius: 10px;
+  color: var(--tinte); background: var(--papier);
+}
+.pdf-zurueck:hover { border-color: var(--fueller); color: var(--fueller); }
+.pdf-zurueck svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pdf-titel { flex: 1 1 160px; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.pdf-titel strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pdf-ordner { font-size: 12px; color: var(--grau); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pdf-seite { font-size: 13px; color: var(--grau); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dok-leiste { padding: 6px 12px; border-bottom: 1px solid var(--linie); background: var(--blatt); overflow-x: auto; }
+.dok-leiste .werkzeugleiste { flex-wrap: nowrap; }
+.dok-flaeche { position: relative; flex: 1; min-height: 0; }
+.dok-meldung {
+  position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); z-index: 5; max-width: min(460px, calc(100% - 32px));
+  margin: 0; padding: 14px 18px; border-radius: 12px; background: var(--blatt); border: 1px solid var(--linie); color: var(--grau); text-align: center;
+}
+@media (max-width: 560px) {
+  .dok-kopf { padding: 6px 10px; }
+  .pdf-seite { order: 3; }
+}
+.wb-leiste { display: flex; align-items: center; gap: 6px; padding: 8px 10px 8px 16px; border-bottom: 1px solid var(--linie); background: var(--blatt); overflow-x: auto; }
+
+@media (max-width: 560px) {
+  body { font-size: 16px; }
+}
+.art-punkt { width: 10px; height: 10px; flex: none; border-radius: 3px; background: var(--fueller); }
+.art-punkt.notizbuch { background: var(--ok); }
+.stat-zahlen { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.stat-zahlen > div { display: flex; flex-direction: column; padding: 10px 12px; border-radius: 12px; background: var(--papier); border: 1px solid var(--linie); }
+.stat-zahlen strong { font-family: var(--f-display); font-size: 22px; line-height: 1.2; }
+.stat-zahlen span { font-size: 12px; color: var(--grau); }
+.stat-balken { display: flex; gap: 4px; height: 110px; align-items: stretch; }
+.stat-balken > span { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 3px; }
+.stat-balken > span > span { width: 100%; background: var(--fueller); border-radius: 4px 4px 2px 2px; min-height: 2px; }
+.stat-balken em { font-style: normal; font-size: 10px; color: var(--grau); }
+.pfad-text { font-family: ui-monospace, Consolas, monospace; font-size: 12px; padding: 6px 8px; border-radius: 8px; background: var(--papier); overflow-wrap: anywhere; margin: 0; }
+.dialog-form .sync-liste dd { font-weight: 400; }
+.ort-aktionen { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.ort-aktionen button { text-align: center; padding: 10px 16px; }
+.einst-ort { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px 10px; margin: 0; font-weight: 700; }
+.einst-ort > button { grid-column: 2; grid-row: 1; }
+.einst-ort > .pfad-text { grid-column: 1 / -1; grid-row: 2; font-weight: 400; }
+
+/* ================= Bibliothek: einfarbiger Hintergrund (Dunkelgrau, Dunkelblau oder Weiss) =================
+   Die Wahl gilt nur in der Bibliothek (data-bereich="bibliothek") und setzt dort alle Farben passend, auch Karten und Menüs. */
+:root[data-bereich="bibliothek"] body { background-image: none; }
+:root[data-bib-hg="dunkelgrau"] {
+  --papier: #1f2023; --blatt: #2a2c30; --tinte: #e8e9ec; --grau: #a4a8b0; --linie: #3b3e44;
+  --fueller: #8aabff; --fueller-hell: #353a47; --rotstift: #ff7266; --rot-hell: #3b2a2d; --ok: #6fd69b;
+  --schatten: 0 1px 2px rgba(0, 0, 0, .35), 0 10px 28px rgba(0, 0, 0, .3); color-scheme: dark;
+}
+:root[data-bib-hg="dunkelblau"] {
+  --papier: #0d1322; --blatt: #151d30; --tinte: #e6eaf2; --grau: #9ba5ba; --linie: #26324b;
+  --fueller: #8aabff; --fueller-hell: #1c2848; --rotstift: #ff7266; --rot-hell: #36202a; --ok: #6fd69b;
+  --schatten: 0 1px 2px rgba(0, 0, 0, .35), 0 10px 28px rgba(0, 0, 0, .3); color-scheme: dark;
+}
+:root[data-bib-hg="weiss"] {
+  --papier: #ffffff; --blatt: #f4f6fa; --tinte: #1b2232; --grau: #596378; --linie: #d3dbe7;
+  --fueller: #2350c4; --fueller-hell: #e7edfb; --rotstift: #cf3329; --rot-hell: #fbe6e4; --ok: #1b7a44;
+  --schatten: 0 1px 2px rgba(27, 34, 50, .06), 0 10px 28px rgba(27, 34, 50, .07); color-scheme: light;
+}
+.hg-wahl { display: flex; gap: 8px; flex-wrap: wrap; }
+.hg-wahl label { display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; border: 1px solid var(--linie); border-radius: 999px; cursor: pointer; font-weight: 400; }
+.hg-wahl label:has(input:checked) { border-color: var(--fueller); background: var(--fueller-hell); }
+.hg-wahl input { position: absolute; opacity: 0; pointer-events: none; }
+.hg-wahl label:has(input:focus-visible) { outline: 2px solid var(--fueller); outline-offset: 2px; }
+.hg-wahl .muster { width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgba(128, 128, 128, .5); background: var(--c); }
+
+/* Whiteboard in der Bibliothek */
+.art-marke.brett { color: var(--s-lila); }
+.brett-vorschau { aspect-ratio: 4 / 3; border-left: 6px solid var(--farbe); }
+.brett-vorschau canvas { object-fit: cover; }
+.neu-bild.brett { background: var(--papier); border: 1px solid var(--linie); background-image: radial-gradient(var(--grau) 1px, transparent 1.3px); background-size: 9px 9px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+/* Überschrift im Lernzeit-Dialog eines Dokuments */
+.kennzahl-titel { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--grau); }
+
+/* Farbmuster und feines Karo */
+.farb-muster { display: block; width: 54px; height: 70px; border: 2px solid var(--linie); border-radius: 5px; background: var(--c); }
+.papier-bild.karofein { background-image: linear-gradient(var(--linie) 1px, transparent 1px), linear-gradient(90deg, var(--linie) 1px, transparent 1px); background-size: 4px 4px; }
+
+/* ================= Werkzeugleiste: gross, zwei Zeilen, übersichtlich =================
+   Zeile 1: Werkzeuge, Bearbeiten, Zoom, Seite/Vollbild. Zeile 2: Farben und Grössen des gewählten Werkzeugs. */
+.dok-leiste { padding: 8px 14px 9px; }
+.dok-leiste.werkzeugleiste { row-gap: 8px; column-gap: 10px; align-items: center; }
+.dok-leiste .gruppe { gap: 3px; padding-right: 10px; }
+.dok-leiste .wz { width: 44px; height: 44px; border-radius: 11px; }
+.dok-leiste .wz.wz-text { width: auto; padding: 0 12px; font-size: 14px; }
+.dok-leiste .wz svg { width: 24px; height: 24px; stroke-width: 1.9; }
+.dok-leiste .farbpunkt, .dok-leiste .notizpunkt { width: 26px; height: 26px; }
+.dok-leiste .farbpunkt.marker { width: 28px; height: 18px; }
+.dok-leiste .preset { min-width: 86px; height: 44px; grid-template-columns: 30px auto; grid-template-rows: 1fr 1fr; padding: 0 10px 0 4px; }
+.dok-leiste .preset-name { display: block; font-size: 13px; }
+.dok-leiste .preset-wert { font-size: 12px; }
+.dok-leiste .dicke-regler { width: 150px; height: 36px; }
+.dok-leiste .dicke-wert { min-width: 52px; font-size: 14px; color: var(--tinte); font-weight: 700; }
+.dok-leiste .wb-zoom { min-width: 68px; height: 44px; font-size: 15px; font-weight: 700; }
+.dok-leiste .leiste-ende { gap: 6px; }
+.dok-leiste .nur-zeit { padding: 6px 12px; font-size: 14px; }
+.dok-leiste .dicke-regler::-webkit-slider-thumb { width: 24px; height: 24px; margin-top: -9px; }
+.dok-leiste .dicke-regler::-webkit-slider-runnable-track { height: 8px; }
+
+/* Zwei Zeilen: oben die Werkzeuge, darunter (mit Trennlinie) Farben und Grössen */
+.dok-leiste:not(.leiste-zu) > :not([data-eig]):not(.eig-knopf) { order: 1; }
+.dok-leiste:not(.leiste-zu) > .wb-zoom { order: 2; }
+.dok-leiste:not(.leiste-zu) > .leiste-ende { order: 3; }
+.dok-leiste:not(.leiste-zu)::before { content: ""; order: 4; flex: 0 0 100%; height: 1px; margin: 0 -14px; background: var(--linie); opacity: .6; }
+.dok-leiste:not(.leiste-zu) > [data-eig] { order: 5; }
+.dok-leiste:not(.leiste-zu) > .gruppe[data-eig] { border-right: none; }
+.dok-leiste:not(.leiste-zu) > .groesse-gruppe { margin-left: auto; }
+.wz[data-el="leiste-zu"] .zu, .wz[data-el="leiste-zu"][aria-pressed="true"] .auf { display: none; }
+.wz[data-el="leiste-zu"][aria-pressed="true"] .zu { display: inline; }
+/* Eingeklappt: nur ein kleiner Knopf über der Fläche, die Leiste verbraucht keinen Platz mehr */
+.dok-leiste.leiste-zu {
+  position: absolute; top: 8px; left: 50%; right: auto; transform: translateX(-50%); z-index: 12; width: auto; padding: 3px; overflow: visible;
+  border: 1px solid var(--linie); border-radius: 999px; box-shadow: var(--schatten); opacity: .85;
+}
+.dok-leiste.leiste-zu:hover, .dok-leiste.leiste-zu:focus-within { opacity: 1; }
+.dok-leiste.leiste-zu > :not(.leiste-ende) { display: none !important; }
+.dok-leiste.leiste-zu .leiste-ende > :not([data-el="leiste-zu"]) { display: none !important; }
+.dok-leiste.leiste-zu .leiste-ende { margin: 0; }
+/* Im Vollbild trägt die Ablage selbst die Mitte: der Knopf der eingeklappten Leiste steht dort, wo sonst die Leiste steht */
+.vollbild .dok-leiste-slot .dok-leiste.leiste-zu { position: static; transform: none; padding: 3px; }
+.vollbild .dok-leiste-slot .dok-leiste { padding: 8px 12px; border-radius: 16px; }
+/* Im Vollbild bleiben Farben und Grössen hinter dem Palettenknopf (siehe oben) */
+.vollbild .dok-leiste:not(.eig-offen)::before { display: none; }
+
+/* ================= iPad und Touch ================= */
+html { overscroll-behavior: none; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+/* Schreibfläche und Leisten: nichts markieren, kein Kontextmenü durch langes Drücken, keine Systemgesten (Zoom, Bounce) */
+.leinwand, .app-kopf, .dok-leiste, .dok-tabs { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.leinwand, .leinwand canvas { touch-action: none; overscroll-behavior: none; }
+.dok-ansicht { overscroll-behavior: none; }
+/* Randbereiche mit Kamera-Aussparung und Home-Balken (iPad im Vollbild/als App) */
+.app-kopf { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); padding-top: env(safe-area-inset-top); }
+:root { --kopf-h: calc(56px + env(safe-area-inset-top, 0px)); }
+.app-kopf-innen { height: 56px; }
+.dok-leiste { padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
+.dok-bereiche { padding-bottom: env(safe-area-inset-bottom); }
+/* Finger und Stift treffen grössere Ziele (Apple empfiehlt mindestens 44 Punkte) */
+@media (pointer: coarse) {
+  .dok-tab { height: 44px; }
+  .dok-tab[aria-selected="true"] { height: 46px; }
+  .dok-tab-zu { width: 34px; height: 34px; opacity: .7; }
+  .rund-knopf { width: 44px; height: 44px; }
+  .karte-mehr, .karte-stern { min-width: 40px; min-height: 40px; }
+  .menue-liste a, .menue-eintrag { min-height: 46px; }
+  .dicke-regler::-webkit-slider-thumb { width: 26px; height: 26px; margin-top: -10px; }
+}
+/* Hochformat und schmale Fenster: Leiste darf umbrechen statt zu scrollen */
+@media (max-width: 900px) {
+  .dok-leiste.werkzeugleiste { flex-wrap: wrap; }
+}
+
+/* Seitenanzeige unten links, erscheint nur beim Scrollen */
+.dok-bereich { --anzeige-unten: 14px; }
+.seitenanzeige {
+  position: absolute; left: 14px; bottom: calc(var(--anzeige-unten) + env(safe-area-inset-bottom, 0px)); z-index: 6; margin: 0; padding: 6px 14px; border-radius: 999px;
+  background: color-mix(in srgb, var(--blatt) 88%, transparent); border: 1px solid var(--linie); color: var(--grau); font-size: 14px; font-weight: 700;
+  font-variant-numeric: tabular-nums; pointer-events: none; opacity: 0; transition: opacity .3s ease;
+}
+.seitenanzeige.da { opacity: 1; transition-duration: .1s; }
+.dok-leiste .pdf-seite { display: none; }
+
+/* ================= Leiste zentriert, Symbole verschiebbar, Palette im Vollbild über den Stift ================= */
+.dok-leiste { position: relative; }
+.dok-leiste.werkzeugleiste { justify-content: center; }
+.dok-leiste:not(.leiste-zu) > .groesse-gruppe { margin-left: 0; }
+/* Seite, Vollbild und ⋯ sitzen rechts, ohne die Mitte zu verschieben */
+.dok-leiste:not(.leiste-zu) > .leiste-ende { position: absolute; right: 14px; top: 8px; margin: 0; height: 44px; }
+@media (max-width: 1100px) {
+  .dok-leiste:not(.leiste-zu) > .leiste-ende { position: static; margin-left: auto; height: auto; }
+}
+.vollbild .dok-leiste .leiste-ende { position: static !important; margin-left: 8px !important; height: auto !important; }
+/* Im Vollbild gibt es keinen Palettenknopf: Farben und Grössen öffnen sich beim Antippen von Stift oder Marker */
+.vollbild .eig-knopf { display: none !important; }
+/* Symbole ziehen */
+.dok-leiste [data-ord] { touch-action: none; }
+.dok-leiste.ordnet, .dok-leiste.ordnet * { cursor: grabbing !important; user-select: none; }
+.dok-leiste .wz.zieht { transform: scale(1.14); box-shadow: var(--schatten); background: var(--fueller-hell); border-color: var(--fueller); z-index: 4; }
+
+/* ================= Farbreihe: eine Reihe, dicht und gleichmässig =================
+   Jede Farbe ist ein 44 px breites Ziel (mind. 40 px), zwischen den Zielen sind 6 px. Die Reihe steht mittig. Wird der Platz knapp
+   (schmales Fenster, viele eigene Farben), schrumpfen alle Ziele gleich stark, bis alles in die Breite passt: nichts wird
+   abgeschnitten, es gibt kein Scrollen. */
+.dok-leiste .farbreihe {
+  flex: 0 1 auto; min-width: 0; max-width: 100%; display: flex; flex-wrap: nowrap; align-items: center; justify-content: center;
+  gap: 6px; padding: 0; border-right: none;
+}
+.dok-leiste .farbreihe .eigene { display: contents; }
+.dok-leiste .farbreihe .wz { flex: 0 1 44px; min-width: 0; width: 44px; height: 44px; padding: 0; }
+.dok-leiste .farbreihe .farbpunkt, .dok-leiste .farbreihe .notizpunkt { width: min(30px, 76%); height: auto; aspect-ratio: 1; }
+.dok-leiste .farbreihe .farbpunkt.marker { width: min(34px, 86%); aspect-ratio: 34 / 21; }
+.dok-leiste .farbreihe .wz svg { width: min(24px, 80%); height: auto; }
+/* Laserfarben leuchten */
+.farbpunkt.laser { box-shadow: 0 0 9px var(--farbe), inset 0 0 0 1px rgba(0, 0, 0, .25); }
+/* Grössen: wenn der Platz knapp wird, schrumpfen die drei Knöpfe und der Regler und brechen notfalls um, statt zu scrollen */
+.dok-leiste .groesse-gruppe { flex: 0 1 auto; flex-wrap: wrap; justify-content: center; row-gap: 4px; max-width: 100%; min-width: 0; }
+.dok-leiste .presets { flex: 1 1 auto; min-width: 0; }
+.dok-leiste .preset { flex: 1 1 0; min-width: 0; }
+.dok-leiste .dicke-regler { flex: 1 1 110px; width: auto; min-width: 90px; max-width: 200px; }
+@media (max-width: 560px) { .dok-leiste .preset { padding: 0 6px 0 2px; grid-template-columns: 22px auto; } .dok-leiste .preset-wert { font-size: 11px; } }
+
+/* ================= Bibliothek: klare Kontraste, nichts geht auf dem Hintergrund unter =================
+   Hell: getönter Hintergrund (kühles Hellgrau-Blau) mit weissen Karten, die einen Rand und Schatten haben. Dunkel: Karten heben
+   sich durch Rand und Schatten ab. Kein Weiss auf Weiss: Kartenfläche, Hintergrund und Text haben deutlich verschiedene Helligkeit. */
+:root { --karten-schatten: 0 1px 2px rgba(0, 0, 0, .45), 0 8px 20px rgba(0, 0, 0, .30); --karten-schatten-hover: 0 2px 4px rgba(0, 0, 0, .5), 0 14px 28px rgba(0, 0, 0, .38); --vorschau-rand: rgba(255, 255, 255, .16); }
+:root[data-bib-hg="weiss"] {
+  --papier: #dde5f0; --blatt: #ffffff; --tinte: #141b2b; --grau: #424e66; --linie: #b3bfd3;
+  --fueller: #1f49b8; --fueller-hell: #d6e2fb; --rotstift: #c42b22; --rot-hell: #fbe0dd; --ok: #166a3a;
+  --schatten: 0 1px 2px rgba(20, 35, 70, .20), 0 10px 26px rgba(20, 35, 70, .16);
+  --karten-schatten: 0 1px 2px rgba(20, 35, 70, .22), 0 6px 18px rgba(20, 35, 70, .15);
+  --karten-schatten-hover: 0 2px 4px rgba(20, 35, 70, .26), 0 14px 30px rgba(20, 35, 70, .22);
+  --vorschau-rand: rgba(20, 35, 70, .28); color-scheme: light;
+}
+:root[data-bib-hg="dunkelgrau"] { --blatt: #31343a; --linie: #484c54; --vorschau-rand: rgba(255, 255, 255, .20); }
+:root[data-bib-hg="dunkelblau"] { --blatt: #19233a; --linie: #2d3b5a; --vorschau-rand: rgba(160, 190, 255, .22); }
+:root[data-bereich="bibliothek"] .karte { box-shadow: var(--karten-schatten); }
+:root[data-bereich="bibliothek"] .karte:hover { box-shadow: var(--karten-schatten-hover); transform: translateY(-2px); }
+:root[data-bereich="bibliothek"] .karte.ziel { transform: scale(1.02); }
+:root[data-bereich="bibliothek"] .vorschau { border-color: var(--vorschau-rand); box-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
+:root[data-bereich="bibliothek"] .reiter, :root[data-bereich="bibliothek"] .suche, :root[data-bereich="bibliothek"] .btn-leise,
+:root[data-bereich="bibliothek"] .sortierung select { box-shadow: 0 1px 2px rgba(20, 35, 70, .10); }
+:root[data-bereich="bibliothek"] .btn-leise { border-width: 1.5px; }
+:root[data-bib-hg="weiss"] .karte-mehr, :root[data-bib-hg="weiss"] .pfad a { color: var(--grau); }
+:root[data-bereich="bibliothek"] .abschnitt-titel, :root[data-bereich="bibliothek"] .speicher-info { color: var(--grau); }
+:root[data-bib-hg="weiss"] .karte-stern { background: rgba(255, 255, 255, .92); box-shadow: 0 1px 4px rgba(20, 35, 70, .35); }
+:root[data-bereich="bibliothek"] .leer { border-color: var(--grau); }
+
+/* ================= Touch: grosse Ziele in Leiste, Menüs und Auswahl ================= */
+@media (pointer: coarse) {
+  .dok-leiste .wz { width: 48px; height: 48px; }
+  .dok-leiste .wz.wz-text { width: auto; }
+  .dok-leiste .farbreihe .wz { width: 48px; height: 48px; flex-basis: 48px; }
+  .dok-leiste .preset { height: 48px; }
+  .dok-leiste .wb-zoom { height: 48px; min-width: 72px; }
+  .kontext > button { padding: 13px 14px; font-size: 15px; }
+  .kontext-farben button { width: 34px; height: 34px; }
+  .lw-menue button { min-height: 44px; min-width: 44px; padding: 10px 14px; }
+  .lw-menue-farben button { width: 32px; height: 32px; }
+  .tasten-panel select { min-height: 42px; }
+  .tasten-panel .haken-label input { width: 24px; height: 24px; }
+  .reiter button { padding: 11px 16px; }
+  .btn-leise, .btn-primaer { min-height: 44px; }
+  .dok-tab-neu { width: 40px; height: 40px; }
+}
+
+/* Touch: breiterer, deutlicher Griff */
+@media (pointer: coarse) {
+  .dok-teiler { width: 14px; }
+  .dok-teiler::before { left: -18px; right: -18px; }
+  .dok-teiler::after { width: 5px; height: 56px; margin: -28px 0 0 -2.5px; }
+}
+/* Untereinander (schmales Fenster): der Griff liegt quer */
+@media (max-width: 760px) {
+  .dok-teiler::before { top: -14px; bottom: -14px; left: 0; right: 0; }
+  .dok-teiler::after { width: 44px; height: 4px; margin: -2px 0 0 -22px; }
+}
+@media (pointer: coarse) and (max-width: 760px) { .dok-teiler { width: auto; height: 14px; } }
+
+/* ================= Seitenleiste für Skripte: Seiten, Inhalt, Lesezeichen, Suche (seitenleiste.js) ================= */
+/* Die Knöpfe stehen ganz links in der Leiste, ohne die Mitte zu verschieben (wie .leiste-ende rechts) */
+.leiste-anfang { display: flex; align-items: center; gap: 6px; }
+.leiste-anfang:empty { display: none; }
+.dok-leiste:not(.leiste-zu) > .leiste-anfang { position: absolute; left: 14px; top: 8px; height: 44px; }
+@media (max-width: 1100px) {
+  .dok-leiste:not(.leiste-zu) > .leiste-anfang { position: static; margin-right: auto; height: auto; }
+}
+.vollbild .dok-leiste .leiste-anfang { position: static !important; margin-right: 8px !important; height: auto !important; }
+
+.dok-bereich { --sl-b: 300px; }
+.dok-bereich.sl-offen > .dok-flaeche { margin-left: var(--sl-b); }
+.seitenleiste {
+  position: absolute; left: 0; top: 0; bottom: 0; width: var(--sl-b); z-index: 7; display: flex; flex-direction: column;
+  background: var(--blatt); border-right: 1px solid var(--linie); color: var(--tinte); font-size: 14px;
+}
+.seitenleiste[hidden] { display: none; }
+/* Schmal (Handy, halbes iPad): die Leiste liegt über dem Blatt */
+@media (max-width: 700px) {
+  .dok-bereich.sl-offen > .dok-flaeche { margin-left: 0; }
+  .seitenleiste { width: min(320px, 88%); box-shadow: var(--schatten); }
+}
+.sl-kopf { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--linie); }
+.sl-reiter { display: flex; gap: 4px; }
+.seitenleiste .wz { width: 42px; height: 42px; }
+.seitenleiste .wz[aria-selected="true"] { border-color: var(--fueller); background: var(--fueller-hell); color: var(--fueller); }
+.sl-titel { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px 4px; font-size: 13px; color: var(--grau); }
+.sl-titel:empty { display: none; }
+.sl-inhalt { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 12px 18px; overscroll-behavior: contain; }
+.sl-leer, .sl-hinweis { margin: 0; padding: 12px 4px; color: var(--grau); font-size: 13.5px; line-height: 1.45; }
+.sl-hinweis { padding-top: 4px; }
+.sl-leer .kreisel { display: inline-block; width: 15px; height: 15px; vertical-align: -3px; margin-right: 6px; }
+.seitenleiste button.sl-seite, .seitenleiste button.sl-abschnitt, .seitenleiste button.sl-treffer {
+  font: inherit; color: inherit; background: none; border: none; cursor: pointer; text-align: left; -webkit-tap-highlight-color: transparent;
+}
+/* Seiten: zwei Spalten kleiner Bilder */
+.sl-raster { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 12px; }
+.sl-seite { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 4px; border-radius: 10px; }
+.sl-bild { position: relative; display: block; width: 100%; background: #fff; border-radius: 3px; box-shadow: 0 1px 4px rgba(0, 0, 0, .3); overflow: hidden; }
+.sl-bild canvas { display: block; width: 100%; height: 100%; }
+.sl-seite:hover .sl-bild { box-shadow: 0 0 0 2px var(--linie), 0 1px 4px rgba(0, 0, 0, .3); }
+.sl-seite.aktuell .sl-bild { box-shadow: 0 0 0 3px var(--fueller); }
+.sl-nr { max-width: 100%; font-size: 12.5px; color: var(--grau); text-align: center; font-variant-numeric: tabular-nums; }
+.sl-nr small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; }
+.sl-seite.aktuell .sl-nr { color: var(--fueller); font-weight: 700; }
+.sl-band { position: absolute; top: 0; right: 9%; width: 13px; height: 21px; background: #e5484d; clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 76%, 0 100%); }
+.sl-band.klein { position: static; display: inline-block; width: 8px; height: 12px; margin-right: 6px; vertical-align: -1px; }
+.sl-weg { position: absolute; top: 5px; left: 5px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: rgba(0, 0, 0, .6); color: #fff; }
+.sl-weg svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+/* Inhalt: Abschnitte, eingerückt nach Tiefe */
+.sl-liste { display: flex; flex-direction: column; gap: 1px; }
+.sl-abschnitt { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 9px 10px 9px calc(10px + var(--tiefe, 0) * 16px); border-radius: 8px; line-height: 1.35; }
+.sl-abschnitt:hover { background: var(--fueller-hell); }
+.sl-abschnitt.aktuell { background: var(--fueller-hell); color: var(--fueller); font-weight: 700; }
+.sl-abschnitt[style*="--tiefe: 0"] { font-weight: 600; }
+.sl-abschnitt-seite { flex: none; color: var(--grau); font-size: 13px; font-variant-numeric: tabular-nums; }
+/* Suche */
+.sl-suche { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--linie); }
+.sl-suche[hidden] { display: none; }
+.sl-suchfeld { display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1.5px solid var(--linie); border-radius: 10px; background: var(--papier); }
+.sl-suchfeld:focus-within { border-color: var(--fueller); }
+.sl-suchfeld svg { flex: none; width: 18px; height: 18px; fill: none; stroke: var(--grau); stroke-width: 2; stroke-linecap: round; }
+.sl-suchfeld input { flex: 1; min-width: 0; padding: 10px 0; border: none; outline: none; background: none; color: var(--tinte); font: inherit; font-size: 15px; }
+.sl-suchinfo { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 30px; font-size: 13px; color: var(--grau); }
+.sl-pfeile { display: flex; gap: 4px; }
+.sl-pfeile button { min-width: 34px; }
+.sl-gruppe-kopf { padding: 12px 6px 4px; font-size: 12px; font-weight: 700; color: var(--grau); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sl-treffer { display: block; width: 100%; padding: 7px 8px; border-radius: 8px; font-size: 13.5px; line-height: 1.4; overflow-wrap: anywhere; }
+.sl-treffer:hover { background: var(--fueller-hell); }
+.sl-treffer mark { padding: 0 1px; border-radius: 3px; background: rgba(255, 210, 0, .55); color: inherit; }
+.sl-treffer.aktuell { background: var(--fueller-hell); }
+.sl-treffer.aktuell mark { background: rgba(255, 128, 0, .6); }
+
+/* ================= Papierkorb in der Bibliothek (bibliothek.js zeigePapierkorb) ================= */
+.im-papierkorb .skripte-filter { display: none; }
+.papierkorb { margin-top: 18px; }
+.pk-kopf { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.pk-kopf p { margin: 0; color: var(--grau); font-size: 14px; line-height: 1.5; max-width: 70ch; }
+.pk-kopf strong { color: var(--tinte); }
+.pk-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.pk-eintrag { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--linie); border-radius: 14px; background: var(--blatt); }
+.pk-symbol { flex: none; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; background: var(--fueller-hell); color: var(--fueller); }
+.pk-symbol svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.pk-symbol.art-seite, .pk-symbol.art-datei, .pk-symbol.art-ordner { background: var(--papier); color: var(--grau); }
+.pk-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pk-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pk-text span { color: var(--grau); font-size: 13px; }
+.pk-warn { color: var(--warn, #d08a00); font-weight: 700; }
+.pk-knoepfe { flex: none; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.btn-leise.pk-gefahr { color: var(--rotstift); }
+.btn-leise.pk-gefahr:hover { border-color: var(--rotstift); background: var(--rot-hell); }
+@media (max-width: 640px) {
+  .pk-eintrag { flex-wrap: wrap; }
+  .pk-knoepfe { width: 100%; justify-content: flex-start; }
+}
+
+/* ================= Schieber rechts: unsichtbar, beim Scrollen kurz sichtbar, zum schnellen Blättern ================= */
+/* Dokumente (leinwand.js aktualisiereSchieber): eigener Griff über der Schreibfläche */
+.lw-schieber { position: absolute; top: 0; right: 0; bottom: 0; width: 24px; z-index: 6; opacity: 0; pointer-events: none; transition: opacity .4s ease; touch-action: none; }
+.lw-schieber[hidden] { display: none; }
+.lw-schieber.da, .lw-schieber.zieht { opacity: 1; transition-duration: .12s; }
+/* Nur der Griff fängt Eingaben ab (und nur, solange er zu sehen ist); daneben scrollt der Finger die Fläche normal */
+.lw-schieber.da .lw-schieber-griff, .lw-schieber.zieht .lw-schieber-griff, .seiten-schieber.da .lw-schieber-griff, .seiten-schieber.zieht .lw-schieber-griff { pointer-events: auto; }
+.lw-schieber-griff { pointer-events: none; }
+.lw-schieber-griff {
+  position: absolute; top: 0; right: 5px; width: 7px; border-radius: 999px; background: rgba(150, 150, 150, .62);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .18); cursor: grab; touch-action: none; transition: width .15s ease, right .15s ease, background .15s ease;
+}
+/* Breiter, sobald man ihn anfasst; die Trefferfläche ist breiter als der sichtbare Griff */
+@media (any-hover: hover) { .lw-schieber-griff::before { content: ""; position: absolute; top: -6px; bottom: -6px; left: -10px; right: -6px; } }
+.lw-schieber-griff:hover, .lw-schieber.zieht .lw-schieber-griff { width: 10px; right: 4px; background: rgba(175, 175, 175, .85); }
+.lw-schieber.zieht .lw-schieber-griff { cursor: grabbing; }
+@media (pointer: coarse) { .lw-schieber { width: 32px; } .lw-schieber-griff { width: 8px; } }
+
+/* Startseite: eigener Schieber (ui.js seitenSchieber), die Scrollleiste des Browsers ist dort ausgeblendet */
+html { scrollbar-width: none; }
+.seiten-schieber { position: fixed; right: 0; bottom: 0; width: 24px; z-index: 30; opacity: 0; pointer-events: none; transition: opacity .4s ease; touch-action: none; }
+.seiten-schieber[hidden] { display: none; }
+.seiten-schieber.da, .seiten-schieber.zieht { opacity: 1; transition-duration: .12s; }
+.seiten-schieber .lw-schieber-griff:hover, .seiten-schieber.zieht .lw-schieber-griff { width: 10px; right: 4px; background: rgba(175, 175, 175, .85); }
+.seiten-schieber.zieht .lw-schieber-griff { cursor: grabbing; }
+@media (pointer: coarse) { .seiten-schieber { width: 32px; } }
+
+/* Übrige Listen (Seitenleiste, Dialoge): schmale Scrollleiste, unsichtbar, solange man nicht mit der Maus in der Liste ist */
+::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { min-height: 40px; border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; background-color: transparent; }
+:hover::-webkit-scrollbar-thumb { background-color: rgba(150, 150, 150, .4); }
+::-webkit-scrollbar-thumb:hover, ::-webkit-scrollbar-thumb:active { background-color: rgba(175, 175, 175, .8); border-width: 2px; }
+
+/* ================= Kopfleiste und Startseite im Stil eines Bücherregals (wie Goodnotes) =================
+   Oben eine Leiste mit runden Tabs: links das Haus, daneben die offenen Dokumente. Sie ist auf der Startseite und in den
+   Dokumenten dieselbe, so wechselt man direkt zwischen Startseite und Skript. Ein Farbsatz für alles (data-bib-hg, von app.js
+   aus Design und Wahl gesetzt): die Leiste ist eine Spur dunkler (--kopf-hg), der gewählte Tab hat die Farbe der Fläche
+   darunter (--blatt: Werkzeugleiste im Dokument, Seitenleiste auf der Startseite) und geht mit runden Ecken in sie über.
+   Die Startseite hat links eine Leiste (Ansichten, Papierkorb), rechts den grossen Titel mit "Neu" und Sortierung und darunter die Cover. */
+body { padding-inline: 0; }
+:root { --kopf-hg: #070b16; --kopf-trenner: rgba(255, 255, 255, .12); --kopf-text: rgba(230, 234, 242, .62); --seite-hg: var(--blatt); --wahl-hg: color-mix(in srgb, var(--fueller) 28%, var(--blatt)); --tab-r: 12px; }
+:root[data-bib-hg="dunkelgrau"] { --kopf-hg: #141517; --karo: #2c2e33; --kopf-text: rgba(232, 233, 236, .6); }
+:root[data-bib-hg="weiss"] { --kopf-hg: #c9d3e1; --kopf-trenner: rgba(20, 35, 70, .16); --kopf-text: rgba(20, 27, 43, .62); --karo: #c6d0df; --wahl-hg: #d4e1fb; }
+.app-kopf {
+  margin-inline: 0; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px);
+  background: var(--kopf-hg); border-bottom: none; -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+.app-kopf-innen { max-width: none !important; gap: 0; align-items: stretch; }
+/* Tabs: Haus und Dokumente, oben rund; der gewählte Tab hat unten nach aussen gerundete Ecken und geht in die Fläche über */
+.app-kopf .haus-knopf, .dok-tab { position: relative; margin-top: 8px; border-radius: var(--tab-r) var(--tab-r) 0 0; }
+.app-kopf .haus-knopf {
+  align-self: stretch !important; width: 64px; height: auto; flex: none; margin-left: 6px; border: none; background: transparent; color: var(--kopf-text);
+}
+.app-kopf .haus-knopf:hover { background: color-mix(in srgb, var(--tinte) 9%, transparent); color: var(--tinte); }
+.app-kopf .haus-knopf svg { width: 23px; height: 23px; }
+.kopf-mitte { align-items: stretch !important; margin: 0 !important; }
+:root[data-bereich] .dok-tabs { display: flex; height: auto; align-items: stretch; gap: 0; padding-left: 12px; overflow-x: auto; overflow-y: hidden; }   /* auch auf der Startseite */
+.dok-tab { flex: 1 1 0; max-width: 440px; min-width: 120px; height: auto !important; border: none; background: transparent; color: var(--kopf-text); }
+.dok-tab:hover { background: color-mix(in srgb, var(--tinte) 7%, transparent); color: var(--tinte); }
+.dok-tab-link { padding-left: 20px; font-size: 16px; font-weight: 600; }
+.dok-tab-zu { opacity: .6; width: 30px; height: 30px; margin-right: 8px; }
+/* feine Trennlinie zwischen zwei nicht gewählten Tabs */
+.dok-tab + .dok-tab:not([aria-selected="true"]):not(:hover)::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 1px; background: var(--kopf-trenner); }
+:root[data-bereich="dok"] .dok-tab[aria-selected="true"] + .dok-tab::before, .dok-tab:hover + .dok-tab::before { display: none; }
+/* Gewählt: im Dokument der Tab des Dokuments, auf der Startseite das Haus */
+:root[data-bereich="dok"] .dok-tab[aria-selected="true"], :root[data-bereich="bibliothek"] .app-kopf .haus-knopf { background: var(--blatt); color: var(--tinte); }
+:root[data-bereich="bibliothek"] .dok-tab[aria-selected="true"] { background: transparent; }
+:root[data-bereich="bibliothek"] .dok-tab[aria-selected="true"]:hover { background: color-mix(in srgb, var(--tinte) 7%, transparent); }
+:root[data-bereich="dok"] .dok-tab[aria-selected="true"]::before, :root[data-bereich="dok"] .dok-tab[aria-selected="true"]::after,
+:root[data-bereich="bibliothek"] .app-kopf .haus-knopf::before, :root[data-bereich="bibliothek"] .app-kopf .haus-knopf::after {
+  content: ""; position: absolute; bottom: 0; width: var(--tab-r); height: var(--tab-r); pointer-events: none;
+}
+:root[data-bereich="dok"] .dok-tab[aria-selected="true"]::before, :root[data-bereich="bibliothek"] .app-kopf .haus-knopf::before { left: calc(-1 * var(--tab-r)); background: radial-gradient(circle at 0 0, transparent calc(var(--tab-r) - .5px), var(--blatt) var(--tab-r)); }
+:root[data-bereich="dok"] .dok-tab[aria-selected="true"]::after, :root[data-bereich="bibliothek"] .app-kopf .haus-knopf::after { right: calc(-1 * var(--tab-r)); background: radial-gradient(circle at 100% 0, transparent calc(var(--tab-r) - .5px), var(--blatt) var(--tab-r)); }
+.dok-tab-neu { align-self: center; margin: 4px 10px 0; border-color: var(--kopf-trenner); color: var(--kopf-text); }
+.dok-tab-neu:hover { color: var(--fueller); }
+.app-kopf .menue-wrap { align-self: center !important; margin: 0 12px 0 auto; }
+.app-kopf .menue-wrap .rund-knopf { border-color: transparent; background: transparent; }
+
+/* Startseite: zwei Spalten */
+.skripte-seite.bib { display: grid; grid-template-columns: 270px minmax(0, 1fr); max-width: none; margin: 0; padding: 0; min-height: calc(100vh - var(--kopf-h)); }
+.skripte-seite.bib[hidden] { display: none; }
+.bib-seite {
+  position: sticky; top: var(--kopf-h); align-self: start; height: calc(100vh - var(--kopf-h)); box-sizing: border-box; overflow-y: auto;
+  display: flex; flex-direction: column; padding: 38px 12px 18px; background: var(--seite-hg);
+}
+.bib-marke { padding: 0 8px 34px; font-family: var(--f-display); font-size: 42px; font-weight: 600; letter-spacing: -.02em; line-height: 1; color: var(--tinte); }
+.bib-nav { display: flex; flex-direction: column; gap: 4px; }
+.bib-nav button {
+  display: flex; align-items: center; gap: 16px; padding: 13px 16px; border: none; border-radius: 12px; background: none;
+  color: var(--tinte); font: inherit; font-size: 18px; font-weight: 500; text-align: left; cursor: pointer;
+}
+.bib-nav button[hidden] { display: none; }
+.bib-nav button:hover { background: color-mix(in srgb, var(--tinte) 7%, transparent); }
+.bib-nav button[aria-selected="true"] { background: var(--wahl-hg); }
+.bib-nav svg { width: 27px; height: 27px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.bib-nav button[aria-selected="true"] svg { color: var(--fueller); }
+.bib-nav button[aria-selected="true"] svg .flaeche { fill: color-mix(in srgb, var(--fueller) 55%, transparent); }
+.bib-trenner { height: 1px; margin: 12px 6px; background: var(--linie); }
+.bib-seite .speicher-info { margin: auto 0 0; padding: 18px 8px 0; font-size: 11.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.bib-haupt { min-width: 0; padding: 18px 40px 120px; }
+
+/* Oben rechts: Suche (klappt auf) und Einstellungen */
+.bib-werkzeuge { display: flex; justify-content: flex-end; align-items: center; gap: 12px; min-height: 52px; }
+.bib-symbol { width: 46px; height: 46px; display: grid; place-items: center; padding: 0; border: none; border-radius: 12px; background: none; color: var(--tinte); cursor: pointer; }
+.bib-symbol:hover, .bib-symbol[aria-expanded="true"] { background: color-mix(in srgb, var(--tinte) 8%, transparent); }
+.bib-symbol svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.bib .bib-suche { display: none; flex: 0 1 360px; }
+.bib.suche-offen .bib-suche { display: flex; }
+
+/* Titel mit "Neu" und Sortierung, darunter eine Linie */
+.bib .skripte-kopf { align-items: flex-end; gap: 16px; margin: 6px 0 30px; padding-bottom: 24px; border-bottom: 1px solid var(--linie); }
+.bib-titel-wrap { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.bib-titel { margin: 0; font-family: var(--f-display); font-size: 56px; font-weight: 800; letter-spacing: -.02em; line-height: 1.05; color: var(--tinte); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bib .pfad { font-size: 15px; font-weight: 700; }
+.bib .pfad[hidden] { display: none; }
+.bib .skripte-aktionen { align-items: center; gap: 14px; }
+.btn-neu {
+  display: flex; align-items: center; gap: 8px; height: 50px; padding: 0 18px 0 20px; border: none; border-radius: 999px;
+  background: #1a8cff; color: #fff; font: inherit; font-size: 19px; font-weight: 700; cursor: pointer; box-shadow: 0 3px 10px rgba(26, 140, 255, .32);
+}
+.btn-neu:hover { background: #3d9eff; }
+.btn-neu svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.btn-neu .pfeil { width: 18px; height: 18px; margin-left: 4px; }
+.bib .sortierung select {
+  -webkit-appearance: none; appearance: none; height: 50px; padding: 0 44px 0 22px; border: 1px solid var(--linie); border-radius: 999px;
+  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 10l5 5 5-5' fill='none' stroke='%23999' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 16px center / 18px;
+  color: var(--tinte); font: inherit; font-size: 18px; font-weight: 600; cursor: pointer; box-shadow: none;
+}
+.bib .sortierung select option { background: var(--blatt); color: var(--tinte); }
+.neu-menue { min-width: 240px; }
+
+/* Cover statt Karten: wie Bücher in einem Regal, unten bündig, Name mit Pfeil (Menü) und Datum darunter */
+.bib-raster { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 40px 22px; }
+.bib .karte { display: flex; flex-direction: column; align-items: center; min-width: 0; background: none; border: none; border-radius: 0; box-shadow: none !important; transform: none !important; }
+.cover-platz { width: 100%; height: 268px; display: flex; align-items: flex-end; justify-content: center; }
+.cover-huelle { position: relative; display: block; border-radius: 12px; }
+.bib .cover-huelle .karte-link { display: block; padding: 0; color: inherit; text-decoration: none; }
+.bib .cover-huelle .vorschau { border: none; transition: transform .18s ease, box-shadow .18s ease; box-shadow: 0 2px 4px rgba(0, 0, 0, .3), 0 12px 24px rgba(0, 0, 0, .26); }
+.cover-huelle.skript .vorschau { width: 186px; border-radius: 3px 12px 12px 3px; }
+.cover-huelle.notizbuch .vorschau { width: 180px; border-radius: 4px 14px 14px 4px; border-left: 9px solid var(--farbe); }
+.cover-huelle.brett { margin-bottom: 14px; }
+.cover-huelle.brett .vorschau { width: 214px; box-sizing: border-box; border-radius: 9px; border: 7px solid #cdd1d8; }
+.cover-huelle.brett::after { content: ""; position: absolute; left: 12%; right: 12%; bottom: -13px; height: 13px; border-radius: 0 0 14px 14px; background: linear-gradient(#e6e8ec, #b9bec6); box-shadow: 0 4px 8px rgba(0, 0, 0, .3); }
+.cover-huelle.ordner .ordner-symbol { display: block; width: 176px; height: 176px; margin-bottom: -14px; filter: drop-shadow(0 8px 14px rgba(0, 0, 0, .3)); }
+.bib .karte:hover .vorschau { transform: translateY(-4px); box-shadow: 0 4px 8px rgba(0, 0, 0, .32), 0 18px 32px rgba(0, 0, 0, .3); }
+.bib .karte:hover .ordner-symbol { transform: translateY(-3px); transition: transform .18s ease; }
+.bib .karte.ziel .cover-huelle { outline: 3px solid var(--fueller); outline-offset: 8px; }
+.bib .karte.wird-gezogen { opacity: .45; }
+/* Stern oben rechts auf dem Cover */
+.bib .karte-stern {
+  position: absolute; top: 9px; right: 10px; width: 36px; height: 36px; min-width: 0; min-height: 0; display: grid; place-items: center; padding: 0;
+  border: none; border-radius: 50%; background: none; box-shadow: none; color: inherit; z-index: 2; cursor: pointer;
+}
+.bib .karte-stern svg { width: 27px; height: 27px; fill: rgba(255, 255, 255, .55); stroke: rgba(70, 70, 70, .75); stroke-width: 1.4; stroke-linejoin: round; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .25)); }
+.bib .karte-stern:hover svg { fill: rgba(255, 255, 255, .85); }
+.bib .karte-stern[aria-pressed="true"] svg { fill: #ffc83d; stroke: #b98700; }
+.cover-huelle.brett .karte-stern { top: 4px; right: 4px; }
+.karte-unten { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 100%; margin-top: 16px; text-align: center; }
+.karte-titel {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; max-width: 100%; padding: 3px 8px; border: none; border-radius: 9px;
+  background: none; color: var(--tinte); font: inherit; font-size: 18px; font-weight: 600; line-height: 1.3; cursor: pointer;
+}
+.karte-titel:hover { background: color-mix(in srgb, var(--tinte) 8%, transparent); }
+.karte-titel .karte-name { padding: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; }
+.karte-titel svg { width: 19px; height: 19px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.karte-datum { font-size: 14.5px; color: var(--grau); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bib .leer { margin-top: 0; }
+
+/* Schmal (halbes Fenster, Tablet hochkant, Handy): die Leiste wird zur Reihe oben, Cover kleiner */
+@media (max-width: 900px) {
+  .skripte-seite.bib { grid-template-columns: minmax(0, 1fr); }
+  .bib-seite { position: static; height: auto; padding: 10px 12px; flex-direction: row; overflow-x: auto; scrollbar-width: none; }
+  .bib-marke, .bib-seite .speicher-info, .bib-trenner { display: none; }
+  .bib-nav { flex-direction: row; gap: 4px; }
+  .bib-nav button { padding: 9px 12px; font-size: 15px; gap: 8px; white-space: nowrap; }
+  .bib-nav svg { width: 22px; height: 22px; }
+  .bib-haupt { padding: 8px 18px 100px; }
+  .bib-titel { font-size: 38px; }
+  .bib-raster { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 30px 14px; }
+  .cover-platz { height: 210px; }
+  .cover-huelle.skript .vorschau, .cover-huelle.notizbuch .vorschau { width: 140px; }
+  .cover-huelle.brett .vorschau { width: 160px; }
+  .cover-huelle.ordner .ordner-symbol { width: 136px; height: 136px; }
+  .dok-tab { min-width: 100px; }
+  .btn-neu, .bib .sortierung select { height: 44px; font-size: 16px; }
+}
+
+/* ================= Tabs: höchstens 5 oben, der Rest im Dropdown "+n" (dokument.js sichtbareTabs, tabsMenue) ================= */
+.dok-tab-mehr {
+  align-self: center; flex: none; display: flex; align-items: center; gap: 3px; height: 34px; margin: 4px 0 0 8px; padding: 0 8px 0 12px;
+  border: 1px solid var(--kopf-trenner); border-radius: 999px; background: color-mix(in srgb, var(--tinte) 6%, transparent);
+  color: var(--tinte); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; white-space: nowrap;
+}
+.dok-tab-mehr:hover { background: color-mix(in srgb, var(--tinte) 12%, transparent); }
+.dok-tab-mehr svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.kontext.tab-wahl { min-width: 280px; max-width: min(420px, calc(100vw - 16px)); }
+.tab-wahl-zeile { display: flex; align-items: center; gap: 2px; }
+.tab-wahl-zeile > button[data-tab-wahl] {
+  flex: 1; min-width: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 9px 12px; border: none; border-radius: 8px;
+  background: none; color: var(--tinte); font: inherit; font-size: 14px; text-align: left; cursor: pointer;
+}
+.tab-wahl-zeile > button[data-tab-wahl]:hover { background: var(--fueller-hell); }
+.tab-wahl-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.tab-wahl-art { flex: none; font-size: 12px; color: var(--grau); }
+.tab-wahl-zu { flex: none; width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border: none; border-radius: 8px; background: none; color: var(--grau); font: inherit; font-size: 18px; cursor: pointer; }
+.tab-wahl-zu:hover { background: var(--rot-hell); color: var(--rotstift); }
+
+/* ================= Tab-Band: alle offenen Dokumente, waagrecht scrollbar, etwa 5 auf einmal (dokument.js zeichneTabs) ================= */
+:root[data-bereich] .dok-tabs { overflow: visible; padding-left: 0; }
+.tab-band {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: stretch; padding: 0 12px; overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none; overscroll-behavior-x: contain; touch-action: pan-x;
+  position: relative; scroll-snap-type: x mandatory; scroll-padding-inline: 12px;
+}
+.tab-band .dok-tab { scroll-snap-align: start; }
+.tab-band::-webkit-scrollbar { display: none; }
+.tab-band.voll .dok-tab { flex: 0 0 var(--tab-b, 220px); max-width: none; min-width: 0; }
+.tab-pfeil {
+  align-self: center; flex: none; width: 30px; height: 36px; margin-top: 4px; display: grid; place-items: center; padding: 0; border: none;
+  border-radius: 9px; background: none; color: var(--kopf-text); cursor: pointer;
+}
+.tab-pfeil:hover { background: color-mix(in srgb, var(--tinte) 10%, transparent); color: var(--tinte); }
+.tab-pfeil[hidden], .dok-tab-mehr[hidden] { display: none; }
+.dok-tab-mehr { min-width: 58px; justify-content: center; }
+.tab-pfeil svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }

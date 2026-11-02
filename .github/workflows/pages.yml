@@ -1,0 +1,45 @@
+# Veröffentlicht die Web-App fürs iPad auf GitHub Pages: https://certain05012.github.io/Lernheft/
+# Gebaut mit Programm/Quellcode/ipad/baue.js web (Oberfläche + Ablage + Abgleich mit OneDrive/Dropbox + Service Worker).
+# In Safari öffnen, Teilen › "Zum Home-Bildschirm", Anleitung: docs/iPad-Web-App.md
+name: Web-App veröffentlichen
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Programm/Quellcode/webseite/**'
+      - 'Programm/Quellcode/ipad/web/**'
+      - 'Programm/Quellcode/ipad/baue.js'
+      - 'Programm/Quellcode/ipad/package*.json'
+      - 'Programm/Quellcode/app/ablage.js'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Web-App bauen
+        working-directory: Programm/Quellcode/ipad
+        run: |
+          npm ci --ignore-scripts
+          npm test
+          node baue.js web
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: Programm/Quellcode/ipad/web-app
+      - id: deployment
+        uses: actions/deploy-pages@v4

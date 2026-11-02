@@ -1,0 +1,28 @@
+{
+  "name": "lernheft-ipad",
+  "productName": "Lernheft",
+  "version": "3.8.0",
+  "description": "Lernheft als iPad-App (Capacitor): dieselbe Oberfläche wie am PC, Abgleich mit dem Lernheft-Ordner in OneDrive oder Dropbox",
+  "private": true,
+  "scripts": {
+    "baue": "node baue.js",
+    "ios": "node baue.js && npx cap sync ios",
+    "xcode": "node baue.js && npx cap sync ios && npx cap open ios",
+    "entwicklung": "node baue.js && node entwicklung.js",
+    "test": "node test/ablage-speicher.js && node test/abgleich.js && node test/abgleich.js --dropbox && node test/anmeldung.js && node test/sicherung.js"
+  },
+  "dependencies": {
+    "@capacitor/app": "8.1.2",
+    "@capacitor/browser": "8.0.5",
+    "@capacitor/core": "8.5.3",
+    "@capacitor/ios": "8.5.3",
+    "@capacitor/share": "8.0.3",
+    "@capacitor/filesystem": "8.1.4"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3",
+    "fflate": "0.8.3",
+    "pdf-lib": "1.17.1",
+    "pdfjs-dist": "3.11.174"
+  }
+}

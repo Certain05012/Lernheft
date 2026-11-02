@@ -1,0 +1,30 @@
+# Erzeugt beim Bauen, nicht in die Versionsverwaltung (node_modules allein ist ~600 MB, GitHub lehnt Dateien über 100 MB ab)
+node_modules/
+Programm/Quellcode/app/dist/
+Programm/Quellcode/app/seite/
+Programm/Quellcode/app/build.log
+# iPad-App: von ipad/baue.js erzeugt
+Programm/Quellcode/ipad/www/
+Programm/Quellcode/ipad/web-app/
+Programm/App/
+Lernheft-App.zip
+
+# Meine Sicherung vor dem Umbau (Kopie von Quellcode und Daten)
+Sicherung-vor-Umbau-*/
+
+# Temporäre Dateien
+*.tmp
+
+# Persönliche Daten gehören nie ins Repository (Notizen, PDFs, Einstellungen, Papierkorb)
+/Bibliothek/
+/Daten/
+/Lernheft.exe
+*.lernheft
+Sicherung-*/
+
+# Fertige Pakete (Release-Zip, Anleitung)
+/Veroeffentlichen/
+*.zip
+
+# Lokale Einstellungen von Claude Code
+.claude/

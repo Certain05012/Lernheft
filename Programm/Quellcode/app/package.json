@@ -1,0 +1,47 @@
+{
+  "name": "lernheft",
+  "productName": "Lernheft",
+  "version": "3.8.0",
+  "description": "Lernheft: Skripte, Notizbücher und Whiteboards mit Handschrift, komplett lokal im Lernheft-Ordner",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "icon": "electron build/erzeuge-icon.js",
+    "kopiere-seite": "node -e \"const fs=require('fs');fs.rmSync('seite',{recursive:true,force:true});fs.cpSync('../webseite','seite',{recursive:true})\"",
+    "build": "npm run kopiere-seite && electron-builder --win --dir",
+    "verteilen": "npm run build && node build/verteilen.js",
+    "paket": "node build/paket.js"
+  },
+  "build": {
+    "appId": "ch.lernheft.app",
+    "productName": "Lernheft",
+    "files": [
+      "main.js",
+      "preload.js",
+      "server.js",
+      "ablage.js",
+      "icon.ico",
+      "seite/**/*"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "afterPack": "build/nach-packen.js",
+    "win": {
+      "target": "dir",
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "rcedit": "^4.0.1"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^3.11.174"
+  }
+}
