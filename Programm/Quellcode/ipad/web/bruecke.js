@@ -32,8 +32,10 @@
   // Die Clouds, mit denen die App abgleichen kann. modus in der Einrichtung = Schlüssel hier (oder 'lokal').
   const WOLKEN = {
     onedrive: { name: 'OneDrive', firma: 'Microsoft', idName: 'Anwendungs-ID (Client-ID)', id: () => K.clientId || '', pcOrdner: 'OneDrive\\Lernheft' },
-    dropbox: { name: 'Dropbox', firma: 'Dropbox', idName: 'App-Schlüssel (App key)', id: () => K.dropboxAppKey || '', pcOrdner: 'Dropbox\\Lernheft' }
+    dropbox: { name: 'Dropbox', firma: 'Dropbox', idName: 'App-Schlüssel (App key)', id: () => K.dropboxAppKey || '', pcOrdner: 'Dropbox\\Apps\\<Name deiner App>\\Lernheft (App-Ordner) bzw. Dropbox\\Lernheft' }
   };
+  // Version (baue.js setzt LHVersion ein), damit man auf dem iPad sieht, welche gerade läuft
+  const versionText = () => `Lernheft ${window.LHVersion || ''} (${NATIV ? 'iPad-App' : WEBAPP ? 'Web-App' : 'Browser'})`;
   const istHomeBildschirm = () => !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
   const istWolke = m => Object.prototype.hasOwnProperty.call(WOLKEN, m || '');
   const klon = v => (v === undefined ? v : typeof structuredClone === 'function' ? structuredClone(v) : JSON.parse(JSON.stringify(v)));
@@ -355,7 +357,8 @@
   function zeigeStartFehler(e) {
     zeigeHuelle(`<h1>Das Lernheft konnte nicht starten</h1><p class="fehler">${esc(e && e.message)}</p>
       <p class="klein">Deine Daten in der Cloud sind davon nicht betroffen.</p>
-      <div class="knoepfe"><button type="button" class="btn-primaer" onclick="location.reload()">Neu laden</button></div>`);
+      <div class="knoepfe"><button type="button" class="btn-primaer" data-wahl="neu">Neu laden</button></div>`);
+    huelle.querySelector('[data-wahl="neu"]').addEventListener('click', () => location.reload());
   }
 
   /* ---------- Anzeige des Abgleichs (Menü) ---------- */
@@ -382,6 +385,7 @@
       const wahl = await U.oeffneDialog(`<div class="dialog-form">
           <h2>Speicher</h2>
           <p class="dialog-klein">Die Bibliothek liegt nur auf diesem iPad, ohne Abgleich. Verbinde sie mit OneDrive oder Dropbox, dann hast du sie auch am PC (deine Notizen hier bleiben erhalten und kommen dazu).</p>
+          <p class="dialog-klein">${esc(versionText())}</p>
           <div class="ort-aktionen"><button type="button" class="btn-primaer" data-wahl="verbinden">Mit OneDrive oder Dropbox verbinden …</button>
           <button type="button" class="btn-leise" data-wahl="sicherung">Sicherung (iCloud) …</button>
           <button type="button" class="btn-leise" data-wahl="protokoll">Fehlerliste</button></div>
@@ -400,6 +404,7 @@
         <dl class="sync-liste">
           <dt>Konto</dt><dd>${esc(ATTRAPPE ? 'Test-' + W().name + ' (' + ATTRAPPE + ')' : konto || 'angemeldet')}</dd>
           <dt>Ordner</dt><dd>${esc(W().name)} › ${esc(einrichtung.ordner)}</dd>
+          <dt>Version</dt><dd>${esc(versionText())}</dd>
           <dt>Abgleich</dt><dd>${esc(statusText(s.zustand))}${s.text && s.zustand !== 'bereit' ? ' – ' + esc(s.text) : ''}. Zuletzt: ${esc(zeit)}.</dd>
           <dt>Offen</dt><dd>${offen.hoch.length} hochzuladen, ${offen.ops.length} verschieben/löschen, ${offen.laden.length} PDFs zu laden</dd>
         </dl>
@@ -622,6 +627,8 @@
       leeren: async () => { try { return (await start).papierkorb.leeren(); } catch (e) { return { fehler: e.message }; } }
     },
     speichereUnter: dateien => teile(dateien),
+    // Alles Wartende auf das Gerät schreiben (z. B. vor dem Neuladen für eine neue Version, pwa.js)
+    sichereAlles: () => sichereAlles(),
     wolke: {
       // Name für die Anzeige (Knopf im Menü): die gewählte Cloud, ohne Cloud "Speicher"
       get name() { return einrichtung && !istWolke(einrichtung.modus) ? 'Speicher' : W().name; },

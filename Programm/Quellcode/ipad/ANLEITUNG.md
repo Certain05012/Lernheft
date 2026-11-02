@@ -2,14 +2,14 @@
 
 Die iPad-App ist dieselbe Oberfläche wie am PC, eingepackt als echte App (Capacitor). Sie arbeitet mit einer eigenen Kopie
 der Bibliothek auf dem iPad, auch ohne Netz, und gleicht sie mit dem Lernheft-Ordner in deinem **OneDrive** oder deiner
-**Dropbox** ab (`OneDrive\Lernheft` bzw. `Dropbox\Lernheft`, derselbe Ordner wie der Speicherort am PC). Haben iPad und PC
+**Dropbox** ab (`OneDrive\Lernheft` bzw. `Dropbox\Apps\<Name der App>\Lernheft`, derselbe Ordner wie der Speicherort am PC). Haben iPad und PC
 dieselbe Seite geändert, werden beide Fassungen zusammengeführt. Welche Cloud, wählst du beim ersten Start.
 
 Du brauchst: dein iPad mit Kabel, einen Mac mit Xcode, eine Apple-ID und dein Microsoft-Konto (für OneDrive) **oder**
 dein Dropbox-Konto. Du machst nur den Schritt für die Cloud, die du nutzt: **1a** (OneDrive) oder **1b** (Dropbox).
 
 Am PC muss der Speicherort des Lernhefts im selben Cloud-Ordner liegen: im Lernheft unter Menü › Speicherort z. B.
-`C:\Users\<Name>\Dropbox\Lernheft` wählen (der Dropbox-Client für Windows gleicht ihn dann ab).
+`C:\Users\<Name>\Dropbox\Apps\<Name der App>\Lernheft` wählen (der Dropbox-Client für Windows gleicht ihn dann ab).
 
 ---
 
@@ -50,7 +50,7 @@ Damit sich die App mit deinem Dropbox-Konto anmelden darf, braucht sie einen App
 1. Öffne <https://www.dropbox.com/developers/apps> und melde dich mit **deinem Dropbox-Konto** an.
 2. **Create app**:
    - *Choose an API*: **Scoped access**
-   - *Choose the type of access*: **Full Dropbox** (damit die App den Ordner `Lernheft` sieht, den auch der PC benutzt)
+   - *Choose the type of access*: **App folder** (die App sieht nur ihren eigenen Ordner `Dropbox\Apps\<Name der App>`, sonst nichts in deiner Dropbox; am PC liegt der Speicherort dann in `Dropbox\Apps\<Name der App>\Lernheft`, Reihenfolge siehe [docs/iPad-Web-App.md](../../../docs/iPad-Web-App.md#2-reihenfolge-damit-nichts-durcheinanderkommt))
    - *Name your app*: z. B. `Lernheft-deinname` (der Name muss bei Dropbox einmalig sein)
    - **Create app**
 3. Reiter **Permissions**: `files.metadata.read`, `files.content.read` und `files.content.write` anhaken › unten

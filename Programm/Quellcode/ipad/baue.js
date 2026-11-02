@@ -4,12 +4,15 @@
 //   node baue.js        danach: npx cap sync ios (oder npm run ios)
 //   node baue.js web    Web-App für Safari (GitHub Pages) im Ordner web-app: dieselbe Brücke und derselbe Abgleich, ohne
 //                       Capacitor, dazu Service Worker (läuft offline) und Web-Manifest (Zum Home-Bildschirm)
+//   node baue.js web test   dasselbe, die Sicherheitsregel erlaubt zusätzlich die Test-Cloud auf 127.0.0.1:47831
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
 const HIER = __dirname;
 const WEB = process.argv.includes('web');
+const TEST = process.argv.includes('test');
+const VERSION = JSON.parse(fs.readFileSync(path.join(HIER, 'package.json'), 'utf8')).version;
 const WWW = path.join(HIER, WEB ? 'web-app' : 'www');
 const SEITE = path.join(HIER, '..', 'webseite');
 const nm = (...t) => path.join(HIER, 'node_modules', ...t);
@@ -52,7 +55,8 @@ const ablage = fs.readFileSync(path.join(HIER, '..', 'app', 'ablage.js'), 'utf8'
 fs.writeFileSync(path.join(IPAD, 'ablage.js'),
   '// Erzeugt von ipad/baue.js aus app/ablage.js. Nicht von Hand ändern.\n' +
   'window.LHAblageFabrik = function (require, Buffer) {\n  const module = { exports: {} };\n' + ablage + '\n  return module.exports;\n};\n');
-fs.copyFileSync(path.join(HIER, 'web', 'bruecke.js'), path.join(IPAD, 'bruecke.js'));
+// Versionsnummer für die Anzeige (Menü › Dropbox bzw. OneDrive)
+fs.writeFileSync(path.join(IPAD, 'bruecke.js'), `window.LHVersion = ${JSON.stringify(VERSION)};\n` + fs.readFileSync(path.join(HIER, 'web', 'bruecke.js'), 'utf8'));
 
 // index.html: die iPad-Teile vor daten.js laden (daten.js sucht beim Laden nach window.lernheftDesktop)
 const skripte = [
@@ -68,6 +72,25 @@ if (!index.includes('<script src="daten.js"></script>')) throw new Error('index.
 index = index.replace('<script src="daten.js"></script>', `<!-- ${WEB ? 'Web-App' : 'iPad-App'} (ipad/baue.js) -->\n${skripte}\n<script src="daten.js"></script>`);
 // iPad-App: kein Service Worker, kein Web-Manifest
 if (!WEB) index = index.replace(/<link rel="manifest"[^>]*>\r?\n?/, '');
+// Web-App: Sicherheitsregel (Content-Security-Policy). Skripte nur aus der App selbst (keine fremden, keine eingebetteten,
+// kein eval), Verbindungen nur zur App, zu Dropbox und zu Microsoft. Selbst wenn fremder Text (z. B. aus einem PDF oder
+// einer Notiz) als HTML in die Seite geriete, könnte er nichts ausführen und nichts an fremde Server schicken. Die
+// Schriften kommen von Google (nur CSS und Schriftdateien, kein Skript).
+if (WEB) {
+  const verbindungen = ["'self'", 'https://api.dropboxapi.com', 'https://content.dropboxapi.com', 'https://login.microsoftonline.com',
+    'https://graph.microsoft.com', 'https://*.sharepoint.com', 'https://*.1drv.com', 'https://*.livefilestore.com', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'];
+  if (TEST) verbindungen.push('http://127.0.0.1:47831');
+  const csp = [
+    "default-src 'self'", "script-src 'self'", "worker-src 'self' blob:", "connect-src " + verbindungen.join(' '),
+    "img-src 'self' data: blob:", "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", "font-src 'self' data: https://fonts.gstatic.com",
+    "object-src 'none'", "base-uri 'self'", "form-action 'none'", "frame-src 'none'", "manifest-src 'self'"
+  ].join('; ');
+  index = index.replace('<meta charset="utf-8">', `<meta charset="utf-8">\n<meta http-equiv="Content-Security-Policy" content="${csp}">`);
+  if (!index.includes('Content-Security-Policy')) throw new Error('index.html: <meta charset="utf-8"> nicht gefunden');
+  // Die Schriften ohne onload-Handler laden (eingebettete Handler verbietet die Regel); der Service Worker hält sie bereit
+  index = index.replace(/<link rel="stylesheet" media="print" onload="this\.media='all'" href=/, '<link rel="stylesheet" href=');
+  if (/\son[a-z]+="/i.test(index)) throw new Error('index.html: eingebetteter Handler, den die Sicherheitsregel blockieren würde');
+}
 fs.writeFileSync(indexPfad, index);
 
 // Web-App: Service Worker mit der Liste aller Dateien. Der Name seines Speichers enthält eine Prüfsumme über alle
@@ -79,9 +102,8 @@ alle.sort();
 if (WEB) {
   const h = crypto.createHash('sha256');
   for (const d of alle) { h.update(d); h.update(fs.readFileSync(path.join(WWW, d))); }
-  const version = JSON.parse(fs.readFileSync(path.join(HIER, 'package.json'), 'utf8')).version;
   const sw = fs.readFileSync(path.join(HIER, 'web', 'sw.js'), 'utf8')
-    .replace("'__VERSION__'", JSON.stringify(`lernheft-${version}-${h.digest('hex').slice(0, 12)}`))
+    .replace("'__VERSION__'", JSON.stringify(`lernheft-${VERSION}-${h.digest('hex').slice(0, 12)}`))
     .replace("['__DATEIEN__']", JSON.stringify(['./', ...alle]));
   fs.writeFileSync(path.join(WWW, 'sw.js'), sw);
   // GitHub Pages: ohne Jekyll ausliefern, wie es ist

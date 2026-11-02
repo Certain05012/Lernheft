@@ -13,7 +13,7 @@ Wie die App überhaupt aufs iPad kommt (Mac mit Xcode, einmalig), steht in
 
 | Was | Wo | Wozu |
 | --- | --- | --- |
-| Lernheft-Ordner | `Dropbox\Lernheft` (oder `OneDrive\Lernheft`) | PC und iPad arbeiten mit denselben Skripten und Notizbüchern |
+| Lernheft-Ordner | `Dropbox\Apps\<Name der App>\Lernheft` (oder `OneDrive\Lernheft`) | PC und iPad arbeiten mit denselben Skripten und Notizbüchern |
 | Sicherung | iCloud Drive › `Lernheft-Sicherung` | Kopie von allem samt PDFs und eine Datei je Tag, falls etwas schiefgeht |
 
 Du wählst **eine** Cloud für den Abgleich (Dropbox **oder** OneDrive). Die iCloud-Sicherung kommt dazu, sie geht auch
@@ -24,7 +24,7 @@ ganz ohne Abgleich.
 ## Schritt 1: Am PC den Lernheft-Ordner in die Cloud legen
 
 1. Dropbox (bzw. OneDrive) für Windows installieren und anmelden.
-2. Im Lernheft am PC: **Menü (⋯) › Speicherort › Speicherort ändern …** und z. B. `C:\Users\<Name>\Dropbox\Lernheft`
+2. Im Lernheft am PC: **Menü (⋯) › Speicherort › Speicherort ändern …** und z. B. `C:\Users\<Name>\Dropbox\Apps\<Name der App>\Lernheft`
    wählen. Ist der Ordner neu, kopiert das Lernheft alles hinein und startet neu.
 3. Warten, bis der Dropbox-Client alles hochgeladen hat (grüne Haken im Explorer).
 
@@ -33,7 +33,7 @@ ganz ohne Abgleich.
 Damit sich die App anmelden darf, braucht sie eine Kennung. Beide sind kostenlos und kein Geheimnis:
 
 - **Dropbox**: App-Schlüssel (*App key*). Anleitung: [ANLEITUNG.md, Schritt 1b](../Programm/Quellcode/ipad/ANLEITUNG.md#schritt-1b-app-bei-dropbox-eintragen-nur-für-dropbox-einmalig-etwa-5-minuten-am-pc)
-  (App anlegen mit *Scoped access* und *Full Dropbox*, drei Berechtigungen anhaken, Redirect URI `ch.lernheft.app://auth`).
+  (App anlegen mit *Scoped access* und *App folder*, damit sie nur ihren eigenen Ordner sieht, drei Berechtigungen anhaken, Redirect URI `ch.lernheft.app://auth`).
 - **OneDrive**: Anwendungs-ID. Anleitung: [ANLEITUNG.md, Schritt 1a](../Programm/Quellcode/ipad/ANLEITUNG.md#schritt-1a-app-bei-microsoft-eintragen-nur-für-onedrive-einmalig-etwa-5-minuten-am-pc).
 
 Am einfachsten trägst du sie vor dem Bauen in `Programm/Quellcode/ipad/web/konfig.js` ein (`dropboxAppKey` bzw.
@@ -46,7 +46,7 @@ Beim ersten Start fragt die App, womit sie abgleichen soll.
 ![Erster Start: OneDrive, Dropbox oder ohne Cloud](bilder/ipad/1-start.png)
 
 Fehlt die Kennung noch, steht **Erweitert** offen. Trag dort den **App-Schlüssel** von Dropbox (bzw. die Anwendungs-ID
-von Microsoft) ein. **Ordner in der Cloud** bleibt `Lernheft`, wenn dein Ordner am PC `Dropbox\Lernheft` heisst.
+von Microsoft) ein. **Ordner in der Cloud** bleibt `Lernheft`, wenn dein Ordner am PC `Dropbox\Apps\<Name der App>\Lernheft` heisst (der App-Ordner ist für das Lernheft die Wurzel).
 
 ![Erweitert: Ordner und Kennungen](bilder/ipad/2-erweitert.png)
 
