@@ -25,7 +25,14 @@
         // Sicherheitslücke CVE-2024-4367 (pdf.js bis 4.1): eine bösartige PDF kann über die FontMatrix
         // einer Schrift JavaScript ausführen. Abhilfe ohne Versionswechsel: isEvalSupported: false.
         // Damit kein Aufruf es vergisst, bekommt jeder getDocument die Option erzwungen.
-        return Object.create(lib, { getDocument: { value: quelle => lib.getDocument(sichereOptionen(quelle)) } });
+        // Ein gemeinsamer Worker für alle PDFs: sonst startet jedes Dokument (auch das zweite beim Teilen) einen eigenen
+        // und lädt dafür das 1 MB grosse Skript neu (auf dem iPad einige hundert Millisekunden)
+        let gemeinsam = null;
+        const worker = () => {
+          if (!gemeinsam || gemeinsam.destroyed) { try { gemeinsam = new lib.PDFWorker(); } catch (e) { gemeinsam = null; } }
+          return gemeinsam;
+        };
+        return Object.create(lib, { getDocument: { value: quelle => { const o = sichereOptionen(quelle); if (!o.worker && worker()) o.worker = gemeinsam; return lib.getDocument(o); } } });
       }).catch(e => { pdfjsVersprechen = null; throw e; });
     }
     return pdfjsVersprechen;

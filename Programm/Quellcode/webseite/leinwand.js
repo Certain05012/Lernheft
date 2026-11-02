@@ -869,6 +869,7 @@
     let gesamtHoehe = 0;
     let aktion = null, lassoPunkte = null, radiererPunkt = null;
     let transformStand = '';             // zuletzt gesetzte CSS-Verschiebung von canvas
+    let bewegtZeit = 0;                  // wann sich die Ansicht zuletzt bewegt hat (Scrollen, Zoomen, Schwung)
     let spitzeRect = null;               // wo die Spitze des Strichs zuletzt gemalt wurde (Pixel von "spitze")
     let textEdit = null, textOffenSeit = 0, textHalten = 0, textFingerTipp = null;   // Text, der gerade geschrieben wird
     let geplant = false, penZeit = 0;
@@ -1063,6 +1064,10 @@
       else if (umschalt.bis > performance.now()) {
         // Gerade ins Vollbild oder wieder heraus: die Fenstergrösse kommt in mehreren Schritten, die Ansicht folgt
         if (umschalt.zurueck) setzeAnsichtIntern(umschalt.zurueck); else einpassen(true);
+      } else if (vorher && seiten.length && Math.abs(b - vorher) > vorher * 0.15) {
+        // Viel schmaler oder breiter auf einmal (zwei Dokumente nebeneinander, Teilung aufgehoben, iPad gedreht): die
+        // Seite wieder passend einpassen, die Stelle im Dokument bleibt. Auf dem Whiteboard nur die Mitte halten.
+        if (opt.unendlich) ansicht.x += (b - vorher) / 2; else einpassen(true);
       }
       frame();
     }
@@ -1524,7 +1529,7 @@
         const erstes = letzteAnsicht.s === 0;
         const nurQuer = !erstes && ansicht.y === letzteAnsicht.y && ansicht.s === letzteAnsicht.s;
         letzteAnsicht.x = ansicht.x; letzteAnsicht.y = ansicht.y; letzteAnsicht.s = ansicht.s;
-        if (!erstes) emit('bewegt');
+        if (!erstes) { bewegtZeit = performance.now(); emit('bewegt'); }
         aktualisiereSchieber(!erstes && !nurQuer);
       } else if (voll) aktualisiereSchieber(false);
       const a = wendeTransformAn();
@@ -1763,6 +1768,15 @@
       if (i !== aktuelleSeite) { aktuelleSeite = i; emit('seite', i); }
     }
     L.aktuelleSeite = () => aktuelleSeite;
+    // Wird gerade gescrollt, gezoomt oder schwingt die Fläche nach? Dann wartet z. B. das Rendern der PDF-Seiten,
+    // damit es dem Bild nicht die Zeit wegnimmt (dokument.js)
+    L.inBewegung = () => finger.size > 0 || !!geste || !!animBild || (aktion && aktion.art === 'schieben') || performance.now() - bewegtZeit < 180;
+    // Nur eine Seite neu malen (z. B. wenn ihr PDF-Bild fertig ist), nicht die ganze Fläche
+    L.planeSeite = nr => {
+      const s = seiten.find(x => x.nr === nr);
+      if (!s) { plane(); return; }
+      planeBereich({ x1: s.x - 8, y1: s.y - 8, x2: s.x + s.b + 8, y2: s.y + s.hh + 8 });
+    };
     /* ----- Auswahl ----- */
 
     function dokGrenzen(el, sid) {

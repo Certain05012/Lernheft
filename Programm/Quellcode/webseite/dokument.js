@@ -114,12 +114,18 @@ Daten.bereit.then(function () {
       return true;
     }
 
+    // pdf.js rendert auf demselben Thread, der auch das Scrollen zeichnet (bis zu 15 ms je Bild). Deshalb bekommt eine
+    // Seite, von der es noch gar kein Bild gibt, zuerst schnell ein grobes (VORAB, etwa ein Zehntel der Pixel), damit beim
+    // Scrollen nie eine leere Seite steht. Die scharfen Bilder warten, bis die Fläche ruhig ist (lw.inBewegung).
+    const VORAB = 0.6;
+    const warte = ms => new Promise(ok => setTimeout(ok, ms));
     function anfordern(s, massstab) {
       if (!sichtbar) return;
       const ziel = Math.min(massstab, maxMassstab(s));
-      const vorhanden = warteschlange.find(w => w.nr === s.nr);
-      if (vorhanden) { vorhanden.massstab = ziel; return; }
-      warteschlange.push({ nr: s.nr, massstab: ziel, s });
+      if (!cache.has(s.nr) && ziel > VORAB * 1.4 && !warteschlange.some(w => w.nr === s.nr && w.vorab)) warteschlange.push({ nr: s.nr, massstab: VORAB, s, vorab: true });
+      const vorhanden = warteschlange.find(w => w.nr === s.nr && !w.vorab);
+      if (vorhanden) vorhanden.massstab = ziel;
+      else warteschlange.push({ nr: s.nr, massstab: ziel, s });
       if (!rendertLaeuft) rendereNaechste();
     }
 
@@ -127,10 +133,13 @@ Daten.bereit.then(function () {
       const t = token;
       rendertLaeuft = true;
       while (warteschlange.length && t === token && pdf) {
-        // Die Seite, die gerade am nächsten liegt, zuerst
+        // Grobe Bilder zuerst, dann die Seite, die gerade am nächsten liegt
         const aktuelle = lw ? lw.aktuelleSeite() + 1 : 1;
-        warteschlange.sort((a, b) => Math.abs(a.nr - aktuelle) - Math.abs(b.nr - aktuelle));
+        warteschlange.sort((a, b) => ((b.vorab ? 1 : 0) - (a.vorab ? 1 : 0)) || Math.abs(a.nr - aktuelle) - Math.abs(b.nr - aktuelle));
+        if (!warteschlange[0].vorab && lw && lw.inBewegung && lw.inBewegung()) { await warte(90); continue; }
         const w = warteschlange.shift();
+        // Ein grobes Bild ist überflüssig, wenn inzwischen ein besseres da ist
+        if (w.vorab && cache.has(w.nr) && cache.get(w.nr).massstab >= w.massstab) continue;
         try {
           const seite = await pdf.getPage(w.nr);
           if (t !== token) break;
@@ -152,11 +161,12 @@ Daten.bereit.then(function () {
           if (window.createImageBitmap) {
             try { bild = await createImageBitmap(c); c.width = 0; } catch (e) { bild = c; }
           }
-          if (t !== token || !sichtbar) { gibFrei(bild); continue; }
+          if (t !== token || !sichtbar || (w.vorab && cache.has(w.nr) && cache.get(w.nr).massstab >= w.massstab)) { gibFrei(bild); continue; }
           gibFrei(cache.has(w.nr) ? cache.get(w.nr).canvas : null);
           cache.set(w.nr, { canvas: bild, massstab: w.massstab, modus });
           aufraeumen();
-          lw && lw.plane();
+          // Nur diese Seite neu malen, nicht die ganze Fläche
+          if (lw) { if (lw.planeSeite) lw.planeSeite(w.nr); else lw.plane(); }
         } catch (e) { /* abgebrochen oder kaputte Seite */ }
       }
       rendertLaeuft = false;
@@ -262,9 +272,10 @@ Daten.bereit.then(function () {
       lw.on('bewegt', () => {
         const n = lw.seiten().length;
         if (istBrett(it) || n < 1 || !sichtbar) return;
-        const z = q('seitenanzeige');
-        z.textContent = `${lw.aktuelleSeite() + 1} von ${n}`;
-        z.classList.add('da');
+        const z = q('seitenanzeige'), text = `${lw.aktuelleSeite() + 1} von ${n}`;
+        // Nur ändern, was sich ändert: das läuft bei jedem Bild des Scrollens
+        if (z.textContent !== text) z.textContent = text;
+        if (!z.classList.contains('da')) z.classList.add('da');
         clearTimeout(anzeigeTimer);
         anzeigeTimer = setTimeout(() => z.classList.remove('da'), 1300);
       });
@@ -1025,6 +1036,55 @@ Daten.bereit.then(function () {
     ablage.hidden = true;
     setzeSeite(id, seiteBei(e.clientX));
   });
+
+  // Mit dem Finger oder Stift (iPad): einen Tab nach unten aus der Leiste ziehen, auf der linken oder rechten Hälfte
+  // loslassen. Waagrecht wischen scrollt die Tabs wie bisher (die Tabs haben touch-action: pan-x, senkrechte Züge
+  // bleiben deshalb hier). Ein Geist mit dem Namen folgt dem Finger, die Hälfte, in die er fällt, leuchtet auf.
+  let fingerZug = null, klickNachZug = false;
+  const imBereich = (x, y) => { const r = bereiche.getBoundingClientRect(); return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; };
+  tabLeiste.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' || fingerZug) return;
+    const t = e.target.closest('[data-tab]');
+    if (!t || e.target.closest('[data-zu]')) return;
+    fingerZug = { id: t.dataset.tab, pid: e.pointerId, x: e.clientX, y: e.clientY, aktiv: false, tab: t, geist: null };
+  });
+  tabLeiste.addEventListener('pointermove', e => {
+    const z = fingerZug;
+    if (!z || e.pointerId !== z.pid) return;
+    const dx = e.clientX - z.x, dy = e.clientY - z.y;
+    if (!z.aktiv) {
+      if (Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy)) { fingerZug = null; return; }   // waagrecht: Tabs scrollen
+      if (dy < 16 || dy < Math.abs(dx) * 1.2) return;
+      z.aktiv = true;
+      try { z.tab.setPointerCapture(e.pointerId); } catch (err) { /* geht auch ohne */ }
+      z.geist = document.createElement('div');
+      z.geist.className = 'dok-zieh-geist';
+      z.geist.textContent = name(z.id);
+      document.body.appendChild(z.geist);
+      ansicht.classList.add('zieht-tab');
+    }
+    e.preventDefault();
+    z.geist.style.transform = `translate(${Math.round(e.clientX)}px, ${Math.round(e.clientY)}px)`;
+    const drin = imBereich(e.clientX, e.clientY);
+    ablage.hidden = !drin;
+    if (drin) ablage.dataset.seite = seiteBei(e.clientX);
+  });
+  const fingerZugEnde = e => {
+    const z = fingerZug;
+    if (!z || e.pointerId !== z.pid) return;
+    fingerZug = null;
+    if (!z.aktiv) return;
+    z.geist.remove();
+    ablage.hidden = true;
+    ansicht.classList.remove('zieht-tab');
+    klickNachZug = true;
+    setTimeout(() => { klickNachZug = false; }, 350);
+    if (e.type === 'pointerup' && imBereich(e.clientX, e.clientY)) setzeSeite(z.id, seiteBei(e.clientX));
+  };
+  tabLeiste.addEventListener('pointerup', fingerZugEnde);
+  tabLeiste.addEventListener('pointercancel', fingerZugEnde);
+  // Nach dem Ziehen soll der Tab nicht auch noch als angetippt gelten
+  tabLeiste.addEventListener('click', e => { if (klickNachZug) { e.preventDefault(); e.stopPropagation(); } }, true);
 
   /* ---------- Trennlinie zwischen zwei Dokumenten ----------
      Gemeinsam für alle Varianten: ein Update je Bild (requestAnimationFrame, nicht je Zeiger-Ereignis), Zeiger am Griff festgehalten

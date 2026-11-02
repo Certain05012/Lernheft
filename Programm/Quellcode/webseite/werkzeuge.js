@@ -10,14 +10,14 @@
   // Drei Grössen je Werkzeug in Millimetern (Stift, Marker: Strichbreite; Radierer: Durchmesser), jede lässt sich mit
   // dem Regler einstellen und bleibt gespeichert
   // Text: Schriftgrösse in Punkt
-  const PRESETS = { stift: { klein: 0.4, mittel: 0.8, gross: 1.6 }, marker: { klein: 0.5, mittel: 0.9, gross: 1.6 }, radierer: { klein: 3, mittel: 7, gross: 15 }, laser: { klein: 2.5, mittel: 4, gross: 7 }, text: { klein: 12, mittel: 18, gross: 28 } };
+  const PRESETS = { stift: { klein: 0.25, mittel: 0.45, gross: 0.8 }, marker: { klein: 0.5, mittel: 0.9, gross: 1.6 }, radierer: { klein: 3, mittel: 7, gross: 15 }, laser: { klein: 2.5, mittel: 4, gross: 7 }, text: { klein: 12, mittel: 18, gross: 28 } };
   // Frühere Version: dieselben Grössen in Einheiten der Schreibfläche (px bei 100 %), der Radierer als Radius
   const PRESETS_PX = { stift: { klein: 1.5, mittel: 3, gross: 6 }, marker: { klein: 2, mittel: 3.5, gross: 6 }, radierer: { klein: 6, mittel: 14, gross: 28 }, laser: { klein: 9, mittel: 15, gross: 26 } };
   const PRESET_NAMEN = { klein: 'Klein', mittel: 'Mittel', gross: 'Gross' };
   // k: Feld der aktuellen Grösse in Einheiten der Schreibfläche (abgeleitet, wird nicht gespeichert); der Regler reicht
   // von min bis max Millimeter; px: Grösse des Punkts in der Anzeige
   const GROESSE = {
-    stift: { k: 'dicke', min: 0.2, max: 5, step: 0.1, titel: 'Stiftbreite', px: mm => mm * 6 },
+    stift: { k: 'dicke', min: 0.1, max: 2.5, step: 0.05, titel: 'Stiftbreite', px: mm => mm * 10 },
     marker: { k: 'markerDicke', min: 0.5, max: 8, step: 0.1, titel: 'Markerbreite', px: mm => mm * 9 },
     radierer: { k: 'radierGroesse', min: 1, max: 30, step: 0.5, titel: 'Radierer-Durchmesser', px: mm => mm * 3 },
     laser: { k: 'laserGroesse', min: 1.5, max: 12, step: 0.5, titel: 'Laserpunkt-Durchmesser', px: mm => mm * 2.4 },
@@ -25,7 +25,7 @@
   };
   // Was auf allen Geräten gleich sein soll (Datei Einstellungen, liegt im Speicherort), und was am Gerät hängt
   // (Stift, Bildschirm, Treiber: Druckkurve, Tastenbelegung, Finger, Glättung)
-  const SYNC = ['presets', 'preset', 'einheit', 'farbe', 'markerFarbe', 'eigeneFarben', 'eigeneMarker', 'radiermodus', 'notizFarbe', 'laserFarbe', 'textFarbe'];
+  const SYNC = ['presets', 'preset', 'einheit', 'farbe', 'markerFarbe', 'eigeneFarben', 'eigeneMarker', 'radiermodus', 'notizFarbe', 'laserFarbe', 'textFarbe', 'stiftGroessen2'];
   const ABGELEITET = ['dicke', 'markerDicke', 'radierGroesse', 'laserGroesse', 'textGroesse'];
   // Farben des Laserpunkts (Standard: Rot)
   const LASERFARBEN = { rot: '#ff2d2d', gruen: '#22e06a', blau: '#3d8bff', gelb: '#ffe030', magenta: '#ff3df0', weiss: '#ffffff' };
@@ -89,6 +89,14 @@
       if (!GLAETTUNGEN.includes(einst.glaettung)) einst.glaettung = 'niedrig';
       // Version 3.9: einmal auf das neue Schreibgefühl umstellen (weniger Nachziehen, Breite ohne Neigung wie beim
       // Stift in Apple Notizen). Beides lässt sich im Stift-Panel wieder ändern.
+      // Version 3.9.2: feinere Stiftgrössen (vorher 0,4 / 0,8 / 1,6 mm, die meisten schrieben nur bis 0,8). Einmal für
+      // alle Geräte (stiftGroessen2 wird mit dem Speicherort abgeglichen), danach bleibt, was man einstellt.
+      if (!einst.stiftGroessen2) {
+        einst.presets.stift = { ...PRESETS.stift };
+        einst.stiftGroessen2 = true;
+        ordnePresets();
+        speichereEinst();
+      }
       if (!einst.schreibgefuehl2) {
         if (einst.glaettung === 'mittel' || einst.glaettung === 'hoch') einst.glaettung = 'niedrig';
         einst.neigung = false;

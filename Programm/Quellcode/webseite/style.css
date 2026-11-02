@@ -768,7 +768,13 @@ body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 :root { --kopf-h: calc(56px + env(safe-area-inset-top, 0px)); }
 .app-kopf-innen { height: 56px; }
 .dok-leiste { padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
-.dok-bereiche { padding-bottom: env(safe-area-inset-bottom); }
+/* Unten kein leerer Streifen: die Schreibfläche reicht bis an den Rand (unter den Home-Balken des iPads), was dort
+   bedient wird (Seitenanzeige, Hinweis, Meldungen), hält selbst Abstand mit env(safe-area-inset-bottom) */
+.dok-bereiche { padding-bottom: 0; }
+/* Vollbild auf dem iPad (Web-App vom Home-Bildschirm): die Statusleiste mit Uhrzeit und Akku liegt über der Seite.
+   Das Blatt beginnt darunter, damit oben links nichts verdeckt wird; der Streifen hat die Farbe der Kopfleiste. */
+.vollbild .dok-ansicht { top: env(safe-area-inset-top, 0px); }
+.vollbild, .vollbild body { background-color: var(--kopf-hg); background-image: none; }
 /* Finger und Stift treffen grössere Ziele (Apple empfiehlt mindestens 44 Punkte) */
 @media (pointer: coarse) {
   .dok-tab { height: 44px; }
@@ -1213,3 +1219,11 @@ body { padding-inline: 0; }
 .tab-pfeil[hidden], .dok-tab-mehr[hidden] { display: none; }
 .dok-tab-mehr { min-width: 58px; justify-content: center; }
 .tab-pfeil svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Tab mit dem Finger ziehen (dokument.js fingerZug): waagrecht scrollt das Band, senkrecht gehört der Zug dem Tab */
+.tab-band .dok-tab { touch-action: pan-x; }
+.dok-zieh-geist {
+  position: fixed; left: 0; top: 0; z-index: 2000; pointer-events: none; margin: -22px 0 0 -60px; padding: 10px 16px; max-width: 260px;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border-radius: 12px; background: var(--blatt); color: var(--tinte);
+  font-size: 14px; font-weight: 700; box-shadow: var(--schatten), 0 0 0 2px var(--fueller); opacity: .95; will-change: transform;
+}
