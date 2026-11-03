@@ -132,7 +132,7 @@
       const r = [];
       for (let nr = 1; nr <= pdf.numPages; nr++) {
         warteText(`Seite ${nr} von ${pdf.numPages} …`);
-        const v = (await pdf.getPage(nr)).getViewport({ scale: PdfDienst.EINHEIT });
+        const v = Leinwand.pdfAnsicht(await pdf.getPage(nr), PdfDienst.EINHEIT, it, nr);
         r.push({ b: v.width, h: v.height });
       }
       pdf.destroy();
@@ -170,8 +170,7 @@
       const n = Number(it.seiten) || (groessen ? groessen.length : 0);
       seiten = Array.from({ length: n }, (_, i) => ({ sid: 'p' + (i + 1), ...(groessen && groessen[i] ? groessen[i] : Leinwand.FORMATE.A4) }));
     } else {
-      const F = Leinwand.FORMATE[it.format] || Leinwand.FORMATE.A4;
-      seiten = (it.seiten || []).map(sid => ({ sid, b: F.b, h: F.h }));
+      seiten = (it.seiten || []).map(sid => { const f = Leinwand.seitenFormat(it, sid); return { sid, b: f.b, h: f.h }; });
     }
     const SPALTEN = 5, LUECKE = 96;
     const e = [];

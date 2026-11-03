@@ -342,6 +342,7 @@ img.dunkelblau { filter: invert(1) hue-rotate(180deg); mix-blend-mode: screen; }
 .format-bild, .papier-bild { display: block; border: 2px solid var(--linie); border-radius: 5px; background: var(--papier); }
 .format-bild.a4 { width: 42px; height: 59px; }
 .format-bild.a3 { width: 59px; height: 84px; }
+.format-bild.a4.quer { width: 59px; height: 42px; }
 .papier-bild { width: 54px; height: 70px; background-color: var(--papier); }
 .papier-bild.karo { background-image: linear-gradient(var(--linie) 1px, transparent 1px), linear-gradient(90deg, var(--linie) 1px, transparent 1px); background-size: 7px 7px; }
 .papier-bild.linien { background-image: linear-gradient(var(--linie) 1px, transparent 1px), linear-gradient(90deg, transparent 10px, color-mix(in srgb, var(--rotstift) 60%, transparent) 10px, transparent 11px); background-size: 100% 9px, 100% 100%; }
@@ -1227,3 +1228,30 @@ body { padding-inline: 0; }
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border-radius: 12px; background: var(--blatt); color: var(--tinte);
   font-size: 14px; font-weight: 700; box-shadow: var(--schatten), 0 0 0 2px var(--fueller); opacity: .95; will-change: transform;
 }
+
+/* Karten lange drücken öffnet das Menü (bibliothek.js): ohne die Link-Vorschau von Safari */
+.bib .karte, .bib .karte-link { -webkit-touch-callout: none; }
+
+/* Farbige Symbole in der Werkzeugleiste (abschaltbar: Werkzeugleiste anpassen, lokal:leiste-farbig). Nur eine Farbe je
+   Symbol per CSS, kostet beim Zeichnen nichts. */
+.werkzeugleiste.farbig { --s-hand: #8fa3c2; --s-stift: #4f8cff; --s-marker: #f2b705; --s-radierer: #ff6f91; --s-lasso: #a78bfa; --s-notiz: #f59e0b;
+  --s-text: #22c55e; --s-laser: #ff4d4d; --s-finger: #38bdf8; --s-verlauf: #9aa8c0; --s-tasten: #c084fc; --s-drehen: #14b8a6; }
+:root[data-theme="light"] .werkzeugleiste.farbig { --s-hand: #5b6b85; --s-stift: #1f5fe0; --s-marker: #c48a00; --s-radierer: #e0356a; --s-lasso: #7c4ddb;
+  --s-notiz: #d97706; --s-text: #15803d; --s-laser: #dc2626; --s-finger: #0284c7; --s-verlauf: #66748c; --s-tasten: #9333ea; --s-drehen: #0f766e; }
+.werkzeugleiste.farbig [data-werkzeug="hand"] svg { color: var(--s-hand); }
+.werkzeugleiste.farbig [data-werkzeug="stift"] svg { color: var(--s-stift); }
+.werkzeugleiste.farbig [data-werkzeug="marker"] svg { color: var(--s-marker); }
+.werkzeugleiste.farbig [data-werkzeug="radierer"] svg { color: var(--s-radierer); }
+.werkzeugleiste.farbig [data-werkzeug="lasso"] svg { color: var(--s-lasso); }
+.werkzeugleiste.farbig [data-werkzeug="notiz"] svg { color: var(--s-notiz); }
+.werkzeugleiste.farbig [data-werkzeug="text"] svg { color: var(--s-text); }
+.werkzeugleiste.farbig [data-werkzeug="laser"] svg { color: var(--s-laser); }
+.werkzeugleiste.farbig [data-aktion="finger"] svg { color: var(--s-finger); }
+.werkzeugleiste.farbig [data-aktion="undo"] svg, .werkzeugleiste.farbig [data-aktion="redo"] svg { color: var(--s-verlauf); }
+.werkzeugleiste.farbig [data-aktion="tasten"] svg { color: var(--s-tasten); }
+.werkzeugleiste.farbig [data-aktion="links"] svg, .werkzeugleiste.farbig [data-aktion="rechts"] svg { color: var(--s-drehen); }
+.werkzeugleiste.farbig .wz:disabled svg { opacity: .45; }
+/* Werkzeugleiste anpassen: Liste in zwei Spalten */
+.leiste-wahl { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px 16px; margin: 8px 0 12px; }
+/* Symbole in Menüs (Seite drehen) */
+.kontext .menue-symbol { width: 18px; height: 18px; vertical-align: -4px; margin-right: 6px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }

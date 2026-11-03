@@ -22,6 +22,19 @@ Daten.bereit.then(function () {
 
   /* ---------- Kleine Helfer ---------- */
 
+  const SYMBOL_LINKS = '<svg class="menue-symbol" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4L4 8l4 4"/><path d="M4 8h9a7 7 0 010 14h-3"/></svg>';
+  const SYMBOL_RECHTS = '<svg class="menue-symbol" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 4l4 4-4 4"/><path d="M20 8h-9a7 7 0 000 14h3"/></svg>';
+
+  // Menü an einer Stelle (Bildschirm-Koordinaten), z. B. wo zwei Finger lagen
+  function menueBei(x, y, html, aktion) {
+    const anker = document.createElement('div');
+    Object.assign(anker.style, { position: 'fixed', left: x + 'px', top: y + 'px', width: '1px', height: '1px', pointerEvents: 'none' });
+    document.body.appendChild(anker);
+    const el = menue(anker, html, aktion);
+    anker.remove();
+    return el;
+  }
+
   function menue(knopf, html, aktion) {
     document.querySelectorAll('.kontext').forEach(k => k.remove());
     const el = document.createElement('div');
@@ -85,7 +98,33 @@ Daten.bereit.then(function () {
       // Whiteboard: eine einzige unendliche Fläche (die Seite gibt nur den Ursprung und die Speicherstelle vor)
       const farbe = Leinwand.seitenfarbe(it.seitenfarbe).farbe;
       if (istBrett(it)) return [{ id: (it.seiten || [])[0] || 's1', art: 'brett', b: Fm.b, h: Fm.h, mm: Fm.mm, nr: 1, endlos: true, unendlich: true, raster: it.raster || 'punkte', papierFarbe: farbe }];
-      return (it.seiten || []).map((sid, i) => ({ id: sid, art: 'papier', papier: it.papier || 'karo', b: Fm.b, h: Fm.h, mm: Fm.mm, nr: i + 1, papierFarbe: farbe }));
+      // Jede Seite in ihrem Format: Querformat des Notizbuchs und eigene Drehung (Leinwand.seitenFormat)
+      return (it.seiten || []).map((sid, i) => { const f = Leinwand.seitenFormat(it, sid); return { id: sid, art: 'papier', papier: it.papier || 'karo', b: f.b, h: f.h, mm: f.mm, nr: i + 1, papierFarbe: farbe }; });
+    }
+
+    // Seite im Blick um 90° drehen (richtung +90 rechts herum, -90 links herum), samt allem, was darauf steht
+    function dreheSeite(richtung) {
+      if (!lw || istBrett(it)) return;
+      const s = lw.seiten()[lw.aktuelleSeite()];
+      if (!s) return;
+      const alt = { b: s.b, h: s.h }, sid = s.id;
+      Bibliothek.aendere(id, x => {
+        const d = (((Leinwand.drehungVon(x, sid) + richtung) % 360) + 360) % 360;
+        const neu = { ...(x.drehung || {}) };
+        if (d) neu[sid] = d; else delete neu[sid];
+        if (Object.keys(neu).length) x.drehung = neu; else delete x.drehung;
+      });
+      it = Bibliothek.get(id);
+      lw.dreheInhalt(sid, richtung, alt.b, alt.h);
+      if (it.art === 'notizbuch') lw.setzeSeiten(notizbuchSeiten());
+      else {
+        // Skript: nur diese Seite bekommt die vertauschten Masse; ihr altes Bild passt nicht mehr und wird neu gerendert
+        lw.setzeSeiten(lw.seiten().map(x => (x.id === sid ? { ...x, b: alt.h, h: alt.b } : x)));
+        if (cache.has(s.nr)) { gibFrei(cache.get(s.nr).canvas); cache.delete(s.nr); }
+        if (sl) sl.inkGeaendert(s.nr);
+      }
+      lw.springeZuSeite(lw.seiten().findIndex(x => x.id === sid), false);
+      meldung(richtung > 0 ? 'Seite nach rechts gedreht' : 'Seite nach links gedreht');
     }
 
     // Fläche einer Skriptseite: bestimmt, ob Schwarz als Schwarz oder als Weiss erscheint
@@ -105,9 +144,10 @@ Daten.bereit.then(function () {
 
     function hintergrund(ctx, s, massstab) {
       const e = cache.get(s.nr);
-      const ziel = stufe(massstab);
-      if (!e || e.modus !== it.modus || e.massstab < ziel * 0.99 && e.massstab < maxMassstab(s)) anfordern(s, ziel);
-      if (!e) return false;
+      const ziel = stufe(massstab), dreh = Leinwand.drehungVon(it, 'p' + s.nr);
+      if (!e || e.modus !== it.modus || e.dreh !== dreh || e.massstab < ziel * 0.99 && e.massstab < maxMassstab(s)) anfordern(s, ziel);
+      // Ein Bild in der alten Drehung wäre verzerrt: dann lieber kurz das leere Blatt
+      if (!e || e.dreh !== dreh) return false;
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(e.canvas, 0, 0, s.b, s.h);
       if (sl) sl.male(ctx, s);   // Suchtreffer und Lesezeichen-Bändchen
@@ -138,12 +178,14 @@ Daten.bereit.then(function () {
         warteschlange.sort((a, b) => ((b.vorab ? 1 : 0) - (a.vorab ? 1 : 0)) || Math.abs(a.nr - aktuelle) - Math.abs(b.nr - aktuelle));
         if (!warteschlange[0].vorab && lw && lw.inBewegung && lw.inBewegung()) { await warte(90); continue; }
         const w = warteschlange.shift();
-        // Ein grobes Bild ist überflüssig, wenn inzwischen ein besseres da ist
-        if (w.vorab && cache.has(w.nr) && cache.get(w.nr).massstab >= w.massstab) continue;
+        // Ein grobes Bild ist überflüssig, wenn inzwischen ein besseres (in derselben Drehung) da ist
+        const besser = () => cache.has(w.nr) && cache.get(w.nr).massstab >= w.massstab && cache.get(w.nr).dreh === Leinwand.drehungVon(it, 'p' + w.nr);
+        if (w.vorab && besser()) continue;
         try {
           const seite = await pdf.getPage(w.nr);
           if (t !== token) break;
-          const vp = seite.getViewport({ scale: EINHEIT * w.massstab });
+          const dreh = Leinwand.drehungVon(it, 'p' + w.nr);
+          const vp = Leinwand.pdfAnsicht(seite, EINHEIT * w.massstab, it, w.nr);
           const c = document.createElement('canvas');
           c.width = Math.max(1, Math.floor(vp.width));
           c.height = Math.max(1, Math.floor(vp.height));
@@ -161,9 +203,9 @@ Daten.bereit.then(function () {
           if (window.createImageBitmap) {
             try { bild = await createImageBitmap(c); c.width = 0; } catch (e) { bild = c; }
           }
-          if (t !== token || !sichtbar || (w.vorab && cache.has(w.nr) && cache.get(w.nr).massstab >= w.massstab)) { gibFrei(bild); continue; }
+          if (t !== token || !sichtbar || (w.vorab && besser()) || dreh !== Leinwand.drehungVon(it, 'p' + w.nr)) { gibFrei(bild); continue; }
           gibFrei(cache.has(w.nr) ? cache.get(w.nr).canvas : null);
-          cache.set(w.nr, { canvas: bild, massstab: w.massstab, modus });
+          cache.set(w.nr, { canvas: bild, massstab: w.massstab, modus, dreh });
           aufraeumen();
           // Nur diese Seite neu malen, nicht die ganze Fläche
           if (lw) { if (lw.planeSeite) lw.planeSeite(w.nr); else lw.plane(); }
@@ -236,6 +278,7 @@ Daten.bereit.then(function () {
           if (sl) sl.inkGeaendert(Number(sid.slice(1)));
         },
         hintergrund,
+        dreheSeite: istBrett(it) ? null : dreheSeite,
         flaeche: s => (it.art === 'skript' ? flaecheSkript(s) : Leinwand.seitenfarbe(it.seitenfarbe).flaeche || Leinwand.flaecheThema()),
         // Neue Seite: per Knopf oder durch Wischen über das Ende hinaus (sofort: ohne Sprung zur neuen Seite)
         neueSeite: it.art === 'notizbuch' && !istBrett(it) ? o => seiteEinfuegen(it.seiten.length, !!(o && o.sofort)) : null,
@@ -268,6 +311,13 @@ Daten.bereit.then(function () {
         aufraeumen();
       });
       lw.on('ansicht', merkeAnsicht);
+      // Gesten, die über die Schreibfläche hinausgehen (L.geste)
+      lw.on('geste', g => {
+        if (g.was === 'vollbild') vollbild(!voll);
+        else if (g.was === 'leiste') { const an = !q('werkzeuge').classList.contains('leiste-zu'); Daten.set('lokal:leiste-zu', an); setzeLeisteZu(an); }
+        else if (g.was === 'eigenschaften') { if (leiste && leiste.zeigeEigenschaften) leiste.zeigeEigenschaften(); }
+        else if (g.was === 'seite') seitenMenue(g.pos);
+      });
       // Seitenanzeige unten links, nur beim Scrollen
       lw.on('bewegt', () => {
         const n = lw.seiten().length;
@@ -296,7 +346,7 @@ Daten.bereit.then(function () {
         if (t !== token) { geladen.destroy(); return; }
         pdf = geladen;
         // Seitengrössen: erst alle wie Seite 1, dann genau
-        const v1 = (await pdf.getPage(1)).getViewport({ scale: EINHEIT });
+        const v1 = Leinwand.pdfAnsicht(await pdf.getPage(1), EINHEIT, it, 1);
         if (t !== token) return;
         const seiten = [];
         for (let nr = 1; nr <= pdf.numPages; nr++) seiten.push({ id: 'p' + nr, art: 'pdf', b: v1.width, h: v1.height, nr });
@@ -307,7 +357,7 @@ Daten.bereit.then(function () {
         if (it.seiten !== pdf.numPages) Bibliothek.aendere(id, x => { x.seiten = pdf.numPages; });
         let anders = false;
         for (let nr = 2; nr <= pdf.numPages; nr++) {
-          const v = (await pdf.getPage(nr)).getViewport({ scale: EINHEIT });
+          const v = Leinwand.pdfAnsicht(await pdf.getPage(nr), EINHEIT, it, nr);
           if (t !== token) return;
           if (Math.abs(v.width - seiten[nr - 1].b) > 0.5 || Math.abs(v.height - seiten[nr - 1].h) > 0.5) { seiten[nr - 1].b = v.width; seiten[nr - 1].h = v.height; anders = true; }
         }
@@ -361,6 +411,24 @@ Daten.bereit.then(function () {
     }
 
     // ⋯ in der Werkzeugleiste: alles, was nicht zum Schreiben gehört, an einem Ort
+    // Seiten-Menü (Geste "zwei Finger halten" und Pencil): Seite drehen, Gesten und Leiste einstellen
+    function seitenMenue(pos) {
+      if (!lw) return;
+      const r0 = flaeche.getBoundingClientRect();
+      const nr = lw.aktuelleSeite() + 1;
+      const html = `${!istBrett(it) ? `<div class="kontext-titel">Seite ${nr}</div>
+          <button type="button" data-dreh="-90">${SYMBOL_LINKS} Nach links drehen</button>
+          <button type="button" data-dreh="90">${SYMBOL_RECHTS} Nach rechts drehen</button>` : ''}
+        <div class="kontext-titel">Einstellen</div>
+        <button type="button" data-a="gesten">Gesten einstellen …</button>
+        <button type="button" data-a="anpassen">Werkzeugleiste anpassen …</button>`;
+      menueBei(r0.left + pos[0], r0.top + pos[1], html, d => {
+        if (d.dreh) dreheSeite(Number(d.dreh));
+        else if (d.a === 'gesten' && leiste && leiste.oeffneGesten) leiste.oeffneGesten();
+        else if (d.a === 'anpassen' && leiste && leiste.anpassen) leiste.anpassen();
+      });
+    }
+
     function mehrMenue(knopf) {
       if (!lw) return;
       const pos = lw.aktuelleSeite();
@@ -405,11 +473,21 @@ Daten.bereit.then(function () {
           : '<button type="button" data-u="brett">Als Whiteboard kopieren …</button>'}
         ${window.lernheftDesktop && window.lernheftDesktop.oeffneOrdner ? '<button type="button" data-a="ordner">Ordner im Explorer öffnen</button>' : ''}
         ${Zeit.sichtbar() ? '<button type="button" data-a="zeit">Lernzeit ansehen</button>' : ''}`);
+      if (!istBrett(it)) {
+        teile.push(`<div class="kontext-titel">Seite ${pos + 1} drehen</div>
+          <button type="button" data-dreh="-90">${SYMBOL_LINKS} Nach links drehen</button>
+          <button type="button" data-dreh="90">${SYMBOL_RECHTS} Nach rechts drehen</button>`);
+      }
       teile.push(`<div class="kontext-titel">Werkzeugleiste</div>
+        <button type="button" data-a="anpassen">Werkzeugleiste anpassen …</button>
+        <button type="button" data-a="gesten">Gesten einstellen …</button>
         <button type="button" data-a="leistereset" title="Die Symbole lassen sich in der Leiste mit gedrückter Maus, Stift oder Finger ziehen und umsortieren">Reihenfolge der Symbole zurücksetzen</button>`);
       teile.push(fensterHtml(id));
       menue(knopf, teile.join(''), d => {
-        if (d.a === 'danach') seiteEinfuegen(pos + 1);
+        if (d.dreh) dreheSeite(Number(d.dreh));
+        else if (d.a === 'anpassen' && leiste.anpassen) leiste.anpassen();
+        else if (d.a === 'gesten' && leiste.oeffneGesten) leiste.oeffneGesten();
+        else if (d.a === 'danach') seiteEinfuegen(pos + 1);
         else if (d.a === 'davor') seiteEinfuegen(pos);
         else if (d.a === 'ende') seiteEinfuegen(it.seiten.length);
         else if (d.a === 'loeschen') seiteLoeschen(pos);
@@ -584,6 +662,14 @@ Daten.bereit.then(function () {
     merken();
     if (sichtbar) meldeFokus();
   }
+
+  // Apple Pencil (nur iPad-App, Sicherung.swift LernheftViewController): Doppeltippen und Zusammendrücken
+  window.addEventListener('lh-pencil', e => {
+    const f = geladen.get(fokusId());
+    const lw = f && f.leinwand();
+    if (!lw || !sichtbar) return;
+    lw.geste(e.detail === 'druecken' ? 'pencilDruecken' : 'pencilDoppel');
+  });
 
   /* ---------- Vollbild: nur die Blätter (auch zwei nebeneinander), mit einer schwebenden Werkzeugleiste ---------- */
 
@@ -1134,11 +1220,11 @@ Daten.bereit.then(function () {
       bewege: (s, t) => wendeTeilung(t),
       ende: (s, t) => { wendeTeilung(t); flaechenVon(s).forEach(f => { f.style.willChange = ''; }); }
     },
-    // C: Bitmap-Cache. Die Schreibflächen sind eingefroren, ihr fertig gemaltes Bild wird nur gestreckt (Grafikkarte); das echte
-    // Neumalen passiert einmal nach dem Loslassen.
+    // C: Bitmap-Cache. Die Schreibflächen sind eingefroren, ihr fertig gemaltes Bild wandert nur mit, unverzerrt (Grafikkarte,
+    // vorschauBreite); das echte Neumalen passiert einmal nach dem Loslassen.
     C: {
-      name: 'C · Bitmap skaliert',
-      info: 'Die Blätter werden beim Ziehen als Bild gestreckt, das echte Neumalen kommt nach dem Loslassen.',
+      name: 'C · Bitmap (ohne Strecken)',
+      info: 'Die Blätter wandern beim Ziehen als fertiges Bild mit, ohne verzerrt zu werden; das echte Neumalen kommt nach dem Loslassen.',
       start: s => s.lw.forEach(l => l.friere(true)),
       bewege: (s, t) => {
         wendeTeilung(t);

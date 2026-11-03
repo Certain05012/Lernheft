@@ -17,6 +17,21 @@
   const PAPIER = { hell: '#ffffff', dunkel: '#172139' };
   const LINIEN = { hell: 'rgba(60, 95, 150, .20)', dunkel: 'rgba(255, 255, 255, .30)' };
   const FORMATE = { A4: { b: 794, h: 1123, mm: 210 }, A3: { b: 1123, h: 1587, mm: 297 } };
+  // Seiten drehen und Querformat. Gedreht wird je Seite in 90°-Schritten, gespeichert im Dokument:
+  // it.drehung = { <Seiten-Id>: 90 | 180 | 270 } (Notizbuch: sid, Skript: 'p' + Seitennummer). it.quer = ganzes
+  // Notizbuch im Querformat. Alles, was Seiten misst oder PDF-Seiten rendert, nimmt diese Helfer (Bildschirm,
+  // Seitenleiste, Vorschaubilder, Export, Umwandeln).
+  const DREHUNGEN = [0, 90, 180, 270];
+  function drehungVon(it, sid) { const d = it && it.drehung ? Number(it.drehung[sid]) : 0; return DREHUNGEN.includes(d) ? d : 0; }
+  function seitenFormat(it, sid) {
+    const F = FORMATE[it && it.format] || FORMATE.A4;
+    const quer = !!(it && it.quer) !== (drehungVon(it, sid) % 180 !== 0);
+    return quer ? { b: F.h, h: F.b, mm: F.mm * F.h / F.b, quer: true } : { b: F.b, h: F.h, mm: F.mm, quer: false };
+  }
+  // Ansicht einer PDF-Seite: eigene Drehung der Datei (/Rotate, z. B. Querformat) plus die im Lernheft gewählte
+  function pdfAnsicht(seite, scale, it, nr) {
+    return seite.getViewport({ scale, rotation: ((seite.rotate || 0) + drehungVon(it, 'p' + nr)) % 360 });
+  }
   const RADIER_BEREICH = { klein: 6, mittel: 14, gross: 28 };
   const RADIERER = 10;
   const ZOOM_MIN = 0.12, ZOOM_MAX = 8;
@@ -41,11 +56,23 @@
   // Glättung der Handschrift: One-Euro-Filter auf den Stiftpunkten (Bildschirm-Pixel). minF = Grenzfrequenz bei
   // langsamer Bewegung in Hz (kleiner = ruhiger), beta = wie schnell der Filter bei schnellen Zügen nachgibt, damit
   // die Linie dem Stift nicht hinterherhinkt.
-  const GLAETTUNG = { aus: null, niedrig: { minF: 5, beta: 0.04 }, mittel: { minF: 2.5, beta: 0.02 }, hoch: { minF: 1.2, beta: 0.01 } };
+  // Standard ist Aus: der Apple Pencil liefert genaue Punkte, jede Glättung verschiebt Ecken (gemessen mit test/strich.js:
+  // Niedrig früher bis 7 px an den Spitzen eines Zickzacks, jetzt etwa 2 px)
+  const GLAETTUNG = { aus: null, niedrig: { minF: 12, beta: 0.08 }, mittel: { minF: 4, beta: 0.03 }, hoch: { minF: 1.5, beta: 0.012 } };
   const HALTE_MS = 700;       // Stift so lange ruhig halten: Linie oder Form wird sauber (einstellbar: einst.halteMs, 0,4 bis 1,5 s)
   const haltezeit = einst => { const v = Number(einst.halteMs); return v >= 300 && v <= 3000 ? v : HALTE_MS; };
   const HALTE_TOL = 4;        // so viel (Bildschirm-px) darf die Hand dabei zittern
 
+  // Gesten (einstellbar im Stift-Panel, einst.gesten, nur auf diesem Gerät). Finger: tippen = alle Finger kurz auf und
+  // wieder weg, ohne zu wischen; halten = zwei Finger ruhig liegen lassen. Pencil (nur in der iPad-App, Safari meldet sie
+  // nicht): Doppeltippen am Stift, Zusammendrücken (Pencil Pro).
+  const GESTEN_STANDARD = { zweiFinger: 'rueckgaengig', dreiFinger: 'wiederholen', zweiFingerLang: 'seite', pencilDoppel: 'radierer', pencilDruecken: 'eigenschaften' };
+  const GESTEN_AKTIONEN = {
+    aus: 'Nichts', rueckgaengig: 'Rückgängig', wiederholen: 'Wiederholen', radierer: 'Radierer an/aus', letztes: 'Letztes Werkzeug',
+    stift: 'Stift', marker: 'Textmarker', lasso: 'Lasso', text: 'Text', hand: 'Hand', laser: 'Laserpointer',
+    seite: 'Seiten-Menü (drehen, Gesten)', eigenschaften: 'Farben und Grössen', leiste: 'Werkzeugleiste ein/aus', vollbild: 'Vollbild ein/aus'
+  };
+  const TIPP_MS = 350, TIPP_TOL = 12, HALTEN_MS = 600;
   const LASER_NACHLEUCHTEN = 1400;   // ms, bis die Spur des Laserpunkts ganz verblasst ist
   const LASER_STANDARD = '#ff2d2d';
   // Grösste Zeichenfläche in Pixeln: Safari (iPad, iPhone) malt ab 16 777 216 Pixeln nichts mehr
@@ -404,73 +431,99 @@
     neigung: Math.round(neigungWinkel(e)), tasten: e.buttons, zeit: e.timeStamp
   });
 
-  // Ein Strich ist eine glatte Kurve durch die Mitten zwischen den Punkten (quadratische Bézier-Kurven mit den
-  // Punkten als Kontrollpunkten). Das gibt ohne Verzögerung weiche Linien, und jeder Abschnitt hängt nur von seinen
-  // Nachbarn ab: Abschnitt k ist fertig, sobald Punkt k + 1 da ist. So lässt sich beim Schreiben Stück für Stück zeichnen.
-  // Abschnitte: 0 = Gerade vom ersten Punkt zur ersten Mitte, 1 … n - 2 = Kurven, n - 1 = Gerade zum letzten Punkt.
-  function pfadAbschnitt(ctx, p, k, neu) {
-    const n = p.length, q = p[k];
-    if (k === 0) {
-      if (neu) ctx.moveTo(q[0], q[1]);
-      ctx.lineTo((q[0] + p[1][0]) / 2, (q[1] + p[1][1]) / 2);
-    } else if (k === n - 1) {
-      const v = p[n - 2];
-      if (neu) ctx.moveTo((v[0] + q[0]) / 2, (v[1] + q[1]) / 2);
-      ctx.lineTo(q[0], q[1]);
-    } else {
-      const v = p[k - 1], w = p[k + 1];
-      if (neu) ctx.moveTo((v[0] + q[0]) / 2, (v[1] + q[1]) / 2);
-      ctx.quadraticCurveTo(q[0], q[1], (q[0] + w[0]) / 2, (q[1] + w[1]) / 2);
-    }
+  // Ein Strich ist eine Kurve DURCH seine Punkte (Catmull-Rom, als kubische Bézier-Stücke). Abschnitt k läuft von Punkt
+  // k zu Punkt k + 1; seine Richtung an den Enden kommt von den Nachbarn k - 1 und k + 2. Er ist also fertig, sobald
+  // Punkt k + 2 da ist (oder der Strich zu Ende): beim Schreiben wird Stück für Stück gezeichnet, das letzte Stück bis
+  // unter den Stift malt die Ebene "spitze". Weil die Kurve durch die Punkte geht, sieht ein Strich nach dem Absetzen
+  // genauso aus wie beim Schreiben, auch wenn er danach auf weniger Punkte reduziert wird (vereinfache): Ecken und
+  // Spitzen bleiben, wo sie waren. (Früher lief die Kurve durch die Mitten zwischen den Punkten und schnitt Ecken ab,
+  // sobald Punkte fehlten.) Abschnitte: 0 … n - 2.
+  // Kontrollpunkte des Abschnitts k; die Länge der Tangenten ist auf die halbe Abschnittslänge begrenzt, damit die
+  // Kurve an engen Wendungen keine Schleifen schlägt. Knickt die Linie an einem Punkt scharf ab (mehr als 75°), ist er
+  // eine Ecke: dort läuft die Kurve gerade hinein und heraus, so bleiben Spitzen spitz und Kanten gerade.
+  const ECKE_COS = Math.cos(75 * Math.PI / 180);
+  const istEcke = (a, b, c) => {
+    const ux = b[0] - a[0], uy = b[1] - a[1], vx = c[0] - b[0], vy = c[1] - b[1];
+    const l = Math.hypot(ux, uy) * Math.hypot(vx, vy);
+    return l > 0 && (ux * vx + uy * vy) / l < ECKE_COS;
+  };
+  function crStueck(p, k) {
+    const n = p.length, P1 = p[k], P2 = p[k + 1], P0 = p[k > 0 ? k - 1 : k], P3 = p[k + 2 < n ? k + 2 : k + 1];
+    const l = Math.hypot(P2[0] - P1[0], P2[1] - P1[1]);
+    let ax = (P2[0] - P0[0]) / 6, ay = (P2[1] - P0[1]) / 6, bx = (P3[0] - P1[0]) / 6, by = (P3[1] - P1[1]) / 6;
+    if (k > 0 && istEcke(P0, P1, P2)) ax = ay = 0;
+    if (k + 2 < n && istEcke(P1, P2, P3)) bx = by = 0;
+    const la = Math.hypot(ax, ay), lb = Math.hypot(bx, by), grenze = l * 0.5;
+    if (la > grenze && la > 0) { ax *= grenze / la; ay *= grenze / la; }
+    if (lb > grenze && lb > 0) { bx *= grenze / lb; by *= grenze / lb; }
+    return [P1[0], P1[1], P1[0] + ax, P1[1] + ay, P2[0] - bx, P2[1] - by, P2[0], P2[1]];
+  }
+  // Ein Teil t0..t1 einer kubischen Kurve c (aus crStueck) als eigene kubische Kurve
+  function teilKurve(c, t0, t1) {
+    const pt = t => { const u = 1 - t; return [u * u * u * c[0] + 3 * u * u * t * c[2] + 3 * u * t * t * c[4] + t * t * t * c[6], u * u * u * c[1] + 3 * u * u * t * c[3] + 3 * u * t * t * c[5] + t * t * t * c[7]]; };
+    const ab = t => { const u = 1 - t; return [3 * (u * u * (c[2] - c[0]) + 2 * u * t * (c[4] - c[2]) + t * t * (c[6] - c[4])), 3 * (u * u * (c[3] - c[1]) + 2 * u * t * (c[5] - c[3]) + t * t * (c[7] - c[5]))]; };
+    const a = pt(t0), b = pt(t1), da = ab(t0), db = ab(t1), d = (t1 - t0) / 3;
+    return [a[0], a[1], a[0] + da[0] * d, a[1] + da[1] * d, b[0] - db[0] * d, b[1] - db[1] * d, b[0], b[1]];
   }
 
-  // Abschnitte von bis (ohne bis) eines Stiftstrichs. Die Breite läuft wie die Lage als Kurve durch die Mitten zwischen
-  // den Punkten, so wird der Strich ohne Stufen dicker und dünner (wie beim Apple Pencil); ändert sie sich in einem
-  // Abschnitt, wird er in Stücke geteilt. Nebeneinanderliegende Stücke mit gleicher Breite (auf 0,25 gerundet) und
-  // Deckkraft werden zu einem Pfad zusammengefasst, das spart Zeichenaufrufe und Nähte.
+  // Abschnitte von bis (ohne bis) eines Stiftstrichs. Die Breite läuft von Punkt zu Punkt gleichmässig, so wird der
+  // Strich ohne Stufen dicker und dünner (wie beim Apple Pencil); ändert sie sich in einem Abschnitt, wird er in Stücke
+  // geteilt. Nebeneinanderliegende Stücke mit gleicher Breite (auf 0,25 gerundet) und Deckkraft werden zu einem Pfad
+  // zusammengefasst, das spart Zeichenaufrufe und Nähte.
   function malAbschnitte(ctx, s, von, bis) {
+    for (const t of baueTeile(s, von, bis)) {
+      ctx.lineWidth = t.w;
+      ctx.globalAlpha = t.a;
+      ctx.stroke(t.pfad);
+    }
+    ctx.globalAlpha = 1;
+  }
+  // Die Pfade der Abschnitte von bis eines Stiftstrichs, je Breite (auf 0,25 gerundet) und Deckkraft ein Path2D
+  function baueTeile(s, von, bis) {
     const p = s.p, n = p.length, marker = s.w === 'marker';
     const neig = k => (marker ? 0 : p[k][3] || 0);
     const bp = k => breite(s, p[k][2], neig(k));
-    const mitte = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    let schluessel = -1, offen = false;
-    for (let k = von; k < bis; k++) {
-      // Abschnitt als Bézier-Kurve A -> B mit Kontrollpunkt Q, Breiten wa, wq, wb an denselben Stellen
-      let A, Q, B, wa, wq, wb;
-      const wk = bp(k);
-      if (k === 0) {
-        A = p[0]; B = mitte(p[0], p[1]); Q = mitte(A, B);
-        wa = wk; wb = (wk + bp(1)) / 2; wq = (wa + wb) / 2;
-      } else if (k === n - 1) {
-        A = mitte(p[k - 1], p[k]); B = p[k]; Q = mitte(A, B);
-        wa = (bp(k - 1) + wk) / 2; wb = wk; wq = (wa + wb) / 2;
-      } else {
-        A = mitte(p[k - 1], p[k]); Q = p[k]; B = mitte(p[k], p[k + 1]);
-        wa = (bp(k - 1) + wk) / 2; wq = wk; wb = (wk + bp(k + 1)) / 2;
-      }
+    const teile = [];
+    let schluessel = -1, pfad = null;
+    for (let k = Math.max(0, von); k < Math.min(bis, n - 1); k++) {
+      const c = crStueck(p, k), wa = bp(k), wb = bp(k + 1);
       const ai = Math.round(neigungAlpha(neig(k)) * 20);
-      const m = Math.max(1, Math.min(6, Math.round((Math.abs(wq - wa) + Math.abs(wb - wq)) * 4)));
-      const wert = (t, a, q, b) => (1 - t) * (1 - t) * a + 2 * t * (1 - t) * q + t * t * b;
+      const m = Math.max(1, Math.min(6, Math.round(Math.abs(wb - wa) * 4)));
       for (let i = 0; i < m; i++) {
         const t0 = i / m, t1 = (i + 1) / m;
-        const bi = Math.round(wert((t0 + t1) / 2, wa, wq, wb) * 4);
+        const bi = Math.round((wa + (wb - wa) * (t0 + t1) / 2) * 4);
         const sk = bi * 32 + ai;
+        const q = m === 1 ? c : teilKurve(c, t0, t1);
         if (sk !== schluessel) {
-          if (offen) ctx.stroke();
           schluessel = sk;
-          ctx.lineWidth = Math.max(0.25, bi / 4);
-          ctx.globalAlpha = ai / 20;
-          ctx.beginPath();
-          offen = true;
-          ctx.moveTo(wert(t0, A[0], Q[0], B[0]), wert(t0, A[1], Q[1], B[1]));
+          pfad = new Path2D();
+          teile.push({ w: Math.max(0.25, bi / 4), a: ai / 20, pfad });
+          pfad.moveTo(q[0], q[1]);
         }
-        // Teilstück t0..t1 der Kurve: Kontrollpunkt aus der Polarform
-        const u = (1 - t0) * (1 - t1), v = (1 - t0) * t1 + t0 * (1 - t1), w = t0 * t1;
-        ctx.quadraticCurveTo(u * A[0] + v * Q[0] + w * B[0], u * A[1] + v * Q[1] + w * B[1], wert(t1, A[0], Q[0], B[0]), wert(t1, A[1], Q[1], B[1]));
+        pfad.bezierCurveTo(q[2], q[3], q[4], q[5], q[6], q[7]);
       }
     }
-    if (offen) ctx.stroke();
-    ctx.globalAlpha = 1;
+    return teile;
+  }
+  // Fertige Striche merken sich ihre Pfade: beim Neumalen (Scrollen, Zoomen) werden sie nur noch übergeben, statt jedes
+  // Mal Punkt für Punkt neu aufgebaut zu werden (test/leistung.js). Ändert sich der Strich (Verschieben ändert die
+  // Punkte, Skalieren und Drehen ersetzen sie, Dicke), passt die Kennung nicht mehr und der Pfad wird neu gebaut.
+  const pfadSpeicher = new WeakMap();
+  function teileVon(s) {
+    const p = s.p, n = p.length, l = p[n - 1];
+    const z = pfadSpeicher.get(s);
+    if (z && z.p === p && z.n === n && z.d === s.d && z.w === s.w && z.x === p[0][0] && z.y === p[0][1] && z.lx === l[0] && z.ly === l[1]) return z.teile;
+    const teile = s.w === 'marker' ? markerTeile(s) : baueTeile(s, 0, n - 1);
+    pfadSpeicher.set(s, { p, n, d: s.d, w: s.w, x: p[0][0], y: p[0][1], lx: l[0], ly: l[1], teile });
+    return teile;
+  }
+  // Textmarker in einem Zug, damit sich die Transparenz nicht aufaddiert
+  function markerTeile(s) {
+    const p = s.p, pfad = new Path2D();
+    pfad.moveTo(p[0][0], p[0][1]);
+    if (p.length === 1) pfad.lineTo(p[0][0] + 0.1, p[0][1]);
+    else for (let k = 0; k < p.length - 1; k++) { const c = crStueck(p, k); pfad.bezierCurveTo(c[2], c[3], c[4], c[5], c[6], c[7]); }
+    return [{ w: breite(s, 0.5), a: 0.35, pfad }];
   }
 
   function malStrich(ctx, s, farbe) {
@@ -480,20 +533,16 @@
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.strokeStyle = ctx.fillStyle = farbe;
-    if (s.w === 'marker') {
-      // Textmarker in einem Zug, damit sich die Transparenz nicht aufaddiert
-      ctx.globalAlpha = 0.35;
-      ctx.lineWidth = breite(s, 0.5);
-      ctx.beginPath();
-      if (p.length === 1) { ctx.moveTo(p[0][0], p[0][1]); ctx.lineTo(p[0][0] + 0.1, p[0][1]); }
-      else for (let k = 0; k < p.length; k++) pfadAbschnitt(ctx, p, k, k === 0);
-      ctx.stroke();
-    } else if (p.length === 1) {
+    if (p.length === 1 && s.w !== 'marker') {
       ctx.beginPath();
       ctx.arc(p[0][0], p[0][1], breite(s, p[0][2], p[0][3]) / 2, 0, Math.PI * 2);
       ctx.fill();
     } else {
-      malAbschnitte(ctx, s, 0, p.length);
+      for (const t of teileVon(s)) {
+        ctx.lineWidth = t.w;
+        ctx.globalAlpha = t.a;
+        ctx.stroke(t.pfad);
+      }
     }
     ctx.restore();
   }
@@ -869,9 +918,14 @@
     let gesamtHoehe = 0;
     let aktion = null, lassoPunkte = null, radiererPunkt = null;
     let transformStand = '';             // zuletzt gesetzte CSS-Verschiebung von canvas
+    let schiebeTest = null;              // für Tests: verschiebeBasis abschalten (false) zum Vergleich
     let bewegtZeit = 0;                  // wann sich die Ansicht zuletzt bewegt hat (Scrollen, Zoomen, Schwung)
     let spitzeRect = null;               // wo die Spitze des Strichs zuletzt gemalt wurde (Pixel von "spitze")
     let textEdit = null, textOffenSeit = 0, textHalten = 0, textFingerTipp = null;   // Text, der gerade geschrieben wird
+    let tippen = null;                   // Finger tippen für Gesten: { start, max, bewegt, pos, lang, fertig }
+    let vorherigesWerkzeug = 'stift';
+    let notizFingerTipp = null;          // ein Finger liegt auf einer Haftnotiz: Tippen (ohne Wischen) schreibt Text
+    let letztesSchreibwerkzeug = einst.werkzeug === 'marker' ? 'marker' : 'stift';
     let geplant = false, penZeit = 0;
     let diagProbe = null, diagGeplant = false;
     const auswahl = new Map();           // Element -> Seiten-Id
@@ -1043,21 +1097,29 @@
       while (randY > 160 && pixel() > CANVAS_MAX) randY = Math.max(160, Math.round(randY * 0.9));
       while (rand > 48 && pixel() > CANVAS_MAX) rand = Math.max(48, Math.round(rand * 0.85));
       while (dpr > 1 && pixel() > CANVAS_MAX) dpr = Math.max(1, dpr - 0.25);
-      const cb = b + 2 * rand, ch = h + 2 * randY;
-      canvas.style.width = cb + 'px';
-      canvas.style.height = ch + 'px';
+      // Alle Ebenen genau auf dem Pixelraster des Bildschirms: der Rand ist eine ganze Zahl von Bildschirmpixeln, und jede
+      // Ebene ist in CSS genau so gross wie ihre Pixel / dpr. Sonst lag "canvas" z. B. bei 150 % um einen halben Pixel
+      // neben "live", und ein Strich sah nach dem Absetzen anders aus als beim Schreiben (test/strich.js).
+      rand = Math.round(rand * dpr) / dpr;
+      randY = Math.round(randY * dpr) / dpr;
+      const lw0 = Math.round(b * dpr), lh0 = Math.round(h * dpr);
+      canvas.width = lw0 + 2 * Math.round(rand * dpr);
+      canvas.height = lh0 + 2 * Math.round(randY * dpr);
+      canvas.style.width = canvas.width / dpr + 'px';
+      canvas.style.height = canvas.height / dpr + 'px';
       canvas.style.left = -rand + 'px';
       canvas.style.top = -randY + 'px';
-      canvas.width = Math.round(cb * dpr);
-      canvas.height = Math.round(ch * dpr);
-      live.style.width = b + 'px';
-      live.style.height = h + 'px';
-      live.width = Math.round(b * dpr);
-      live.height = Math.round(h * dpr);
-      spitze.style.width = b + 'px';
-      spitze.style.height = h + 'px';
-      spitze.width = live.width;
-      spitze.height = live.height;
+      for (const c of [live, spitze]) {
+        c.width = lw0; c.height = lh0;
+        c.style.width = lw0 / dpr + 'px';
+        c.style.height = lh0 / dpr + 'px';
+      }
+      // Gleich einmal benutzen: sonst legt der Browser die Zeichenflächen erst beim ersten Strich an, und gerade der
+      // erste Strich nach dem Öffnen hakt (test/leistung.js)
+      // Dazu ein unsichtbarer Probestrich durch dieselben Funktionen wie beim Schreiben (übersetzt sie vorab)
+      const probe = { w: 'stift', d: 1, p: [] };
+      for (let i = 0; i < 40; i++) probe.p.push([i, (i % 7) * 0.5, 0.3 + (i % 5) / 10]);
+      for (const c of [lctx, sctx]) { c.setTransform(1, 0, 0, 1, -1000, -1000); c.lineCap = c.lineJoin = 'round'; malAbschnitte(c, probe, 0, probe.p.length - 1); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, 4, 4); }
       spitzeRect = null;
       basis = null; inhaltVoll = true; overlayNeu = true; ol.leer = true;
       if (!vorher && seiten.length) einpassen();
@@ -1454,9 +1516,9 @@
     const zaehl = { bilder: 0, voll: 0, bereich: 0, nurVerschoben: 0, live: 0 };
     L.statistik = () => ({ ...zaehl });
 
-    function rendereBasis() {
+    function rendereBasis(behalten) {
       zaehl.voll++;
-      basis = { x: ansicht.x, y: ansicht.y, s: ansicht.s };
+      if (!behalten || !basis) basis = { x: ansicht.x, y: ansicht.y, s: ansicht.s };
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       basisTransform();
@@ -1484,6 +1546,37 @@
       zeichneInhalt({ x1: (X1 - ox) / k, y1: (Y1 - oy) / k, x2: (X2 - ox) / k, y2: (Y2 - oy) / k });
       ctx.restore();
     }
+
+    // Verschiebt das Bild auf "canvas" um ganze Bildschirmpixel zur aktuellen Ansicht und malt nur die frei gewordenen Streifen
+    // neu (rendereBereich). false: nichts zu tun oder zu weit (dann malt frame alles neu).
+    function verschiebeBasis() {
+      if (schiebeTest === false) return false;
+      const dxD = Math.round((ansicht.x - basis.x) * dpr), dyD = Math.round((ansicht.y - basis.y) * dpr);
+      const randXD = Math.round(rand * dpr), randYD = Math.round(randY * dpr);
+      if (Math.abs(dxD) < randXD * 0.5 && Math.abs(dyD) < randYD * 0.25) return false;
+      if (Math.abs(dxD) >= canvas.width * 0.6 || Math.abs(dyD) >= canvas.height * 0.6) return false;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalCompositeOperation = 'copy';
+      ctx.drawImage(canvas, dxD, dyD);
+      ctx.restore();
+      basis = { x: basis.x + dxD / dpr, y: basis.y + dyD / dpr, s: basis.s };
+      // frei gewordene Streifen in Dokument-Koordinaten
+      const k = dpr * basis.s, ox = dpr * (basis.x + rand), oy = dpr * (basis.y + randY);
+      const doc = (X, Y) => [(X - ox) / k, (Y - oy) / k];
+      const streifen = [];
+      if (dyD > 0) streifen.push([0, 0, canvas.width, dyD]); else if (dyD < 0) streifen.push([0, canvas.height + dyD, canvas.width, canvas.height]);
+      if (dxD > 0) streifen.push([0, 0, dxD, canvas.height]); else if (dxD < 0) streifen.push([canvas.width + dxD, 0, canvas.width, canvas.height]);
+      for (const [X1, Y1, X2, Y2] of streifen) {
+        const [x1, y1] = doc(X1, Y1), [x2, y2] = doc(X2, Y2);
+        rendereBereich({ x1, y1, x2, y2 });
+      }
+      zaehl.geschoben = (zaehl.geschoben || 0) + 1;
+      return true;
+    }
+    L.schiebeTest = an => { schiebeTest = an; };
+    // Für Tests: alles neu malen, aber genau an der Stelle, an der das Bild gerade liegt (Vergleich mit verschiebeBasis)
+    L.neuAnDerStelle = () => { if (basis) rendereBasis(true); };
 
     // Wie "canvas" (CSS) verschoben und skaliert werden muss, damit es zur aktuellen Ansicht passt
     function abweichung() {
@@ -1518,7 +1611,10 @@
       aktualisiereCursor();
       begrenze();
       let voll = inhaltVoll || !basis;
-      if (!voll && !deckt()) voll = true;
+      // Gescrollt (gleicher Zoom): das fertige Bild um die Strecke verschieben und nur den neu sichtbaren Streifen malen,
+      // statt der ganzen Fläche. Schon nach einem Viertel der Reserve, damit die Streifen schmal bleiben.
+      if (!voll && !schmutz && Math.abs(ansicht.s - basis.s) < 1e-9 && verschiebeBasis()) { /* erledigt */ }
+      else if (!voll && !deckt()) voll = true;
       zaehl.bilder++;
       if (voll) rendereBasis();
       else if (schmutz) rendereBereich(schmutz);
@@ -1539,6 +1635,27 @@
       positioniereText();
       zeichneOverlay();
       pruefeSchaerfe(a);
+      planeVorbau();
+    }
+
+    // In ruhigen Momenten die Pfade der Striche auf den Seiten rund um das Bild schon bauen (teileVon), in Häppchen von
+    // wenigen Millisekunden: kommt eine Seite beim Scrollen ins Bild, muss sie nur noch gemalt werden.
+    let vorbauTimer = 0;
+    function planeVorbau() { if (!vorbauTimer) vorbauTimer = setTimeout(vorbau, 250); }
+    function vorbau() {
+      vorbauTimer = 0;
+      if (!aktiv || !b || !seiten.length) return;
+      if (aktion || finger.size || geste || L.inBewegung()) { planeVorbau(); return; }
+      const oben = zuDok(0, 0)[1], unten = zuDok(0, h)[1], hoehe = unten - oben;
+      const t0 = performance.now();
+      for (const sd of sichtbareSeiten(oben - 2 * hoehe, unten + 2 * hoehe)) {
+        for (const e of inhalt(sd.id).e) {
+          if (istKasten(e) || !e.p || e.p.length < 2) continue;
+          if (pfadSpeicher.has(e) && pfadSpeicher.get(e).p === e.p) continue;
+          teileVon(e);
+          if (performance.now() - t0 > 4) { planeVorbau(); return; }
+        }
+      }
     }
 
     /* ----- Die Ebene darüber ----- */
@@ -1574,7 +1691,7 @@
       sctx.translate(ox, oy);
       sctx.lineCap = sctx.lineJoin = 'round';
       sctx.strokeStyle = sctx.fillStyle = a.farbe != null ? a.farbe : (a.farbe = strichFarbeLive(s, a));
-      const von = Math.max(0, p.length - 1);
+      const von = Math.max(0, p.length - 2);   // der erste Abschnitt, den "live" noch nicht hat
       let wMax = 0;
       if (q.length === 1) {
         const w = breite(a.strich, q[0][2], q[0][3]);
@@ -1584,7 +1701,7 @@
         sctx.fill();
       } else {
         for (let i = Math.max(0, von - 1); i < q.length; i++) wMax = Math.max(wMax, breite(a.strich, q[i][2], q[i][3]));
-        malAbschnitte(sctx, { ...a.strich, p: q }, von, q.length);
+        malAbschnitte(sctx, { ...a.strich, p: q }, von, q.length - 1);
       }
       // Bereich merken, damit das nächste Bild genau ihn leert
       let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
@@ -1667,22 +1784,36 @@
     L.on('ansicht', aktualisiereCursor);
     if (hatZeiger && hatZeiger.addEventListener) hatZeiger.addEventListener('change', aktualisiereCursor);
 
-    // Der Strich unter dem Stift: nur die neuen Abschnitte zeichnen. Der letzte Abschnitt hängt vom nächsten Punkt ab
-    // und kommt erst dazu, wenn er da ist (beim Loslassen wird der ganze Strich auf das Blatt übernommen).
+    // Der Strich unter dem Stift: nur die neuen Abschnitte zeichnen. Abschnitt k ist fertig, sobald Punkt k + 2 da ist
+    // (crStueck); das Stück danach bis unter den Stift malt die Spitze (beim Loslassen wird der ganze Strich übernommen).
     function zeichneLiveStrich() {
       const a = aktion, p = a.strich.p;
-      // Der letzte Abschnitt hängt vom nächsten Punkt ab; eine fertige Form (Halten) ist sofort ganz da
-      const bis = a.fertig ? p.length : p.length - 1;
+      // Der letzte Abschnitt hängt noch vom nächsten Punkt ab; eine fertige Form (Halten) ist sofort ganz da
+      const bis = a.fertig ? p.length - 1 : p.length - 2;
       if (bis <= a.gemalt) return;
       const s = seiteMitId(a.sid);
       if (!s) return;
       if (a.farbe == null) a.farbe = strichFarbeLive(s, a);
+      // Jedes Bild den ganzen fertigen Teil in einem Zug, genau wie danach auf dem Blatt: stückweise angesetzt
+      // überlagerten sich an jeder Naht die weichen Kanten, und die Linie sah beim Schreiben anders aus als danach
+      const ox = s.x + (a.notiz ? a.notiz.x : 0), oy = s.y + (a.notiz ? a.notiz.y : 0);
+      const k = dpr * ansicht.s, dx = dpr * ansicht.x, dy = dpr * ansicht.y;
+      let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity, wMax = 0;
+      for (let i = 0; i <= bis && i < p.length; i++) {
+        const q = p[i];
+        if (q[0] < x1) x1 = q[0]; if (q[0] > x2) x2 = q[0]; if (q[1] < y1) y1 = q[1]; if (q[1] > y2) y2 = q[1];
+        const w = breite(a.strich, q[2], q[3]); if (w > wMax) wMax = w;
+      }
+      const rr = wMax * k / 2 + 3;
+      lctx.setTransform(1, 0, 0, 1, 0, 0);
+      const X1 = Math.max(0, Math.floor((x1 + ox) * k + dx - rr)), Y1 = Math.max(0, Math.floor((y1 + oy) * k + dy - rr));
+      lctx.clearRect(X1, Y1, Math.ceil((x2 + ox) * k + dx + rr) - X1, Math.ceil((y2 + oy) * k + dy + rr) - Y1);
       liveTransform();
-      lctx.translate(s.x + (a.notiz ? a.notiz.x : 0), s.y + (a.notiz ? a.notiz.y : 0));
+      lctx.translate(ox, oy);
       lctx.lineCap = lctx.lineJoin = 'round';
       lctx.strokeStyle = a.farbe;
       zaehl.live++;
-      malAbschnitte(lctx, a.strich, a.gemalt, bis);
+      malAbschnitte(lctx, a.strich, 0, bis);
       a.gemalt = bis;
       ol.leer = false;
     }
@@ -1876,7 +2007,7 @@
     // Automatisch speichern: jede Änderung (Strich, Radieren, Verschieben, Rückgängig/Wiederholen, Form) landet nach einem
     // kurzen Moment auf der Platte. Die kleine Wartezeit fasst nur Änderungen zusammen, die direkt aufeinander folgen
     // (z. B. beim Radieren über mehrere Striche); spätestens nach einer Sekunde wird gespeichert.
-    const SICHERN_WARTE = 120, SICHERN_MAX = 1000;
+    const SICHERN_WARTE = 400, SICHERN_MAX = 1000;
     const zuSichern = new Set();
     let sichernTimer = 0, sichernSeit = 0;
     function speichere(sid) {
@@ -1887,8 +2018,12 @@
     }
     // Das Speichern kopiert die ganze Seite; während ein Strich, eine Geste oder ein Verschieben läuft, wird es kurz verschoben,
     // damit es nicht ruckelt (höchstens vier Sekunden, dann gilt "nichts darf verloren gehen" mehr)
+    // Auch solange der Stift gerade erst abgehoben hat oder über dem Blatt schwebt (penZeit): wer weiterschreibt, setzt sonst
+    // genau dann den nächsten Strich an, wenn eine volle Seite kopiert wird (test/leistung.js). Beim Wechsel aus der App,
+    // beim Schliessen und vor dem Neuladen wird sofort gesichert (sichernBeiAbschied, L.sichern).
     function sichernLauf() {
-      if ((aktion || geste || finger.size) && Date.now() - sichernSeit < 4000) { sichernTimer = setTimeout(sichernLauf, 150); return; }
+      const stiftNah = performance.now() - penZeit < 400;
+      if ((aktion || geste || finger.size || stiftNah) && Date.now() - sichernSeit < 4000) { sichernTimer = setTimeout(sichernLauf, 150); return; }
       sichernJetzt();
     }
     function sichernJetzt() {
@@ -2008,6 +2143,8 @@
     L.einst = einst;
     L.setzeWerkzeug = w => {
       if (w !== 'text' && textEdit) { textOffenSeit = textHalten = 0; beendeText(); }
+      if (w === 'stift' || w === 'marker') letztesSchreibwerkzeug = w;
+      if (w !== einst.werkzeug) vorherigesWerkzeug = einst.werkzeug;
       einst.werkzeug = w;
       if (w !== 'laser') laserLeeren();
       if (w !== 'lasso') auswahl.clear();
@@ -2693,6 +2830,45 @@
       plane();
     }
     L.loescheAuswahl = loescheAuswahl;
+    // Geste ausführen (name: zweiFinger, dreiFinger, zweiFingerLang, pencilDoppel, pencilDruecken). Werkzeuge und Verlauf
+    // erledigt die Schreibfläche selbst, alles andere (Seiten-Menü, Leiste, Vollbild, Farben) meldet sie mit "geste".
+    L.geste = (name, pos) => {
+      const was = Object.assign({}, GESTEN_STANDARD, einst.gesten || {})[name];
+      if (!was || was === 'aus' || !GESTEN_AKTIONEN[was]) return;
+      if (textEdit) L.beendeText();
+      const zeige = t => { if (window.UI && UI.meldung) UI.meldung(t); };
+      if (was === 'rueckgaengig') { if (L.kannRueckgaengig()) { L.rueckgaengig(); zeige('Rückgängig'); } else zeige('Nichts rückgängig zu machen'); }
+      else if (was === 'wiederholen') { if (L.kannWiederholen()) { L.wiederholen(); zeige('Wiederholt'); } else zeige('Nichts zu wiederholen'); }
+      else if (was === 'radierer') L.setzeWerkzeug(einst.werkzeug === 'radierer' ? (vorherigesWerkzeug && vorherigesWerkzeug !== 'radierer' ? vorherigesWerkzeug : letztesSchreibwerkzeug) : 'radierer');
+      else if (was === 'letztes') L.setzeWerkzeug(vorherigesWerkzeug && vorherigesWerkzeug !== einst.werkzeug ? vorherigesWerkzeug : letztesSchreibwerkzeug);
+      else if (['stift', 'marker', 'lasso', 'text', 'hand', 'laser'].includes(was)) L.setzeWerkzeug(was);
+      else emit('geste', { was, pos: pos || [b / 2, h / 2], name });
+    };
+    // Seite um 90° gedreht (richtung +90 = rechts herum, -90 = links herum; B x H = Grösse vorher): alles darauf dreht
+    // mit. Striche Punkt für Punkt; Haftnotizen, Bilder und Text wandern mit ihrer Mitte und bleiben aufrecht lesbar.
+    // Danach gibt es kein Rückgängig über die Drehung hinweg (die Drehung selbst steht im Dokument, nicht im Verlauf).
+    L.dreheInhalt = (sid, richtung, B, H) => {
+      auswahl.clear();
+      const inh = inhalt(sid);
+      if (inh.e.length) {
+        beginne();
+        beruehre(sid);
+        const dreh = richtung > 0 ? (x, y) => [H - y, x] : (x, y) => [y, B - x];
+        for (const el of inh.e) {
+          if (istKasten(el)) {
+            const g = grenzen(el), cx = (g.x1 + g.x2) / 2, cy = (g.y1 + g.y2) / 2;
+            const [nx, ny] = dreh(cx, cy);
+            el.x = r1(el.x + nx - cx); el.y = r1(el.y + ny - cy);
+          } else el.p = el.p.map(q => { const [nx, ny] = dreh(q[0], q[1]); return punktMit(q, r1(nx), r1(ny)); });
+        }
+        beende();
+      }
+      verlauf = []; zukunft = [];
+      emit('verlauf');
+    };
+    // Die Seite, um die es gerade geht (für Drehen in der Werkzeugleiste und in den Gesten)
+    L.dreheSeite = richtung => { if (opt.dreheSeite) opt.dreheSeite(richtung); };
+    L.kannDrehen = () => !!opt.dreheSeite;
     L.istLeer = () => seiten.every(s => !inhalt(s.id).e.length);
     L.leeren = () => {
       beginne();
@@ -2902,6 +3078,20 @@
         if (Math.max(e.width || 0, e.height || 0) > 72) return;
         touchPos.set(e.pointerId, [sx, sy]);
         langDruckAus();
+        // Gesten: alle Finger dieser Berührung zählen (erster Finger beginnt eine neue)
+        if (touchPos.size === 1 || !tippen) tippen = { start: performance.now(), max: 0, bewegt: false, pos: new Map(), lang: 0, fertig: false };
+        tippen.pos.set(e.pointerId, [sx, sy]);
+        tippen.max = Math.max(tippen.max, tippen.pos.size);
+        if (tippen.pos.size === 2 && !tippen.lang) {
+          const t = tippen;
+          t.lang = setTimeout(() => {
+            if (tippen !== t || t.bewegt || t.fertig || t.pos.size !== 2) return;
+            t.fertig = true;
+            const [a, c] = [...t.pos.values()];
+            brichAbFuerGeste();
+            L.geste('zweiFingerLang', [(a[0] + c[0]) / 2, (a[1] + c[1]) / 2]);
+          }, HALTEN_MS);
+        }
         // Text: ein Finger tippt einen Text an oder setzt einen neuen (erst beim Loslassen, Wischen scrollt weiter).
         // Ohne die Maus-Ereignisse danach, sonst verliert das Textfeld auf dem iPad gleich wieder den Fokus.
         if (einst.werkzeug === 'text' || textEdit) {
@@ -2925,6 +3115,9 @@
           if (!finger.size) {
             const teil = notizTeilBei(dx, dy);
             if (teil && teil.was !== 'flaeche' && notizBedienen(e, teil, dx, dy)) return;
+            // Auf die Fläche einer Haftnotiz getippt (nicht gewischt): Text schreiben, erst dann kommt die Tastatur.
+            // Ohne die Maus-Ereignisse danach, sonst verliert das Textfeld auf dem iPad gleich wieder den Fokus.
+            if (teil && teil.was === 'flaeche') { e.preventDefault(); notizFingerTipp = { id: e.pointerId, x: sx, y: sy, bewegt: false, n: teil.n, sid: teil.sid }; }
             // Ausgewählt (z. B. ein eben eingefügtes Bild): an den Ecken ziehen ändert die Grösse, innen verschiebt
             if (auswahl.size) {
               const ecke = griffBei(dx, dy, 26);
@@ -3027,18 +3220,11 @@
         beruehre(s.id);
         inhalt(s.id).e.push(n);
         beende();
-        // Den Text erst nach dem Loslassen bearbeiten, damit das Textfeld den Stift nicht abfängt
-        let offen = false;
-        const oeffnen = () => {
-          canvas.removeEventListener('pointerup', oeffnen);
-          canvas.removeEventListener('pointercancel', oeffnen);
-          if (offen) return;
-          offen = true;
-          if (inhalt(s.id).e.includes(n)) bearbeiteNotiz(n, s.id);
-        };
-        canvas.addEventListener('pointerup', oeffnen);
-        canvas.addEventListener('pointercancel', oeffnen);
-        setTimeout(oeffnen, 1500);
+        // Keine Tastatur: auf der neuen Notiz schreibt man gleich mit dem Stift (wie in Goodnotes). Dafür geht es zurück
+        // zum letzten Schreibwerkzeug. Tippen schreibt Text: Finger auf die Notiz, oder Stift mit dem Notiz-Werkzeug.
+        einst.werkzeug = letztesSchreibwerkzeug;
+        opt.einstGeaendert && opt.einstGeaendert();
+        emit('werkzeug', einst.werkzeug);
         plane();
         return;
       }
@@ -3067,7 +3253,7 @@
 
     // Glättung und Haltezeit für einen neuen Strich
     function schreibStart(a, sx, sy, e) {
-      const par = GLAETTUNG[einst.glaettung == null ? 'niedrig' : einst.glaettung];
+      const par = GLAETTUNG[einst.glaettung == null ? 'aus' : einst.glaettung];
       if (par) { a.filter = neuerFilter(par); a.filter(sx, sy, e.timeStamp); }
       halteStarten(a, sx, sy);
       emit('schreibstart');
@@ -3143,10 +3329,15 @@
       if (diag) diagMelden(e);
       const [sx, sy] = lokalPunkt(e);
       if (touchPos.has(e.pointerId)) touchPos.set(e.pointerId, [sx, sy]);
+      if (tippen && tippen.pos.has(e.pointerId) && !tippen.bewegt) {
+        const q = tippen.pos.get(e.pointerId);
+        if (Math.hypot(sx - q[0], sy - q[1]) > TIPP_TOL) tippen.bewegt = true;
+      }
       if (finger.has(e.pointerId)) {
         finger.set(e.pointerId, [sx, sy]);
         if (knopfTipp && knopfTipp.id === e.pointerId && Math.hypot(sx - knopfTipp.x, sy - knopfTipp.y) > 8) knopfTipp.bewegt = true;
         if (textFingerTipp && (textFingerTipp.id !== e.pointerId || Math.hypot(sx - textFingerTipp.x, sy - textFingerTipp.y) > 8)) textFingerTipp.bewegt = true;
+        if (notizFingerTipp && (notizFingerTipp.id !== e.pointerId || Math.hypot(sx - notizFingerTipp.x, sy - notizFingerTipp.y) > 8)) notizFingerTipp.bewegt = true;
         if (langDruck && langDruck.id === e.pointerId && Math.hypot(sx - langDruck.x, sy - langDruck.y) > LANG_TOL) langDruckAus();
         if (geste) bewegeGeste();
         return;
@@ -3269,12 +3460,31 @@
 
     function ende(e) {
       touchPos.delete(e.pointerId);
+      if (tippen && tippen.pos.has(e.pointerId)) {
+        const t = tippen;
+        t.pos.delete(e.pointerId);
+        if (e.type === 'pointercancel') t.bewegt = true;
+        if (!t.pos.size) {
+          clearTimeout(t.lang);
+          tippen = null;
+          // Zwei oder drei Finger kurz getippt: Geste (ein angefangener Strich mit dem Finger ist schon verworfen)
+          if (!t.bewegt && !t.fertig && t.max >= 2 && performance.now() - t.start < TIPP_MS) {
+            const g = t.max === 2 ? 'zweiFinger' : 'dreiFinger';
+            setTimeout(() => L.geste(g), 0);
+          }
+        }
+      }
       if (langDruck && langDruck.id === e.pointerId) langDruckAus();
       if (finger.has(e.pointerId)) {
         if (knopfTipp && knopfTipp.id === e.pointerId) {
           const t = knopfTipp;
           knopfTipp = null;
           if (!t.bewegt && e.type === 'pointerup' && finger.size === 1 && opt.neueSeite) opt.neueSeite();
+        }
+        if (notizFingerTipp && notizFingerTipp.id === e.pointerId) {
+          const t = notizFingerTipp;
+          notizFingerTipp = null;
+          if (!t.bewegt && e.type === 'pointerup' && finger.size === 1 && !zug.px && inhalt(t.sid).e.includes(t.n)) bearbeiteNotiz(t.n, t.sid);
         }
         if (textFingerTipp && textFingerTipp.id === e.pointerId) {
           const t = textFingerTipp;
@@ -3309,8 +3519,9 @@
       st.m = Date.now();
       // Ein Zickzack über Geschriebenem löscht es und bleibt selbst nicht stehen
       if (!a.original && ueberkritzelt(a)) return;
-      // Weniger Punkte, gleiche Linie: spart Speicher und Zeit beim Zeichnen (Formen sind schon sauber und bleiben, wie sie sind)
-      if (!a.original) vereinfache(st);
+      // Alle Punkte bleiben: so sieht der Strich danach genau so aus wie beim Schreiben (test/strich.js: 0 Bildpunkte
+      // Unterschied). Reduziert wurden sie früher hier; selbst eng gerechnet änderte das Kanten sichtbar, und es sparte
+      // nur noch rund 17 %. Reduziert werden nur die Stücke beim Radieren (künstliche Zwischenpunkte, siehe unten).
       if (a.notiz) {
         if (!inh.e.includes(a.notiz)) { plane(); return; }
         (a.notiz.e || (a.notiz.e = [])).push(st);
@@ -3550,12 +3761,13 @@
       groesse();
       messung.anzahl++; messung.ms += performance.now() - t0;
     };
-    // Eingefroren: das Bild auf die neue Breite strecken (linke Kante bleibt, die Seitenmitte folgt der neuen Mitte)
+    // Eingefroren: das Bild bleibt unverzerrt in seiner Grösse und wandert nur mit, so dass die Seitenmitte der neuen
+    // Mitte folgt (früher wurde es auf die neue Breite gestreckt und sah beim Ziehen verzerrt aus). Was dabei neu ins
+    // Bild kommt, ist meist schon gemalt ("canvas" ist ringsum grösser); erst beim Loslassen wird einmal neu gemalt.
     L.vorschauBreite = w => {
       if (!eingefroren || !frostBreite) return;
-      const s = Math.max(0.05, w / frostBreite) + ' 1';
-      canvas.style.transformOrigin = rand + 'px 0'; canvas.style.scale = s;
-      live.style.transformOrigin = '0 0'; live.style.scale = s;
+      const dx = Math.round(((w - frostBreite) / 2) * dpr) / dpr;
+      canvas.style.translate = live.style.translate = dx + 'px 0';
     };
     L.eingefroren = () => eingefroren;
     alleLeinwaende.add(L);
@@ -3647,6 +3859,11 @@
   Leinwand.bilderBereit = bilderBereit;
   Leinwand.istBild = istBild;
   Leinwand.istText = istText;
+  Leinwand.GESTEN_STANDARD = GESTEN_STANDARD;
+  Leinwand.GESTEN_AKTIONEN = GESTEN_AKTIONEN;
+  Leinwand.drehungVon = drehungVon;
+  Leinwand.seitenFormat = seitenFormat;
+  Leinwand.pdfAnsicht = pdfAnsicht;
   Leinwand.textLayout = textLayout;
   Leinwand.TEXT_SCHRIFT = TEXT_SCHRIFT;
   Leinwand.MM = MM;

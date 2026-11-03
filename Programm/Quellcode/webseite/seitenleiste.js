@@ -194,9 +194,9 @@
     }
     async function malMini(nr, cv) {
       const seite = await pdf.getPage(nr);
-      const vp1 = seite.getViewport({ scale: PdfDienst.EINHEIT });
+      const vp1 = Leinwand.pdfAnsicht(seite, PdfDienst.EINHEIT, o.item(), nr);
       const breite = Math.round(Math.min(2, window.devicePixelRatio || 1) * 128);
-      const vp = seite.getViewport({ scale: PdfDienst.EINHEIT * breite / vp1.width });
+      const vp = Leinwand.pdfAnsicht(seite, PdfDienst.EINHEIT * breite / vp1.width, o.item(), nr);
       const quelle = document.createElement('canvas');
       quelle.width = Math.max(1, Math.floor(vp.width)); quelle.height = Math.max(1, Math.floor(vp.height));
       const qc = quelle.getContext('2d', { willReadFrequently: true });
@@ -287,7 +287,7 @@
         const name = d[1] && d[1].name;
         const oben = name === 'XYZ' ? d[3] : (name === 'FitH' || name === 'FitBH') ? d[2] : null;
         if (oben != null) {
-          const vp = (await pdf.getPage(index + 1)).getViewport({ scale: PdfDienst.EINHEIT });
+          const vp = Leinwand.pdfAnsicht(await pdf.getPage(index + 1), PdfDienst.EINHEIT, o.item(), index + 1);
           y = Math.max(0, vp.convertToViewportPoint(0, oben)[1] - 24);
         }
         return { nr: index + 1, y };
@@ -363,7 +363,7 @@
     function textVon(nr) {
       if (!texte.has(nr)) {
         texte.set(nr, pdf.getPage(nr).then(async seite => {
-          const vp = seite.getViewport({ scale: PdfDienst.EINHEIT });
+          const vp = Leinwand.pdfAnsicht(seite, PdfDienst.EINHEIT, o.item(), nr);
           const tc = await seite.getTextContent();
           const teile = [], proZeile = new Map();
           let text = '', anzeige = '';

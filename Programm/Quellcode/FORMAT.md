@@ -67,6 +67,8 @@ fehlt das Feld, gibt es keine). Beim Zusammenführen gilt wie bei allen Eigensch
 * Ältere Versionen (vor den Bildern) lesen `k: "b"` als leeren Strich: wer dort die Seite ändert, verliert das Bild. Alle Geräte
   (auch das iPad) sollten daher dieselbe Version haben.
 
+Striche werden als Kurve durch alle ihre Punkte gezeichnet (Catmull-Rom; an Knicken über 75° eine Ecke) und seit 3.10 beim Speichern nicht mehr reduziert.
+
 **Text** (ab 3.9.0) `{ "k": "t", "i": Id, "x", "y", "b", "t": Text, "gr", "f", "erstellt", "m" }`
 
 * `x`, `y` = linke obere Ecke der ersten Zeile, `gr` = Schriftgrösse in Einheiten (18 pt = 24), `f` = Farbe wie bei Strichen

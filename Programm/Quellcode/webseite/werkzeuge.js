@@ -5,7 +5,7 @@
     werkzeug: 'stift', farbe: 'tinte', markerFarbe: 'gelb', eigeneFarben: [], eigeneMarker: [], dicke: 3, markerDicke: 3.5, radierGroesse: 14,
     seite: 'lasso', radier: 'radierer', druck: true, druckModus: 'pencil', neigung: false, neigungAb: 30, druckKurve: 1, druckMin: 0, druckMax: 1,
     finger: false, radiermodus: 'strich', notizFarbe: 'gelb', laserFarbe: '#ff2d2d', textFarbe: 'tinte',
-    glaettung: 'niedrig', halteForm: true, halteMs: 700, kritzelLoeschen: true
+    glaettung: 'aus', halteForm: true, halteMs: 700, kritzelLoeschen: true, gesten: {}
   };
   // Drei Grössen je Werkzeug in Millimetern (Stift, Marker: Strichbreite; Radierer: Durchmesser), jede lässt sich mit
   // dem Regler einstellen und bleibt gespeichert
@@ -86,7 +86,7 @@
       // Bisherige Grössen (Pixel, ein Wert je Werkzeug oder drei) werden in Millimeter umgerechnet
       aufMillimeter();
       ordnePresets();
-      if (!GLAETTUNGEN.includes(einst.glaettung)) einst.glaettung = 'niedrig';
+      if (!GLAETTUNGEN.includes(einst.glaettung)) einst.glaettung = 'aus';
       // Version 3.9: einmal auf das neue Schreibgefühl umstellen (weniger Nachziehen, Breite ohne Neigung wie beim
       // Stift in Apple Notizen). Beides lässt sich im Stift-Panel wieder ändern.
       // Version 3.9.2: feinere Stiftgrössen (vorher 0,4 / 0,8 / 1,6 mm, die meisten schrieben nur bis 0,8). Einmal für
@@ -95,6 +95,12 @@
         einst.presets.stift = { ...PRESETS.stift };
         einst.stiftGroessen2 = true;
         ordnePresets();
+        speichereEinst();
+      }
+      // Version 3.10: Glättung aus (Linie genau unter dem Stift, wie auf Papier)
+      if (!einst.schreibgefuehl3) {
+        einst.glaettung = 'aus';
+        einst.schreibgefuehl2 = einst.schreibgefuehl3 = true;
         speichereEinst();
       }
       if (!einst.schreibgefuehl2) {
@@ -144,6 +150,8 @@
     text: '<path d="M5 7V4.5h14V7"/><path d="M12 4.5v15"/><path d="M9 19.5h6"/>',
     laser: '<circle cx="12" cy="12" r="3"/><path d="M12 3.5v3M12 17.5v3M3.5 12h3M17.5 12h3M6 6l2.1 2.1M15.9 15.9L18 18M18 6l-2.1 2.1M8.1 15.9L6 18"/>',
     plus: '<path d="M12 6v12M6 12h12"/>',
+    links: '<path d="M8 4L4 8l4 4"/><path d="M4 8h9a7 7 0 010 14h-3"/>',
+    rechts: '<path d="M16 4l4 4-4 4"/><path d="M20 8h-9a7 7 0 000 14h3"/>',
     undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/>',
     redo: '<path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/>',
     tasten: '<path d="M8 3h8v14l-4 4-4-4z"/><path d="M10 7h4"/><path d="M10 10h4"/>',
@@ -152,6 +160,11 @@
   const icon = n => `<svg viewBox="0 0 24 24" aria-hidden="true">${SVG[n]}</svg>`;
   const WERKZEUGE = [['hand', 'Hand: Fläche verschieben (H)'], ['stift', 'Stift (P)'], ['marker', 'Textmarker (M)'], ['radierer', 'Radierer (E)'], ['lasso', 'Lasso: auswählen, verschieben, grösser/kleiner (L)'], ['notiz', 'Haftnotiz (N)'], ['text', 'Text: tippen und schreiben, Grösse und Farbe wählen (T)'], ['laser', 'Laserpointer: leuchtender Punkt mit Spur, nichts wird gezeichnet (R)']];
   const zahl = w => String(w).replace('.', ',');
+  const GESTEN_LISTE = [['zweiFinger', 'Zwei Finger tippen'], ['dreiFinger', 'Drei Finger tippen'], ['zweiFingerLang', 'Zwei Finger halten'], ['pencilDoppel', 'Pencil doppelt tippen (iPad-App)'], ['pencilDruecken', 'Pencil zusammendrücken (iPad-App, Pencil Pro)']];
+  // Was in der Leiste stehen kann (zum Ein- und Ausblenden, Werkzeugleiste anpassen)
+  const LEISTE_TEILE = [['w:hand', 'Hand'], ['w:stift', 'Stift'], ['w:marker', 'Textmarker'], ['w:radierer', 'Radierer'], ['w:lasso', 'Lasso'], ['w:notiz', 'Haftnotiz'], ['w:text', 'Text'], ['w:laser', 'Laserpointer'],
+    ['a:finger', 'Mit dem Finger schreiben'], ['a:undo', 'Rückgängig'], ['a:redo', 'Wiederholen'], ['a:tasten', 'Stift einstellen'], ['a:links', 'Seite nach links drehen'], ['a:rechts', 'Seite nach rechts drehen'], ['a:zoom', 'Zoom (Einpassen)']];
+  const AUS_KEY = 'lokal:leiste-aus', FARBIG_KEY = 'lokal:leiste-farbig';
   const GLAETTUNGEN = ['aus', 'niedrig', 'mittel', 'hoch'];
 
   function baue(leiste, lw) {
@@ -204,9 +217,11 @@
       <div class="gruppe" role="group" aria-label="Bearbeiten">
         <button class="wz" type="button" data-ord="a:undo" data-aktion="undo" title="Rückgängig (Strg+Z)" aria-label="Rückgängig">${icon('undo')}</button>
         <button class="wz" type="button" data-ord="a:redo" data-aktion="redo" title="Wiederholen (Strg+Y)" aria-label="Wiederholen">${icon('redo')}</button>
-        <button class="wz" type="button" data-ord="a:tasten" data-aktion="tasten" title="Stift einstellen: Tasten, Druck, Neigung, Diagnose" aria-label="Stift einstellen" aria-pressed="false">${icon('tasten')}</button>
+        <button class="wz" type="button" data-ord="a:tasten" data-aktion="tasten" title="Stift einstellen: Tasten, Druck, Neigung, Gesten, Diagnose" aria-label="Stift einstellen" aria-pressed="false">${icon('tasten')}</button>
+        <button class="wz" type="button" data-ord="a:links" data-aktion="links" data-nur-drehen title="Seite nach links drehen (90°)" aria-label="Seite nach links drehen">${icon('links')}</button>
+        <button class="wz" type="button" data-ord="a:rechts" data-aktion="rechts" data-nur-drehen title="Seite nach rechts drehen (90°)" aria-label="Seite nach rechts drehen">${icon('rechts')}</button>
       </div>
-      <button class="wb-zoom" type="button" data-aktion="zoom" title="Einpassen und zentrieren (0)">100 %</button>
+      <button class="wb-zoom" type="button" data-aktion="zoom" data-sicht="a:zoom" title="Einpassen und zentrieren (0)">100 %</button>
       <div class="leiste-ende" data-ende></div>`;
 
     // Einstellungen für Stifttasten, Druck und Neigung samt Diagnose, schwebt unter der Leiste
@@ -220,6 +235,11 @@
       <label>Haltezeit <span class="diag-wert" data-w="halteMs"></span><input type="range" data-t="halteMs" min="400" max="1500" step="50"><span class="diag-enden"><span>schnell</span><span>langsam</span></span></label>
       <label class="haken-label"><input type="checkbox" data-t="kritzelLoeschen"> Überkritzeln löscht Geschriebenes</label>
       <p class="dialog-klein">Am Ende eines Strichs den Stift ruhig halten: eine gerade Linie, ein Pfeil (Schaft, dann zwei Widerhaken in einem Zug), oder bei einer geschlossenen Zeichnung ein Dreieck, Viereck, Rechteck, Vieleck, Kreis oder eine Ellipse aus deinen Punkten. Rückgängig bringt die Zeichnung zurück. Mit Zickzack über Geschriebenes wird es gelöscht.</p>
+
+      <h3>Gesten</h3>
+      <p class="dialog-klein">Mit den Fingern auf die Schreibfläche: tippen = kurz auf und wieder weg, ohne zu wischen. Die Gesten des Apple Pencil (doppelt tippen, zusammendrücken) meldet Safari an Webseiten nicht; sie wirken nur in der iPad-App.</p>
+      ${GESTEN_LISTE.map(([k, t]) => `<label>${t} <select data-geste="${k}">${Object.entries(Leinwand.GESTEN_AKTIONEN).map(([w, n]) => `<option value="${w}">${n}</option>`).join('')}</select></label>`).join('')}
+      <div class="diag-knoepfe"><button type="button" class="btn-leise klein" data-aktion="gesten-null">Gesten zurücksetzen</button></div>
 
       <h3>Stift prüfen</h3>
       <p>Schreibe im Feld: die Werte zeigen, was dein Stift meldet. Das Feld ist nur zum Testen, es bleibt nichts davon stehen.</p>
@@ -363,6 +383,8 @@
         leiste.classList.toggle('eig-offen', auf);
         k.setAttribute('aria-pressed', String(auf));
       }
+      else if (k.dataset.aktion === 'links') lw.dreheSeite(-90);
+      else if (k.dataset.aktion === 'rechts') lw.dreheSeite(90);
       else if (k.dataset.aktion === 'undo') lw.rueckgaengig();
       else if (k.dataset.aktion === 'redo') lw.wiederholen();
       else if (k.dataset.aktion === 'zoom') lw.einpassen();
@@ -430,9 +452,11 @@
       neigungAb: v => Math.round(v) + '°', halteMs: v => zahl((Number(v) / 1000).toFixed(2)) + ' s'
     };
     function panelWerte() {
+      const g = Object.assign({}, Leinwand.GESTEN_STANDARD, e.gesten || {});
+      panel.querySelectorAll('[data-geste]').forEach(sel => { sel.value = g[sel.dataset.geste]; });
       panel.querySelector('[data-t="seite"]').value = e.seite;
       panel.querySelector('[data-t="radier"]').value = e.radier;
-      panel.querySelector('[data-t="glaettung"]').value = GLAETTUNGEN.includes(e.glaettung) ? e.glaettung : 'niedrig';
+      panel.querySelector('[data-t="glaettung"]').value = GLAETTUNGEN.includes(e.glaettung) ? e.glaettung : 'aus';
       const eigen = e.druckModus === 'eigen';
       panel.querySelector('[data-t="druckModus"]').value = eigen ? 'eigen' : 'pencil';
       panel.querySelector('.diag-pencil').hidden = eigen;
@@ -559,6 +583,10 @@
         delete e.druckTypisch;
         speichereEinst();
         if (window.UI) UI.meldung('Der gewohnte Druck wird beim nächsten Schreiben neu gelernt');
+      } else if (k.dataset.aktion === 'gesten-null') {
+        e.gesten = {};
+        speichereEinst();
+        if (window.UI) UI.meldung('Gesten zurückgesetzt');
       } else if (k.dataset.aktion === 'kurve-null') {
         Object.assign(e, { druckKurve: 1, druckMin: 0, druckMax: 1, neigungAb: 30 });
         speichereEinst();
@@ -572,6 +600,11 @@
       zeichneKurve();
     });
     panel.addEventListener('change', ev => {
+      if (ev.target.dataset.geste) {
+        e.gesten = Object.assign({}, e.gesten || {}, { [ev.target.dataset.geste]: ev.target.value });
+        speichereEinst();
+        return;
+      }
       const t = ev.target.dataset.t;
       if (['druck', 'neigung', 'finger', 'halteForm', 'kritzelLoeschen'].includes(t)) e[t] = ev.target.checked;
       else if (ev.target.type === 'range' && t) e[t] = Number(ev.target.value);
@@ -636,17 +669,64 @@
     leiste.addEventListener('pointerup', ziehenEnde);
     leiste.addEventListener('pointercancel', ziehenEnde);
     leiste.addEventListener('click', ev => { if (klickWeg) { ev.stopPropagation(); ev.preventDefault(); } }, true);
+    // Werkzeugleiste anpassen: was nicht gebraucht wird, verschwindet (je Gerät). Drehen gibt es nur für Seiten.
+    function sichtbarkeit() {
+      let aus = Daten.get(AUS_KEY, []);
+      if (!Array.isArray(aus)) aus = [];
+      leiste.querySelectorAll('[data-ord], [data-sicht]').forEach(b => {
+        const k = b.dataset.ord || b.dataset.sicht;
+        b.hidden = aus.includes(k) || (b.hasAttribute('data-nur-drehen') && !(lw.kannDrehen && lw.kannDrehen()));
+      });
+      leiste.classList.toggle('farbig', Daten.get(FARBIG_KEY, true) !== false);
+    }
+    async function anpassen() {
+      let aus = Daten.get(AUS_KEY, []);
+      if (!Array.isArray(aus)) aus = [];
+      const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+      const ergebnis = await UI.oeffneDialog(`<form class="dialog-form">
+          <h2>Werkzeugleiste anpassen</h2>
+          <p class="dialog-klein">Was du nicht brauchst, nimm weg. Die Reihenfolge änderst du direkt in der Leiste: ein Symbol gedrückt halten und ziehen.</p>
+          <div class="leiste-wahl">${LEISTE_TEILE.map(([k, n]) => `<label class="haken-label"><input type="checkbox" name="teil" value="${esc(k)}" ${aus.includes(k) ? '' : 'checked'}> ${esc(n)}</label>`).join('')}</div>
+          <label class="haken-label"><input type="checkbox" name="farbig" ${Daten.get(FARBIG_KEY, true) !== false ? 'checked' : ''}> Farbige Symbole</label>
+          <div class="dialog-knoepfe"><button type="button" class="btn-leise" data-wahl="alle">Alle zeigen</button><button type="button" class="btn-leise" data-abbrechen>Abbrechen</button><button type="submit" class="btn-primaer">Übernehmen</button></div>
+        </form>`, { wert: d => ({ an: [...d.querySelectorAll('[name="teil"]')].filter(x => x.checked).map(x => x.value), farbig: d.querySelector('[name="farbig"]').checked }) });
+      if (!ergebnis) return;
+      if (ergebnis === 'alle') { Daten.set(AUS_KEY, []); Daten.set(FARBIG_KEY, true); }
+      else {
+        Daten.set(AUS_KEY, LEISTE_TEILE.map(([k]) => k).filter(k => !ergebnis.an.includes(k)));
+        Daten.set(FARBIG_KEY, ergebnis.farbig);
+      }
+      leisten.forEach(l => l.sichtbarkeit());
+    }
+    function oeffneGesten() {
+      panel.hidden = false;
+      leiste.querySelector('[data-aktion="tasten"]').setAttribute('aria-pressed', 'true');
+      panelWerte();
+      zeichneKurve();
+      const h = [...panel.querySelectorAll('h3')].find(x => x.textContent === 'Gesten');
+      if (h) h.scrollIntoView({ block: 'start' });
+    }
+    function zeigeEigenschaften() {
+      const auf = !leiste.classList.contains('eig-offen');
+      leiste.classList.toggle('eig-offen', auf);
+      leiste.querySelector('[data-aktion="eigenschaften"]').setAttribute('aria-pressed', String(auf));
+    }
     lw.on('verlauf', aktualisiere);
     lw.on('ansicht', zoom);
     lw.on('stifttaste', text => { panel.querySelector('.tasten-test').textContent = text; });
     const themaBeobachter = new MutationObserver(() => { farbenMalen(); aktualisiere(); zeichneKurve(); });
     themaBeobachter.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     farbenMalen();
+    sichtbarkeit();
     aktualisiere();
     zoom(lw.ansicht().s);
 
     const eintrag = {
       aktualisiere,
+      sichtbarkeit,
+      anpassen,
+      oeffneGesten,
+      zeigeEigenschaften,
       anfang: leiste.querySelector('[data-anfang]'),
       ende: leiste.querySelector('[data-ende]'),
       schliesseEigenschaften: () => { leiste.classList.remove('eig-offen'); leiste.querySelector('[data-aktion="eigenschaften"]').setAttribute('aria-pressed', 'false'); },

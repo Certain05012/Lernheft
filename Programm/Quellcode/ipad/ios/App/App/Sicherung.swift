@@ -263,9 +263,31 @@ public class LHOrdnerPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDelega
     }
 }
 
-// Der Bridge-ViewController der App: wie der von Capacitor, meldet zusätzlich das Modul für die Sicherung an
-class LernheftViewController: CAPBridgeViewController {
+// Der Bridge-ViewController der App: wie der von Capacitor, meldet zusätzlich das Modul für die Sicherung an und gibt die
+// Gesten des Apple Pencil an die Oberfläche weiter (Doppeltippen: Pencil 2 und Pro; Zusammendrücken: Pencil Pro).
+// Die Oberfläche (leinwand.js, Ereignis "lh-pencil") entscheidet, was sie tun (Einstellung "Gesten" im Stift-Panel).
+// Safari gibt diese Gesten an Webseiten nicht weiter, in der Web-App gibt es sie deshalb nicht.
+class LernheftViewController: CAPBridgeViewController, UIPencilInteractionDelegate {
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(LHOrdnerPlugin())
+        let stift = UIPencilInteraction()
+        stift.delegate = self
+        view.addInteraction(stift)
+    }
+
+    private func meldeStift(_ art: String) {
+        webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('lh-pencil', { detail: '\(art)' }))", completionHandler: nil)
+    }
+
+    // iPadOS bis 17.4
+    func pencilInteractionDidTap(_ interaction: UIPencilInteraction) { meldeStift("doppeltipp") }
+
+    // ab iPadOS 17.5 (dann ruft das System nur noch diese auf)
+    @available(iOS 17.5, *)
+    func pencilInteraction(_ interaction: UIPencilInteraction, didReceiveTap tap: UIPencilInteraction.Tap) { meldeStift("doppeltipp") }
+
+    @available(iOS 17.5, *)
+    func pencilInteraction(_ interaction: UIPencilInteraction, didReceiveSqueeze squeeze: UIPencilInteraction.Squeeze) {
+        if squeeze.phase == .ended { meldeStift("druecken") }
     }
 }

@@ -77,7 +77,8 @@ if (!WEB) index = index.replace(/<link rel="manifest"[^>]*>\r?\n?/, '');
 // einer Notiz) als HTML in die Seite geriete, könnte er nichts ausführen und nichts an fremde Server schicken. Die
 // Schriften kommen von Google (nur CSS und Schriftdateien, kein Skript).
 if (WEB) {
-  const verbindungen = ["'self'", 'https://api.dropboxapi.com', 'https://content.dropboxapi.com', 'https://login.microsoftonline.com',
+  // data: und blob: für Bilder in der Seite (z. B. "Bild kopieren" liest das Bild per fetch aus seiner data-Adresse)
+  const verbindungen = ["'self'", 'data:', 'blob:', 'https://api.dropboxapi.com', 'https://content.dropboxapi.com', 'https://login.microsoftonline.com',
     'https://graph.microsoft.com', 'https://*.sharepoint.com', 'https://*.1drv.com', 'https://*.livefilestore.com', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'];
   if (TEST) verbindungen.push('http://127.0.0.1:47831');
   const csp = [

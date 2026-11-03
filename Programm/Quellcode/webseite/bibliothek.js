@@ -76,8 +76,8 @@ Daten.bereit.then(function () {
     for (const cv of wurzel.querySelectorAll('canvas[data-nb]')) {
       const it = get(cv.dataset.nb);
       if (!it) continue;
-      const F = Leinwand.FORMATE[it.format] || Leinwand.FORMATE.A4;
       const sid = (it.seiten || [])[0];
+      const F = Leinwand.seitenFormat(it, sid);
       // Whiteboard: alles Geschriebene im Bild, ohne Blattgrenzen
       if (istBrett(it)) { Leinwand.vorschau(cv, sid ? Daten.get('ink:' + it.id + ':' + sid) : null, { flaeche: Leinwand.seitenfarbe(it.seitenfarbe).flaeche, papierFarbe: Leinwand.seitenfarbe(it.seitenfarbe).farbe }); continue; }
       const sf = Leinwand.seitenfarbe(it.seitenfarbe);
@@ -138,7 +138,7 @@ Daten.bereit.then(function () {
     if (mitOrt) teile.push(esc(pfadText(d.eltern)));
     if (d.art === 'skript') teile.push(`${d.seiten || '?'} ${d.seiten === 1 ? 'Seite' : 'Seiten'}${d.seite > 1 ? ` · bei S. ${d.seite}` : ''}`);
     else if (istBrett(d)) teile.push('Unendliche Fläche');
-    else teile.push(`${(d.seiten || []).length} ${(d.seiten || []).length === 1 ? 'Seite' : 'Seiten'} · ${d.format || 'A4'}`);
+    else teile.push(`${(d.seiten || []).length} ${(d.seiten || []).length === 1 ? 'Seite' : 'Seiten'} · ${d.format || 'A4'}${d.quer ? ' quer' : ''}`);
     const z = Zeit.dokZeit(d.id).sekunden;
     if (z >= 60 && Zeit.sichtbar()) teile.push('⏱ ' + Zeit.text(z));
     return teile.join(' · ');
@@ -363,6 +363,10 @@ Daten.bereit.then(function () {
           <label class="wahl-karte"><input type="radio" name="format" value="A4" checked><span class="format-bild a4"></span><span>A4</span></label>
           <label class="wahl-karte"><input type="radio" name="format" value="A3"><span class="format-bild a3"></span><span>A3</span></label>
         </fieldset>
+        <fieldset class="wahl-reihe"><legend>Ausrichtung</legend>
+          <label class="wahl-karte"><input type="radio" name="quer" value="hoch" checked><span class="format-bild a4"></span><span>Hochformat</span></label>
+          <label class="wahl-karte"><input type="radio" name="quer" value="quer"><span class="format-bild a4 quer"></span><span>Querformat</span></label>
+        </fieldset>
         <fieldset class="wahl-reihe"><legend>Papier</legend>
           ${Object.entries(PAPIERE).map(([p, n], i) => `<label class="wahl-karte"><input type="radio" name="papier" value="${p}" ${i === 0 ? 'checked' : ''}><span class="papier-bild ${p}"></span><span>${n}</span></label>`).join('')}
         </fieldset>
@@ -378,6 +382,7 @@ Daten.bereit.then(function () {
       wert: d => ({
         name: d.querySelector('[name="name"]').value.trim() || 'Notizbuch',
         format: d.querySelector('[name="format"]:checked').value,
+        quer: d.querySelector('[name="quer"]:checked').value === 'quer',
         papier: d.querySelector('[name="papier"]:checked').value,
         farbe: d.querySelector('[name="farbe"]:checked').value,
         sfarbe: d.querySelector('[name="sfarbe"]:checked').value
@@ -385,7 +390,7 @@ Daten.bereit.then(function () {
     });
     if (!r) return;
     const id = neueId();
-    speichere(id, { art: 'notizbuch', name: r.name, eltern: aktuell, format: r.format, papier: r.papier, farbe: r.farbe, ...(r.sfarbe !== 'auto' ? { seitenfarbe: r.sfarbe } : {}), seiten: [neueId()], erstellt: Date.now(), geoeffnet: Date.now(), seite: 1, favorit: false });
+    speichere(id, { art: 'notizbuch', name: r.name, eltern: aktuell, format: r.format, ...(r.quer ? { quer: true } : {}), papier: r.papier, farbe: r.farbe, ...(r.sfarbe !== 'auto' ? { seitenfarbe: r.sfarbe } : {}), seiten: [neueId()], erstellt: Date.now(), geoeffnet: Date.now(), seite: 1, favorit: false });
     location.hash = '#/dok/' + id;
   }
 
@@ -554,7 +559,31 @@ Daten.bereit.then(function () {
     if (!offen) zeigeKontext(mehr, mehr.dataset.id);
   });
 
-  function zeigeKontext(knopf, id) {
+  // Rechtsklick (Maus) oder lange drücken (Finger, Stift) auf eine Karte: dasselbe Menü wie der Pfeil am Namen, dort, wo
+  // man hingeklickt hat
+  const kartenKnopf = el => { const k = el && el.closest('.karte'); return k ? k.querySelector('[data-mehr]') : null; };
+  inhalt.addEventListener('contextmenu', e => {
+    const knopf = kartenKnopf(e.target);
+    if (!knopf) return;
+    e.preventDefault();
+    schliesseKontext();
+    zeigeKontext(knopf, knopf.dataset.id, { x: e.clientX, y: e.clientY });
+  });
+  let langDruck = null;
+  inhalt.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' || !kartenKnopf(e.target)) return;
+    clearTimeout(langDruck && langDruck.t);
+    const knopf = kartenKnopf(e.target), x = e.clientX, y = e.clientY;
+    langDruck = { x, y, t: setTimeout(() => { langDruck = { offen: true }; schliesseKontext(); zeigeKontext(knopf, knopf.dataset.id, { x, y }); }, 430) };
+  });
+  inhalt.addEventListener('pointermove', e => { if (langDruck && !langDruck.offen && Math.hypot(e.clientX - langDruck.x, e.clientY - langDruck.y) > 10) { clearTimeout(langDruck.t); langDruck = null; } });
+  const langDruckEnde = () => { if (langDruck && !langDruck.offen) { clearTimeout(langDruck.t); langDruck = null; } };
+  inhalt.addEventListener('pointerup', langDruckEnde);
+  inhalt.addEventListener('pointercancel', langDruckEnde);
+  // Nach dem langen Drücken soll der Finger beim Loslassen das Dokument nicht auch noch öffnen
+  inhalt.addEventListener('click', e => { if (langDruck && langDruck.offen) { langDruck = null; if (e.target.closest('.karte-link, .karte')) { e.preventDefault(); e.stopPropagation(); } } }, true);
+
+  function zeigeKontext(knopf, id, bei) {
     const it = get(id);
     if (!it) return;
     const el = document.createElement('div');
@@ -594,7 +623,7 @@ Daten.bereit.then(function () {
         <button type="button" role="menuitem" data-aktion="loeschen" class="gefahr">Löschen</button>`;
     }
     document.body.appendChild(el);
-    const r = knopf.getBoundingClientRect();
+    const r = bei ? { left: bei.x, right: bei.x + el.offsetWidth, top: bei.y, bottom: bei.y } : knopf.getBoundingClientRect();
     const b = el.offsetWidth, h = el.offsetHeight;
     el.style.left = Math.max(8, Math.min(r.right - b, window.innerWidth - b - 8)) + 'px';
     el.style.top = (r.bottom + h + 8 > window.innerHeight ? Math.max(8, r.top - h - 4) : r.bottom + 4) + 'px';

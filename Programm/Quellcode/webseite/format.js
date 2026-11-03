@@ -71,14 +71,17 @@
   // fallen weg. Als Abweichung zählt der grösste von drei Fehlern, alle in Einheiten der Schreibfläche (px bei 100 %):
   //   Abstand zur Verbindung, Druckfehler (Druck ändert die Breite) und Neigungsfehler gegenüber dem Verlauf zwischen den
   //   Nachbarn. So bleibt jede sichtbare Änderung der Linie oder ihrer Breite erhalten. Anfang und Ende bleiben immer.
-  // dicke: Dicke des Strichs, danach richtet sich die erlaubte Abweichung (eps, Standard 8 % der Dicke, mindestens 0,15).
+  // dicke: Dicke des Strichs, danach richtet sich das Gewicht des Drucks; erlaubte Abweichung eps (Standard 0,02 Einheiten).
   // mitDruck: false beim Textmarker, dessen Breite fest ist.
   function vereinfache(p, dicke, eps, mitDruck) {
     const n = p.length;
     if (n < 3) return p;
     const d = dicke > 0 ? dicke : 3;
-    const grenze = eps > 0 ? eps : Math.max(0.15, 0.08 * d);
-    const druckGewicht = mitDruck === false ? 0 : 0.6 * d, neigungGewicht = mitDruck === false ? 0 : d;
+    // So eng, dass sich nichts sichtbar ändert: weg fallen nur Punkte, die (fast) auf einer Geraden mit gleichem Druck
+    // liegen. Die Breite ändert sich mit dem Druck um rund 1,3 x Dicke, deshalb das Gewicht; schon eine Druckstufe (1/32)
+    // hält einen Punkt. Gröber gerechnet sah ein Strich nach dem Absetzen anders aus als beim Schreiben (test/strich.js).
+    const grenze = eps > 0 ? eps : 0.02;
+    const druckGewicht = mitDruck === false ? 0 : 1.3 * d, neigungGewicht = mitDruck === false ? 0 : d;
     const weg = new Float64Array(n);
     for (let i = 1; i < n; i++) weg[i] = weg[i - 1] + Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]);
     const bleibt = new Uint8Array(n);

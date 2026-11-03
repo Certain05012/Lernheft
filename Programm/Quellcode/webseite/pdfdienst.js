@@ -250,11 +250,14 @@
     const pages = doc.getPages();
     for (let i = 0; i < pages.length; i++) {
       if (fortschritt) fortschritt(i + 1, pages.length);
+      // Im Lernheft gedrehte Seite: im PDF genauso gedreht (auch ohne Notizen darauf)
+      const extra = Leinwand.drehungVon(item, 'p' + (i + 1));
+      if (extra) pages[i].setRotation(lib.degrees((((pages[i].getRotation().angle || 0) + extra) % 360 + 360) % 360));
       const inhalt = Daten.get('ink:' + id + ':p' + (i + 1));
       let liste = inhalt && inhalt.e ? inhalt.e : [];
       if (!liste.length) continue;
       const jsSeite = await js.getPage(i + 1);
-      const vp = jsSeite.getViewport({ scale: EINHEIT });
+      const vp = Leinwand.pdfAnsicht(jsSeite, EINHEIT, item, i + 1);
       const seite = { b: vp.width, h: vp.height };
       if (opt.nurBlatt) {
         liste = liste.filter(e => { const g = Leinwand.grenzen(e); return g.x2 > 0 && g.y2 > 0 && g.x1 < seite.b && g.y1 < seite.h; });
@@ -368,8 +371,8 @@
         let hintergrund = null;
         if (istSkript) {
           const seite = await js.getPage(i + 1);
-          const vp1 = seite.getViewport({ scale: EINHEIT });
-          const vp = seite.getViewport({ scale: EINHEIT * m });
+          const vp1 = Leinwand.pdfAnsicht(seite, EINHEIT, item, i + 1);
+          const vp = Leinwand.pdfAnsicht(seite, EINHEIT * m, item, i + 1);
           const quelle = document.createElement('canvas');
           quelle.width = Math.max(1, Math.floor(vp.width)); quelle.height = Math.max(1, Math.floor(vp.height));
           const qc = quelle.getContext('2d', { willReadFrequently: true });
@@ -383,8 +386,8 @@
           Leinwand.malBild(cv, { seite: sz, liste, flaeche: fl, ausschnitt: vereinige(sz, liste), massstab: m, hintergrund: c => { c.drawImage(quelle, 0, 0, sz.b, sz.h); return true; } });
           quelle.width = 0;
         } else {
-          const sf = Leinwand.seitenfarbe(item.seitenfarbe);
-          const sz = { b: F.b, h: F.h, mm: F.mm, papier: item.papier, papierFarbe: sf.farbe };
+          const sf = Leinwand.seitenfarbe(item.seitenfarbe), f = Leinwand.seitenFormat(item, sid);
+          const sz = { b: f.b, h: f.h, mm: f.mm, papier: item.papier, papierFarbe: sf.farbe };
           Leinwand.malBild(cv, { seite: sz, liste, flaeche: sf.flaeche || 'hell', ausschnitt: vereinige(sz, liste), massstab: m });
         }
         ergebnis.push({ name: anzahl > 1 ? `${item.name} ${i + 1}` : item.name, blob: await nachBlob(cv) });
@@ -403,10 +406,11 @@
     doc.setTitle(item.name);
     const font = await doc.embedFont(lib.StandardFonts.Helvetica);
     const bilder = new Map();
-    const F = Leinwand.FORMATE[item.format] || Leinwand.FORMATE.A4;
     const m = 1 / EINHEIT;
     const fl = variante === 'dunkel' ? 'dunkel' : 'hell';
     for (const sid of item.seiten || []) {
+      // Jede Seite in ihrem Format (Querformat, gedreht)
+      const F = Leinwand.seitenFormat(item, sid);
       const inhalt = Daten.get('ink:' + id + ':' + sid);
       const liste = inhalt && inhalt.e ? inhalt.e : [];
       const g = grenzenAller(liste) || { x1: 0, y1: 0, x2: F.b, y2: F.h };
