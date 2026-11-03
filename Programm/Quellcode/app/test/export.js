@@ -43,6 +43,9 @@ app.whenReady().then(async () => {
   let win;
   for (let i = 0; i < 100 && !win; i++) { win = BrowserWindow.getAllWindows()[0]; if (!win) await warte(100); }
   const wc = win.webContents;
+  // Sichtbar und ungebremst: in einem versteckten Fenster malt Chromium nicht (requestAnimationFrame), der Export wartete ewig
+  wc.setBackgroundThrottling(false);
+  win.show();
   const log = [];
   wc.on('console-message', (e, l, m) => { if (l >= 2) log.push(m); });
   await new Promise(r => wc.once('did-finish-load', r));

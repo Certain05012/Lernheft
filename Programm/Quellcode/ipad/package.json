@@ -1,7 +1,7 @@
 {
   "name": "lernheft-ipad",
   "productName": "Lernheft",
-  "version": "3.10.0",
+  "version": "3.11.0",
   "description": "Lernheft als iPad-App (Capacitor): dieselbe Oberfläche wie am PC, Abgleich mit dem Lernheft-Ordner in OneDrive oder Dropbox",
   "private": true,
   "scripts": {

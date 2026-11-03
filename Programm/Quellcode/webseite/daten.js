@@ -10,7 +10,12 @@
   const bruecke = window.lernheftDesktop && window.lernheftDesktop.version >= 2 ? window.lernheftDesktop : null;
 
   // k -> { v: Wert, j: v als JSON, zeit, basis: Cloud-Revision beim letzten Abgleich, dirty, weg: gelöscht }
+  // Handschrift (ink:*) aus der Lernheft-App ist zuerst faul: { v: null, faul: true }, es gibt sie, aber sie liegt noch
+  // nicht im Speicher. lade(keys) holt sie (Dokument öffnen, Vorschaubild, Export), vergiss(keys) gibt sie wieder frei.
   const eintraege = new Map();
+  const ausRoh = r => (r.faul
+    ? { v: null, j: null, faul: true, zeit: r.zeit || 0, basis: r.basis == null ? null : r.basis, dirty: false, weg: false }
+    : { v: r.v, j: JSON.stringify(r.v), zeit: r.zeit || 0, basis: r.basis == null ? null : r.basis, dirty: !!r.dirty, weg: !!r.weg });
   const hoerer = new Set();
   function melde(key, quelle) {
     for (const fn of hoerer) {
@@ -59,6 +64,8 @@
     return {
       async laden() { return bruecke.kv.alle(); },
       async schreiben(aenderungen) { bruecke.kv.setze(aenderungen); },
+      hole: bruecke.kv.hole ? keys => bruecke.kv.hole(keys) : null,
+      vergiss: bruecke.kv.vergiss ? keys => bruecke.kv.vergiss(keys) : null,
       datei: {
         async get(k) { const b = await bruecke.datei.get(k); return b ? new Blob([b], { type: typ(k) }) : undefined; },
         async put(k, blob) { await bruecke.datei.put(k, await blob.arrayBuffer()); },
@@ -113,7 +120,46 @@
 
   function get(k, standard) {
     const e = eintraege.get(k);
-    return !e || e.weg ? standard : e.v;
+    return !e || e.weg || e.faul ? standard : e.v;
+  }
+  const istFaul = k => { const e = eintraege.get(k); return !!(e && e.faul); };
+
+  // Faule Einträge laden. true, wenn danach alles da ist (false: eine Seite ist noch nicht lesbar, z. B. weil die Cloud
+  // sie gerade lädt; sie bleibt faul und darf nicht als leer gelten)
+  const laeuft = new Map();
+  async function lade(keys) {
+    const fehlen = [...new Set(keys || [])].filter(istFaul);
+    if (!fehlen.length) return true;
+    if (!ablage || !ablage.hole) return false;
+    // Was schon unterwegs ist, nicht doppelt anfragen
+    const neu = fehlen.filter(k => !laeuft.has(k));
+    if (neu.length) {
+      const anfrage = Promise.resolve().then(() => ablage.hole(neu)).catch(e => { console.warn('Lernheft: Handschrift laden', e); return {}; });
+      for (const k of neu) laeuft.set(k, anfrage);
+      anfrage.then(r => {
+        for (const k of neu) {
+          laeuft.delete(k);
+          const da = r && r[k], jetzt = eintraege.get(k);
+          // Inzwischen geschrieben oder gelöscht: das gilt
+          if (!jetzt || !jetzt.faul || !da || da.faul || da.fehlt || da.weg) continue;
+          eintraege.set(k, Object.assign(ausRoh(da), { zeit: da.zeit || jetzt.zeit }));
+        }
+      });
+    }
+    await Promise.all(fehlen.map(k => laeuft.get(k)).filter(Boolean));
+    return !fehlen.some(istFaul);
+  }
+  // Handschrift aus dem Speicher nehmen (Dokument geschlossen); was noch nicht gesichert ist, bleibt
+  function vergiss(keys) {
+    const frei = [];
+    for (const k of keys || []) {
+      const e = eintraege.get(k);
+      if (!e || e.faul || e.weg || !k.startsWith('ink:') || zuSchreiben.has(k) || !ablage || !ablage.vergiss) continue;
+      eintraege.set(k, { v: null, j: null, faul: true, zeit: e.zeit, basis: e.basis, dirty: false, weg: false });
+      frei.push(k);
+    }
+    if (frei.length) ablage.vergiss(frei);
+    return frei.length;
   }
 
   // Gibt true zurück, wenn sich wirklich etwas geändert hat
@@ -121,7 +167,7 @@
     if (v === undefined) return del(k);
     const j = JSON.stringify(v);
     const alt = eintraege.get(k);
-    if (alt && !alt.weg && alt.j === j) return false;
+    if (alt && !alt.weg && !alt.faul && alt.j === j) return false;
     eintraege.set(k, { v: JSON.parse(j), j, zeit: Date.now(), basis: alt ? alt.basis : null, dirty: !istLokal(k), weg: false });
     sichere(k);
     melde(k, 'lokal');
@@ -139,6 +185,7 @@
     return true;
   }
 
+  const keys_ = praefix => keys(praefix);
   function keys(praefix = '') {
     const r = [];
     for (const [k, e] of eintraege) if (!e.weg && k.startsWith(praefix)) r.push(k);
@@ -215,7 +262,7 @@
     bruecke.kv.aufAenderung(aenderungen => {
       for (const [k, r] of Object.entries(aenderungen || {})) {
         if (!r) eintraege.delete(k);
-        else eintraege.set(k, { v: r.v, j: JSON.stringify(r.v), zeit: r.zeit || 0, basis: r.basis == null ? null : r.basis, dirty: !!r.dirty, weg: !!r.weg });
+        else eintraege.set(k, ausRoh(r));
         melde(k, 'extern');
       }
     });
@@ -380,13 +427,24 @@
     }
     for (const [k, r] of Object.entries(roh || {})) {
       if (!r) continue;
-      eintraege.set(k, { v: r.v, j: JSON.stringify(r.v), zeit: r.zeit || 0, basis: r.basis == null ? null : r.basis, dirty: !!r.dirty, weg: !!r.weg });
+      eintraege.set(k, ausRoh(r));
     }
     try { await migriere(); } catch (e) { console.warn('Lernheft: Übernahme alter Daten', e); }
   })();
 
   const Daten = window.Daten = {
-    bereit, get, set, del, keys, datei,
+    bereit, get, set, del, keys, datei, lade, vergiss, istFaul,
+    // Stand eines Eintrags (ändert sich mit jeder Änderung, auch von aussen), z. B. für zwischengespeicherte Vorschaubilder
+    // fn mit geladener Handschrift des Dokuments id ausführen (Export, Umwandeln) und danach wieder freigeben, was vorher
+    // nicht im Speicher lag (ausser das Dokument ist offen)
+    async mitHandschrift(id, fn) {
+      const keys = keys_('ink:' + id + ':'), faul = keys.filter(istFaul);
+      if (!(await lade(keys))) throw new Error('Einige Seiten sind noch nicht da (die Cloud lädt sie gerade). Bitte gleich noch einmal versuchen.');
+      try { return await fn(); } finally {
+        if (!(window.Dokument && Dokument.istGeladen && Dokument.istGeladen(id))) { schreibeJetzt(); vergiss(faul); }
+      }
+    },
+    stand: k => { const e = eintraege.get(k); return e ? (e.weg ? -1 : e.zeit || 0) : 0; },
     on: fn => { hoerer.add(fn); return () => hoerer.delete(fn); },
     flush: schreibeJetzt,
     ablageArt: () => ablageArt,

@@ -66,22 +66,50 @@ Daten.bereit.then(function () {
       return `<span class="vorschau brett-vorschau${mini ? ' mini' : ''}" style="--farbe: var(--s-${FARBEN[d.farbe] ? d.farbe : 'blau'})"><canvas data-nb="${d.id}" width="${mini ? 88 : 320}" height="${mini ? 66 : 240}"></canvas></span>`;
     }
     if (d.art === 'notizbuch') {
-      return `<span class="vorschau nb-vorschau${mini ? ' mini' : ''}" style="--farbe: var(--s-${FARBEN[d.farbe] ? d.farbe : 'blau'})"><canvas data-nb="${d.id}" width="${mini ? 88 : 240}" height="${mini ? 124 : 340}"></canvas></span>`;
+      // Querformat (oder erste Seite gedreht): ein liegendes Cover, sonst zeigte es nur die obere Hälfte voll
+      const F = Leinwand.seitenFormat(d, (d.seiten || [])[0]), quer = F.b > F.h;
+      const w = quer ? (mini ? 124 : 340) : (mini ? 88 : 240), h = quer ? (mini ? 88 : 240) : (mini ? 124 : 340);
+      return `<span class="vorschau nb-vorschau${quer ? ' quer' : ''}${mini ? ' mini' : ''}" style="--farbe: var(--s-${FARBEN[d.farbe] ? d.farbe : 'blau'})"><canvas data-nb="${d.id}" width="${w}" height="${h}"></canvas></span>`;
     }
     const inv = PdfDienst.umfaerbenNoetig(d.modus, d.hell);
     return `<span class="vorschau modus-${d.modus || 'original'}${mini ? ' mini' : ''}"><img data-vorschau="${esc(d.datei)}" alt="" class="${inv ? (d.modus === 'dunkel' || d.modus === 'dunkelgrau' ? 'dunkelblau' : 'invertiert') : ''}"></span>`;
   }
 
+  // Fertige Vorschaubilder der Notizbücher (Bild der ersten Seite), damit die Bibliothek nicht bei jedem Neuzeichnen die
+  // Handschrift laden muss: id -> { stand, url }. stand ändert sich mit der Seite, dem Papier und der Grösse des Bildes.
+  const coverBilder = new Map();
+  function malCover(cv, url) {
+    return new Promise(ok => {
+      const img = new Image();
+      img.onload = () => { const c = cv.getContext('2d'); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, cv.width, cv.height); c.drawImage(img, 0, 0, cv.width, cv.height); ok(true); };
+      img.onerror = () => ok(false);
+      img.src = url;
+    });
+  }
   async function fuelleVorschau(wurzel) {
     for (const cv of wurzel.querySelectorAll('canvas[data-nb]')) {
       const it = get(cv.dataset.nb);
       if (!it) continue;
       const sid = (it.seiten || [])[0];
       const F = Leinwand.seitenFormat(it, sid);
+      const k = sid ? 'ink:' + it.id + ':' + sid : null;
+      const stand = [k ? Daten.stand(k) : 0, cv.width, cv.height, F.b, F.h, it.papier, it.seitenfarbe, it.raster, Leinwand.flaecheThema()].join('|');
+      const fertig = coverBilder.get(it.id);
+      if (fertig && fertig.stand === stand && await malCover(cv, fertig.url)) continue;
+      // Die erste Seite kurz laden (sie liegt nicht im Speicher, solange das Dokument zu ist) und danach wieder freigeben
+      const warFaul = k && Daten.istFaul(k);
+      if (warFaul) await Daten.lade([k]);
+      if (!cv.isConnected) continue;
+      const inhalt = k ? Daten.get(k) : null;
       // Whiteboard: alles Geschriebene im Bild, ohne Blattgrenzen
-      if (istBrett(it)) { Leinwand.vorschau(cv, sid ? Daten.get('ink:' + it.id + ':' + sid) : null, { flaeche: Leinwand.seitenfarbe(it.seitenfarbe).flaeche, papierFarbe: Leinwand.seitenfarbe(it.seitenfarbe).farbe }); continue; }
-      const sf = Leinwand.seitenfarbe(it.seitenfarbe);
-      Leinwand.vorschau(cv, sid ? Daten.get('ink:' + it.id + ':' + sid) : null, { b: F.b, h: F.h, mm: F.mm, papier: it.papier, flaeche: sf.flaeche, papierFarbe: sf.farbe });
+      if (istBrett(it)) Leinwand.vorschau(cv, inhalt, { flaeche: Leinwand.seitenfarbe(it.seitenfarbe).flaeche, papierFarbe: Leinwand.seitenfarbe(it.seitenfarbe).farbe });
+      else {
+        const sf = Leinwand.seitenfarbe(it.seitenfarbe);
+        Leinwand.vorschau(cv, inhalt, { b: F.b, h: F.h, mm: F.mm, papier: it.papier, flaeche: sf.flaeche, papierFarbe: sf.farbe });
+      }
+      // Nur merken, wenn die Seite wirklich da war (nicht noch in der Cloud)
+      if (!k || !Daten.istFaul(k)) { try { coverBilder.set(it.id, { stand, url: cv.toDataURL('image/png') }); } catch (e) { /* ohne Merken */ } }
+      if (warFaul && !(window.Dokument && Dokument.istGeladen && Dokument.istGeladen(it.id))) Daten.vergiss([k]);
     }
     for (const img of wurzel.querySelectorAll('img[data-vorschau]')) {
       const d = img.dataset.vorschau;
@@ -653,7 +681,8 @@ Daten.bereit.then(function () {
         const wahl = await waehleZielordner(`„${it.name}“ verschieben`, it.art === 'ordner' ? nachfahren(id) : [], it.eltern);
         if (wahl) verschiebe(id, wahl.ziel);
       } else if (aktion === 'duplizieren') {
-        const neu = dupliziere(id);
+        const neu = await dupliziere(id);
+        if (!neu) return;
         zeigeOrdner(aktuell);
         meldung('Kopie angelegt', { text: 'Öffnen', fn: () => { location.hash = '#/dok/' + neu; } });
       } else if (aktion === 'loeschen') {
@@ -668,12 +697,18 @@ Daten.bereit.then(function () {
 
   /* ---------- Kopieren, Löschen, Exportieren ---------- */
 
-  function dupliziere(id) {
+  // Die Handschrift wird zuerst geladen (sie liegt nicht im Speicher, solange das Dokument zu ist), erst dann entsteht die Kopie
+  async function dupliziere(id) {
     const it = get(id);
+    const p = 'ink:' + id + ':';
+    const warFaul = Daten.keys(p).filter(Daten.istFaul);
+    if (!(await Daten.lade(Daten.keys(p)))) { meldung('Einige Seiten sind noch nicht da (die Cloud lädt sie). Bitte gleich noch einmal versuchen.'); return null; }
     const neu = neueId();
     speichere(neu, { ...it, name: it.name + ' (Kopie)', erstellt: Date.now(), geoeffnet: 0, favorit: false });
-    const p = 'ink:' + id + ':';
     for (const k of Daten.keys(p)) Daten.set('ink:' + neu + ':' + k.slice(p.length), Daten.get(k));
+    Daten.flush();
+    if (!(window.Dokument && Dokument.istGeladen(id))) Daten.vergiss(warFaul);
+    Daten.vergiss(Daten.keys('ink:' + neu + ':'));
     return neu;
   }
 

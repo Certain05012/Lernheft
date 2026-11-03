@@ -53,12 +53,13 @@
   // Text: Schriftgrösse in Punkt (1 pt = 1/72 Zoll = 96/72 Einheiten)
   const einheit = (art, mm) => (art === 'text' ? mm * 96 / 72 : mm * MM * (art === 'radierer' ? 0.5 : 1));
 
-  // Glättung der Handschrift: One-Euro-Filter auf den Stiftpunkten (Bildschirm-Pixel). minF = Grenzfrequenz bei
-  // langsamer Bewegung in Hz (kleiner = ruhiger), beta = wie schnell der Filter bei schnellen Zügen nachgibt, damit
-  // die Linie dem Stift nicht hinterherhinkt.
-  // Standard ist Aus: der Apple Pencil liefert genaue Punkte, jede Glättung verschiebt Ecken (gemessen mit test/strich.js:
-  // Niedrig früher bis 7 px an den Spitzen eines Zickzacks, jetzt etwa 2 px)
-  const GLAETTUNG = { aus: null, niedrig: { minF: 12, beta: 0.08 }, mittel: { minF: 4, beta: 0.03 }, hoch: { minF: 1.5, beta: 0.012 } };
+  // Glättung der Handschrift ohne Nachziehen: jeder Punkt wird erst festgelegt, wenn ein paar weitere da sind, und dann
+  // aus seinen Nachbarn VOR und NACH ihm gemittelt (Gauss über die Weglänge, Breite in Bildschirm-px). So verschwindet das
+  // Zittern des Stifts und der Bildschirm-Raster, ohne dass die Linie hinterherhinkt oder Ecken abschneidet wie ein
+  // Filter, der nur die Vergangenheit kennt (früher One-Euro: Niedrig verschob Spitzen bis 7 px). Das Stück, das noch
+  // nicht fest ist, zeigt die Spitze genau unter dem Stift. Standard: Niedrig (wirkt nur auf wenige px).
+  const GLAETTUNG = { aus: 0, niedrig: 1.6, mittel: 2.8, hoch: 4.5 };
+  const DRUCK_FENSTER = 3;    // so viele Punkte vor und nach einem Punkt glätten den Druck (die Breite zittert sonst)
   const HALTE_MS = 700;       // Stift so lange ruhig halten: Linie oder Form wird sauber (einstellbar: einst.halteMs, 0,4 bis 1,5 s)
   const haltezeit = einst => { const v = Number(einst.halteMs); return v >= 300 && v <= 3000 ? v : HALTE_MS; };
   const HALTE_TOL = 4;        // so viel (Bildschirm-px) darf die Hand dabei zittern
@@ -72,7 +73,7 @@
     stift: 'Stift', marker: 'Textmarker', lasso: 'Lasso', text: 'Text', hand: 'Hand', laser: 'Laserpointer',
     seite: 'Seiten-Menü (drehen, Gesten)', eigenschaften: 'Farben und Grössen', leiste: 'Werkzeugleiste ein/aus', vollbild: 'Vollbild ein/aus'
   };
-  const TIPP_MS = 350, TIPP_TOL = 12, HALTEN_MS = 600;
+  const TIPP_MS = 350, TIPP_TOL = 12, HALTEN_MS = 600, HALTEN_TOL = 32;
   const LASER_NACHLEUCHTEN = 1400;   // ms, bis die Spur des Laserpunkts ganz verblasst ist
   const LASER_STANDARD = '#ff2d2d';
   // Grösste Zeichenfläche in Pixeln: Safari (iPad, iPhone) malt ab 16 777 216 Pixeln nichts mehr
@@ -378,24 +379,6 @@
   // Punkt mit neuer Lage, Druck und Neigung bleiben erhalten
   const punktMit = (q, x, y) => (q.length > 3 ? [x, y, q[2], q[3]] : [x, y, q[2]]);
 
-  // One-Euro-Filter für eine Stiftbewegung: langsam gibt er Zittern des Stifts fast ganz weg, schnell folgt er dem
-  // Stift. Jeder Aufruf bekommt Position (Bildschirm-px) und Zeit (ms) und gibt die geglättete Position zurück.
-  function neuerFilter(par) {
-    let x = null, y = null, dx = 0, dy = 0, t = 0;
-    const alpha = (te, f) => 1 / (1 + 1 / (2 * Math.PI * f * te));
-    return (px, py, zeit) => {
-      if (x === null) { x = px; y = py; t = zeit; return [px, py]; }
-      const te = Math.max(0.001, (zeit - t) / 1000);
-      t = zeit;
-      const ad = alpha(te, 1);
-      dx += ad * ((px - x) / te - dx);
-      dy += ad * ((py - y) / te - dy);
-      const a = alpha(te, par.minF + par.beta * Math.hypot(dx, dy));
-      x += a * (px - x);
-      y += a * (py - y);
-      return [x, y];
-    };
-  }
 
   // Neigung des Stifts in Grad von der Senkrechten (0 = aufrecht, 90 = flach), aus tiltX/tiltY oder der Höhe über dem Blatt
   function neigungWinkel(e) {
@@ -435,9 +418,9 @@
   // k zu Punkt k + 1; seine Richtung an den Enden kommt von den Nachbarn k - 1 und k + 2. Er ist also fertig, sobald
   // Punkt k + 2 da ist (oder der Strich zu Ende): beim Schreiben wird Stück für Stück gezeichnet, das letzte Stück bis
   // unter den Stift malt die Ebene "spitze". Weil die Kurve durch die Punkte geht, sieht ein Strich nach dem Absetzen
-  // genauso aus wie beim Schreiben, auch wenn er danach auf weniger Punkte reduziert wird (vereinfache): Ecken und
-  // Spitzen bleiben, wo sie waren. (Früher lief die Kurve durch die Mitten zwischen den Punkten und schnitt Ecken ab,
-  // sobald Punkte fehlten.) Abschnitte: 0 … n - 2.
+  // genauso aus wie beim Schreiben: Ecken und Spitzen bleiben, wo sie waren. (Früher lief die Kurve durch die Mitten
+  // zwischen den Punkten und schnitt Ecken ab.) Das Zittern nimmt die Glättung beim Festlegen der Punkte weg
+  // (festerPunkt), nicht das Zeichnen. Abschnitte: 0 … n - 2.
   // Kontrollpunkte des Abschnitts k; die Länge der Tangenten ist auf die halbe Abschnittslänge begrenzt, damit die
   // Kurve an engen Wendungen keine Schleifen schlägt. Knickt die Linie an einem Punkt scharf ab (mehr als 75°), ist er
   // eine Ecke: dort läuft die Kurve gerade hinein und heraus, so bleiben Spitzen spitz und Kanten gerade.
@@ -458,52 +441,103 @@
     if (lb > grenze && lb > 0) { bx *= grenze / lb; by *= grenze / lb; }
     return [P1[0], P1[1], P1[0] + ax, P1[1] + ay, P2[0] - bx, P2[1] - by, P2[0], P2[1]];
   }
-  // Ein Teil t0..t1 einer kubischen Kurve c (aus crStueck) als eigene kubische Kurve
-  function teilKurve(c, t0, t1) {
-    const pt = t => { const u = 1 - t; return [u * u * u * c[0] + 3 * u * u * t * c[2] + 3 * u * t * t * c[4] + t * t * t * c[6], u * u * u * c[1] + 3 * u * u * t * c[3] + 3 * u * t * t * c[5] + t * t * t * c[7]]; };
-    const ab = t => { const u = 1 - t; return [3 * (u * u * (c[2] - c[0]) + 2 * u * t * (c[4] - c[2]) + t * t * (c[6] - c[4])), 3 * (u * u * (c[3] - c[1]) + 2 * u * t * (c[5] - c[3]) + t * t * (c[7] - c[5]))]; };
-    const a = pt(t0), b = pt(t1), da = ab(t0), db = ab(t1), d = (t1 - t0) / 3;
-    return [a[0], a[1], a[0] + da[0] * d, a[1] + da[1] * d, b[0] - db[0] * d, b[1] - db[1] * d, b[0], b[1]];
-  }
-
-  // Abschnitte von bis (ohne bis) eines Stiftstrichs. Die Breite läuft von Punkt zu Punkt gleichmässig, so wird der
-  // Strich ohne Stufen dicker und dünner (wie beim Apple Pencil); ändert sie sich in einem Abschnitt, wird er in Stücke
-  // geteilt. Nebeneinanderliegende Stücke mit gleicher Breite (auf 0,25 gerundet) und Deckkraft werden zu einem Pfad
-  // zusammengefasst, das spart Zeichenaufrufe und Nähte.
+  // Abschnitte von bis (ohne bis) eines Stiftstrichs als EINE gefüllte Fläche, wie Tinte: an Punkten der Kurve je ein
+  // Kreis mit der halben Breite, dazwischen ein Viereck, das zwei Kreise verbindet. Alle Teile laufen gleich herum,
+  // die Füllung (nonzero) vereint sie ohne Nähte. Die Breite läuft von Punkt zu Punkt gleichmässig. (Früher wurde jedes
+  // Stück mit eigener Linienbreite einzeln gezogen; an jeder Naht lagen die weichen Kanten doppelt, dicke Linien
+  // bekamen einen welligen, perligen Rand.)
   function malAbschnitte(ctx, s, von, bis) {
-    for (const t of baueTeile(s, von, bis)) {
-      ctx.lineWidth = t.w;
-      ctx.globalAlpha = t.a;
-      ctx.stroke(t.pfad);
-    }
+    for (const t of baueTeile(s, von, bis)) malTeil(ctx, t);
     ctx.globalAlpha = 1;
   }
-  // Die Pfade der Abschnitte von bis eines Stiftstrichs, je Breite (auf 0,25 gerundet) und Deckkraft ein Path2D
+  function malTeil(ctx, t) {
+    ctx.globalAlpha = t.a;
+    if (t.fuellen) ctx.fill(t.pfad);
+    else { ctx.lineWidth = t.w; ctx.stroke(t.pfad); }
+  }
   function baueTeile(s, von, bis) {
-    const p = s.p, n = p.length, marker = s.w === 'marker';
-    const neig = k => (marker ? 0 : p[k][3] || 0);
-    const bp = k => breite(s, p[k][2], neig(k));
-    const teile = [];
-    let schluessel = -1, pfad = null;
+    const pfad = new Path2D();
+    fuelleStrich(pfad, strichProben(s, von, bis));
+    return [{ fuellen: true, a: 1, pfad }];
+  }
+  // Proben [x, y, Radius] entlang der Abschnitte von bis: so viele je Abschnitt, dass die Kurve rund bleibt (eine je 6°
+  // Richtungsänderung, höchstens 12), der Radius dazwischen linear
+  function strichProben(s, von, bis) {
+    const p = s.p, n = p.length, raus = [];
+    const r = k => breite(s, p[k][2], s.w === 'marker' ? 0 : p[k][3] || 0) / 2;
+    if (n === 1) return [[p[0][0], p[0][1], r(0)]];
     for (let k = Math.max(0, von); k < Math.min(bis, n - 1); k++) {
-      const c = crStueck(p, k), wa = bp(k), wb = bp(k + 1);
-      const ai = Math.round(neigungAlpha(neig(k)) * 20);
-      const m = Math.max(1, Math.min(6, Math.round(Math.abs(wb - wa) * 4)));
-      for (let i = 0; i < m; i++) {
-        const t0 = i / m, t1 = (i + 1) / m;
-        const bi = Math.round((wa + (wb - wa) * (t0 + t1) / 2) * 4);
-        const sk = bi * 32 + ai;
-        const q = m === 1 ? c : teilKurve(c, t0, t1);
-        if (sk !== schluessel) {
-          schluessel = sk;
-          pfad = new Path2D();
-          teile.push({ w: Math.max(0.25, bi / 4), a: ai / 20, pfad });
-          pfad.moveTo(q[0], q[1]);
-        }
-        pfad.bezierCurveTo(q[2], q[3], q[4], q[5], q[6], q[7]);
+      const c = crStueck(p, k), ra = r(k), rb = r(k + 1);
+      if (!raus.length) raus.push([c[0], c[1], ra]);
+      const sx = c[6] - c[0], sy = c[7] - c[1];
+      const w1 = winkelZwischen(c[2] - c[0], c[3] - c[1], sx, sy), w2 = winkelZwischen(sx, sy, c[6] - c[4], c[7] - c[5]);
+      const m = Math.max(1, Math.min(12, Math.ceil((w1 + w2) / 0.105)));
+      for (let i = 1; i <= m; i++) {
+        const t = i / m, u = 1 - t;
+        raus.push([
+          u * u * u * c[0] + 3 * u * u * t * c[2] + 3 * u * t * t * c[4] + t * t * t * c[6],
+          u * u * u * c[1] + 3 * u * u * t * c[3] + 3 * u * t * t * c[5] + t * t * t * c[7],
+          ra + (rb - ra) * t
+        ]);
       }
     }
-    return teile;
+    return raus;
+  }
+  function winkelZwischen(ax, ay, bx, by) {
+    const l = Math.hypot(ax, ay) * Math.hypot(bx, by);
+    return l > 1e-9 ? Math.acos(Math.max(-1, Math.min(1, (ax * bx + ay * by) / l))) : 0;
+  }
+  // Fläche aus den Proben in pfad (Path2D oder alles mit moveTo/lineTo/arc/closePath): Bänder, deren Ränder links und
+  // rechts im Abstand des Radius neben der Kurve laufen, und Kreise an den Enden und dort, wo ein Band brechen muss
+  // (Knick über 8° oder eine Biegung enger als der Strich breit ist, sonst überschlüge sich der innere Rand). Innerhalb
+  // eines Bandes gibt es keine inneren Kanten; wo zwei Bänder aneinanderstossen, deckt der Kreis die Naht. (Einzelne
+  // Vierecke je Stück zeigten an jeder Stossfuge eine feine helle Linie quer durch den Strich.)
+  const KNICK_COS = Math.cos(8 * Math.PI / 180);
+  function fuelleStrich(pfad, q, kreis, vieleck) {
+    kreis = kreis || ((x, y, r) => { pfad.moveTo(x + r, y); pfad.arc(x, y, r, 0, Math.PI * 2); });
+    vieleck = vieleck || (pts => { pfad.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) pfad.lineTo(pts[i][0], pts[i][1]); pfad.closePath(); });
+    // doppelte Punkte weglassen (der grössere Radius bleibt)
+    const c = [];
+    for (const p of q) {
+      const v = c[c.length - 1];
+      if (v && Math.abs(p[0] - v[0]) + Math.abs(p[1] - v[1]) < 1e-4) { v[2] = Math.max(v[2], p[2]); continue; }
+      c.push([p[0], p[1], p[2]]);
+    }
+    const n = c.length;
+    if (!n) return;
+    if (n === 1) { if (c[0][2] > 0) kreis(c[0][0], c[0][1], c[0][2]); return; }
+    // Richtung und Länge jedes Stücks
+    const ux = [], uy = [], l = [];
+    for (let i = 0; i + 1 < n; i++) { const dx = c[i + 1][0] - c[i][0], dy = c[i + 1][1] - c[i][1], d = Math.hypot(dx, dy); ux.push(dx / d); uy.push(dy / d); l.push(d); }
+    const bricht = i => {
+      const cos = ux[i - 1] * ux[i] + uy[i - 1] * uy[i];
+      if (cos < KNICK_COS) return true;
+      const w = Math.acos(Math.min(1, cos));
+      return w > 1e-6 && (l[i - 1] + l[i]) / 2 / w < c[i][2] * 1.3;
+    };
+    // Band von Punkt a bis b: die eine Seite vorwärts, die andere rückwärts (läuft so gleich herum wie die Kreise)
+    const band = (a, b) => {
+      const links = [], rechts = [];
+      for (let k = a; k <= b; k++) {
+        let ex, ey;
+        if (k === a) { ex = -uy[k]; ey = ux[k]; }
+        else if (k === b) { ex = -uy[k - 1]; ey = ux[k - 1]; }
+        else { ex = -(uy[k - 1] + uy[k]); ey = ux[k - 1] + ux[k]; const e = Math.hypot(ex, ey) || 1; ex /= e; ey /= e; }
+        const r = c[k][2];
+        links.push([c[k][0] - ex * r, c[k][1] - ey * r]);
+        rechts.push([c[k][0] + ex * r, c[k][1] + ey * r]);
+      }
+      vieleck(links.concat(rechts.reverse()));
+    };
+    if (c[0][2] > 0) kreis(c[0][0], c[0][1], c[0][2]);
+    let start = 0;
+    for (let i = 1; i < n; i++) {
+      if (i === n - 1 || bricht(i)) {
+        band(start, i);
+        if (c[i][2] > 0) kreis(c[i][0], c[i][1], c[i][2]);
+        start = i;
+      }
+    }
   }
   // Fertige Striche merken sich ihre Pfade: beim Neumalen (Scrollen, Zoomen) werden sie nur noch übergeben, statt jedes
   // Mal Punkt für Punkt neu aufgebaut zu werden (test/leistung.js). Ändert sich der Strich (Verschieben ändert die
@@ -538,11 +572,7 @@
       ctx.arc(p[0][0], p[0][1], breite(s, p[0][2], p[0][3]) / 2, 0, Math.PI * 2);
       ctx.fill();
     } else {
-      for (const t of teileVon(s)) {
-        ctx.lineWidth = t.w;
-        ctx.globalAlpha = t.a;
-        ctx.stroke(t.pfad);
-      }
+      for (const t of teileVon(s)) malTeil(ctx, t);
     }
     ctx.restore();
   }
@@ -1051,13 +1081,38 @@
       }
       return neigung ? [r1(x), r1(y), druck, neigung] : [r1(x), r1(y), druck];
     }
-    // Druck und Neigung gegenüber dem vorigen Punkt leicht glätten, damit die Breite nicht zittert
-    function glaette(letzter, pt) {
-      if (pt.length < 3) return pt;
-      pt[2] = stufe(letzter[2] * 0.5 + pt[2] * 0.5, DRUCK_STUFEN);
-      const n = stufe(((letzter[3] || 0) + (pt[3] || 0)) / 2, NEIGUNG_STUFEN);
-      if (n) pt[3] = n; else pt.length = 3;
-      return pt;
+    // Punkt i des Strichs aus den rohen Punkten (a.roh) festlegen: Lage aus den Nachbarn im Abstand von wenigen
+    // Bildschirm-px (Gauss über die Weglänge a.weg, a.sigma in Einheiten), Druck und Neigung aus DRUCK_FENSTER Punkten
+    // davor und danach. Anfang und Ende bleiben genau, wo der Stift war.
+    function festerPunkt(a, i) {
+      const roh = a.roh, n = roh.length, w = a.weg, q = roh[i];
+      let x = q[0], y = q[1];
+      if (a.sigma > 0 && i > 0 && i < n - 1) {
+        const g = 1 / (2 * a.sigma * a.sigma), von = Math.max(0, i - a.fenster), bis = Math.min(n - 1, i + a.fenster);
+        let sx = 0, sy = 0, sw = 0;
+        for (let j = von; j <= bis; j++) { const d = w[j] - w[i], k = Math.exp(-d * d * g); sx += roh[j][0] * k; sy += roh[j][1] * k; sw += k; }
+        x = sx / sw; y = sy / sw;
+      }
+      let sd = 0, sn = 0, sk = 0;
+      for (let j = Math.max(0, i - DRUCK_FENSTER); j <= Math.min(n - 1, i + DRUCK_FENSTER); j++) {
+        const k = Math.exp(-(j - i) * (j - i) / 4);
+        sd += (roh[j][2] == null ? 0.5 : roh[j][2]) * k; sn += (roh[j][3] || 0) * k; sk += k;
+      }
+      const d = stufe(sd / sk, DRUCK_STUFEN), ne = stufe(sn / sk, NEIGUNG_STUFEN);
+      return ne ? [r1(x), r1(y), d, ne] : [r1(x), r1(y), d];
+    }
+    // Alle Punkte festlegen, deren Nachbarn schon da sind (ende: alle)
+    function festige(a, ende) {
+      if (!a.roh) return;
+      const p = a.strich.p, bis = ende ? a.roh.length : a.roh.length - Math.max(a.fenster, DRUCK_FENSTER);
+      for (let i = p.length; i < bis; i++) p.push(festerPunkt(a, i));
+    }
+    // Die noch nicht festen Punkte, so wie sie jetzt aussähen (für die Spitze und die Formerkennung)
+    function offenePunkte(a) {
+      if (!a.roh) return [];
+      const raus = [];
+      for (let i = a.strich.p.length; i < a.roh.length; i++) raus.push(festerPunkt(a, i));
+      return raus;
     }
     function aufSeite(s, dx, dy) {
       const x = dx - s.x, y = dy - s.y;
@@ -1607,7 +1662,7 @@
     function frame() {
       geplant = false;
       if (!b || !h) return;
-      host.classList.toggle('hand', einst.werkzeug === 'hand');
+      host.classList.toggle('mit-hand', einst.werkzeug === 'hand');
       aktualisiereCursor();
       begrenze();
       let voll = inhaltVoll || !basis;
@@ -1682,8 +1737,8 @@
       if (!a || a.art !== 'zeichnen' || a.fertig || a.formFertig || a.strich.w === 'marker') return;
       const s = seiteMitId(a.sid);
       if (!s) return;
-      const p = a.strich.p, extra = a.spitze || [];
-      const q = extra.length ? p.concat(extra) : p;
+      const p = a.strich.p, offen = offenePunkte(a), extra = a.spitze || [];
+      const q = offen.length || extra.length ? p.concat(offen, extra) : p;
       if (!q.length) return;
       const ox = s.x + (a.notiz ? a.notiz.x : 0), oy = s.y + (a.notiz ? a.notiz.y : 0);
       const k = dpr * ansicht.s, dx = dpr * ansicht.x, dy = dpr * ansicht.y;
@@ -2652,8 +2707,9 @@
       const datei = await waehleBildDatei();
       if (datei) fuegeBildEin(datei, wo);
     }
-    L.bildAusDatei = () => bildAusDateiEinfuegen();
-    L.bildAusAblage = () => bildAusAblageEinfuegen();
+    // wo: Stelle in Dokument-Koordinaten (aus dem Menü an einer Stelle), sonst die Mitte des Bildes
+    L.bildAusDatei = wo => bildAusDateiEinfuegen(wo);
+    L.bildAusAblage = wo => bildAusAblageEinfuegen(wo);
     async function kopiereBild(el) {
       if (!el) return;
       try {
@@ -2673,6 +2729,8 @@
       if (!s) return;
       if (opt.begrenzt && !aufSeite(s, wo[0], wo[1])) { const m = zuDok(b / 2, h / 2); wo[0] = m[0]; wo[1] = m[1]; }
       const mitZeiger = maus || !hatZeiger || hatZeiger.matches;
+      // Das Dokument zeigt ein ganzes Menü für die Seite (Einfügen, Drehen, Seiten, Rückgängig …), siehe dokument.js
+      if (opt.kontextMenue) { opt.kontextMenue({ x: hostRect.left + sx, y: hostRect.top + sy, nr: seiten.indexOf(s), wo, maus: mitZeiger }); return; }
       const el = document.createElement('div');
       el.className = 'kontext lw-notiz-kontext';
       el.setAttribute('role', 'menu');
@@ -2699,6 +2757,7 @@
       if (mitZeiger) { const erster = el.querySelector('button'); if (erster) erster.focus({ preventScroll: true }); }
     }
     // Langes Drücken oder Rechtsklick: auf einem Bild wählt es aus (Grösse ändern, verschieben), sonst das Menü
+    L.kontextBei = (sx, sy) => { messeHost(); zeigeEinfuegeMenue(sx, sy); };
     function kontextBei(sx, sy, maus) {
       const [dx, dy] = zuDok(sx, sy);
       const t = bildBei(dx, dy);
@@ -3084,8 +3143,10 @@
         tippen.max = Math.max(tippen.max, tippen.pos.size);
         if (tippen.pos.size === 2 && !tippen.lang) {
           const t = tippen;
+          // Halten verzeiht mehr als Tippen: ruhende Finger wandern auf dem Glas ein paar Pixel (HALTEN_TOL), und ein
+          // dritter Kontakt (Handballen am Rand) bricht es nicht ab
           t.lang = setTimeout(() => {
-            if (tippen !== t || t.bewegt || t.fertig || t.pos.size !== 2) return;
+            if (tippen !== t || t.weit || t.fertig || t.pos.size < 2) return;
             t.fertig = true;
             const [a, c] = [...t.pos.values()];
             brichAbFuerGeste();
@@ -3220,7 +3281,7 @@
         beruehre(s.id);
         inhalt(s.id).e.push(n);
         beende();
-        // Keine Tastatur: auf der neuen Notiz schreibt man gleich mit dem Stift (wie in Goodnotes). Dafür geht es zurück
+        // Keine Tastatur: auf der neuen Notiz schreibt man gleich mit dem Stift. Dafür geht es zurück
         // zum letzten Schreibwerkzeug. Tippen schreibt Text: Finger auf die Notiz, oder Stift mit dem Notiz-Werkzeug.
         einst.werkzeug = letztesSchreibwerkzeug;
         opt.einstGeaendert && opt.einstGeaendert();
@@ -3253,8 +3314,13 @@
 
     // Glättung und Haltezeit für einen neuen Strich
     function schreibStart(a, sx, sy, e) {
-      const par = GLAETTUNG[einst.glaettung == null ? 'aus' : einst.glaettung];
-      if (par) { a.filter = neuerFilter(par); a.filter(sx, sy, e.timeStamp); }
+      // Glättung in Bildschirm-px, gerechnet in Einheiten der Seite; das Fenster reicht über 2,5 Sigma (Punkte liegen
+      // mindestens 0,8 px auseinander)
+      const px = GLAETTUNG[einst.glaettung] != null ? GLAETTUNG[einst.glaettung] : GLAETTUNG.niedrig;
+      a.sigma = px / ansicht.s;
+      a.fenster = px > 0 ? Math.ceil(px * 2.5 / 0.8) : 0;
+      a.roh = [a.strich.p[0]];
+      a.weg = [0];
       halteStarten(a, sx, sy);
       emit('schreibstart');
     }
@@ -3264,16 +3330,14 @@
     function strichPunkt(ev, letzterPunkt) {
       const a = aktion, s = seiteMitId(a.sid);
       if (!s) return false;
-      const f = letzterPunkt ? null : a.filter;
-      const pt = a.notiz ? notizPunkt(ev, s, a.notiz, f) : stiftPunkt(ev, s, f);
-      const p = a.strich.p, letzter = p[p.length - 1];
-      if (a.formFertig) {
-        // Eine begradigte Linie folgt dem Stift weiter: Anfang bleibt, das Ende wandert mit
-        if (a.gerade) { a.strich.p = [p[0], [pt[0], pt[1], p[0][2]]]; a.gemalt = null; return true; }
-        return false;
-      }
-      if (Math.hypot(pt[0] - letzter[0], pt[1] - letzter[1]) < 0.8 / ansicht.s) return false;
-      p.push(glaette(letzter, pt));
+      const pt = a.notiz ? notizPunkt(ev, s, a.notiz) : stiftPunkt(ev, s);
+      if (a.formFertig) return passeFormAn(a, pt);
+      const roh = a.roh, letzter = roh[roh.length - 1];
+      const d = Math.hypot(pt[0] - letzter[0], pt[1] - letzter[1]);
+      if (d < 0.8 / ansicht.s && !(letzterPunkt && d > 0.05)) return false;
+      roh.push(pt);
+      a.weg.push(a.weg[a.weg.length - 1] + d);
+      festige(a, false);
       return true;
     }
 
@@ -3292,26 +3356,57 @@
     function halteAusloesen(a) {
       a.halteTimer = 0;
       if (aktion !== a || a.art !== 'zeichnen' || a.formFertig) return;
-      const p = a.strich.p;
+      const p = a.strich.p.concat(offenePunkte(a));
       if (p.length < 3) return;
       // Ein Zickzack ist ein Kritzeln und bleibt, wie es ist
       if (kritzelAktiv() && LHFormen.istKritzel(p.map(q => [q[0] * ansicht.s, q[1] * ansicht.s]))) return;
       const erg = LHFormen.erkenne(p);
       if (!erg) return;
-      a.original = vereinfache(klon(a.strich));
+      a.original = vereinfache(klon({ ...a.strich, p }));
       // Gleichmässig dick: mittlerer Druck des gezeichneten Strichs
       const druecke = p.map(q => q[2] == null ? 0.5 : q[2]).sort((x, y) => x - y);
       const druck = stufe(druecke[Math.floor(druecke.length / 2)], DRUCK_STUFEN);
       a.strich.p = erg.punkte.map(([x, y]) => [r1(x), r1(y), druck]);
       a.formFertig = true;
-      a.gerade = erg.art === 'linie';
       a.form = erg.art;
+      // Weiter halten und ziehen passt die Form an (passeFormAn): Linie und Pfeil drehen und strecken sich um ihren Anfang,
+      // geschlossene Formen wachsen oder schrumpfen um ihre Mitte, stufenlos
+      const offen = erg.art === 'linie' || erg.art === 'pfeil';
+      const fp = a.strich.p;
+      a.formBasis = fp.map(q => q.slice());
+      a.formDreht = offen;
+      a.formAnker = offen ? fp[0].slice(0, 2) : [fp.reduce((t, q) => t + q[0], 0) / fp.length, fp.reduce((t, q) => t + q[1], 0) / fp.length];
+      a.formStift = a.roh[a.roh.length - 1].slice(0, 2);
+      a.formFrei = false;
       a.gemalt = null;
       a.fertig = true;
       anfordern();
       if (navigator.vibrate) { try { navigator.vibrate(12); } catch (e) { /* ohne Vibration */ } }
     }
     const kritzelAktiv = () => einst.kritzelLoeschen !== false;
+    // Die eingerastete Form folgt dem Stift: so, dass der Punkt unter dem Stift beim Einrasten jetzt unter dem Stift liegt
+    // (Abstand zum Anker ergibt die Grösse, bei Linie und Pfeil der Winkel die Richtung). Erst ab HALTE_TOL Bewegung,
+    // damit das Zittern beim Einrasten nichts verschiebt.
+    function passeFormAn(a, pt) {
+      const b = a.formBasis;
+      if (!b) return false;
+      const [ax, ay] = a.formAnker, [sx, sy] = a.formStift;
+      if (!a.formFrei) {
+        if (Math.hypot(pt[0] - sx, pt[1] - sy) * ansicht.s < HALTE_TOL) return false;
+        a.formFrei = true;
+      }
+      const vx = sx - ax, vy = sy - ay, wx = pt[0] - ax, wy = pt[1] - ay, l0 = Math.hypot(vx, vy);
+      if (l0 < 1e-3) return false;
+      const f = Math.max(0.05, Math.hypot(wx, wy) / l0);
+      let cos = 1, sin = 0;
+      if (a.formDreht) { const w = Math.atan2(wy, wx) - Math.atan2(vy, vx); cos = Math.cos(w); sin = Math.sin(w); }
+      a.strich.p = b.map(q => {
+        const dx = q[0] - ax, dy = q[1] - ay;
+        return [r1(ax + f * (dx * cos - dy * sin)), r1(ay + f * (dx * sin + dy * cos)), q[2]];
+      });
+      a.gemalt = null;
+      return true;
+    }
 
     // Was der Stift meldet (Druck, Neigung, Drehung), für die Diagnose; höchstens einmal pro Bild weitergegeben
     function diagMelden(e) {
@@ -3331,7 +3426,9 @@
       if (touchPos.has(e.pointerId)) touchPos.set(e.pointerId, [sx, sy]);
       if (tippen && tippen.pos.has(e.pointerId) && !tippen.bewegt) {
         const q = tippen.pos.get(e.pointerId);
-        if (Math.hypot(sx - q[0], sy - q[1]) > TIPP_TOL) tippen.bewegt = true;
+        const weg = Math.hypot(sx - q[0], sy - q[1]);
+        if (weg > TIPP_TOL) tippen.bewegt = true;
+        if (weg > HALTEN_TOL) tippen.weit = true;
       }
       if (finger.has(e.pointerId)) {
         finger.set(e.pointerId, [sx, sy]);
@@ -3444,15 +3541,15 @@
       const punkt = ev => (a.notiz ? notizPunkt(ev, s, a.notiz) : stiftPunkt(ev, s));
       const raus = [];
       try {
-        const p = a.strich.p, letzter = p[p.length - 1];
-        const jetzt = glaette(letzter, punkt(e));
+        const letzter = a.roh[a.roh.length - 1];
+        const jetzt = punkt(e);
         if (Math.hypot(jetzt[0] - letzter[0], jetzt[1] - letzter[1]) > 0.05) raus.push(jetzt);
         const vor = e.getPredictedEvents ? e.getPredictedEvents() : [];
         const [ex, ey] = lokalPunkt(e);
         for (const ev of vor.slice(0, 2)) {
           const [vx, vy] = lokalPunkt(ev);
           if (Math.hypot(vx - ex, vy - ey) > 24) break;   // zu weit voraus geraten: lieber nicht
-          raus.push(glaette(raus[raus.length - 1] || letzter, punkt(ev)));
+          raus.push(punkt(ev));
         }
       } finally { letzterRoh = vorher; rohProben.length = proben; }
       return raus;
@@ -3508,7 +3605,8 @@
       host.classList.remove('schiebt');
       if (e.pointerType === 'pen') penZeit = performance.now();
       clearTimeout(a.halteTimer);
-      if (a.art === 'zeichnen' && e.type === 'pointerup') { aktion = a; strichPunkt(e, true); aktion = null; }   // der letzte Punkt beim Abheben, ungeglättet
+      if (a.art === 'zeichnen' && e.type === 'pointerup') { aktion = a; strichPunkt(e, true); aktion = null; }   // der letzte Punkt beim Abheben
+      if (a.art === 'zeichnen' && !a.formFertig) festige(a, true);
       abschliessen(a, e);
     }
 
@@ -3845,6 +3943,8 @@
   Leinwand.LINIEN = LINIEN;
   Leinwand.FORMATE = FORMATE;
   Leinwand.breite = breite;
+  // Fläche eines Stiftstrichs für andere Zeichner (PDF-Export): kreis(x, y, r) und vieleck([[x, y], …]) in Einheiten der Seite
+  Leinwand.strichFlaeche = (s, z) => fuelleStrich(null, strichProben(s, 0, s.p.length - 1), z.kreis, z.vieleck);
   Leinwand.stiftDaten = stiftDaten;
   Leinwand.neigungWinkel = neigungWinkel;
   Leinwand.druckAbbildung = druckAbbildung;

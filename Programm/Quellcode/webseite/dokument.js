@@ -22,8 +22,10 @@ Daten.bereit.then(function () {
 
   /* ---------- Kleine Helfer ---------- */
 
-  const SYMBOL_LINKS = '<svg class="menue-symbol" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4L4 8l4 4"/><path d="M4 8h9a7 7 0 010 14h-3"/></svg>';
-  const SYMBOL_RECHTS = '<svg class="menue-symbol" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 4l4 4-4 4"/><path d="M20 8h-9a7 7 0 000 14h3"/></svg>';
+  const SYMBOL_LINKS = '<svg class="menue-symbol" viewBox="0 0 24 24" aria-hidden="true"><rect x="9.5" y="9" width="10" height="12" rx="1.6"/><path d="M15 4.5H9.5a5 5 0 00-5 5V12"/><path d="M2 9.6l2.5 2.6 2.6-2.6"/></svg>';
+  const SYMBOL_RECHTS = '<svg class="menue-symbol" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="9" width="10" height="12" rx="1.6"/><path d="M9 4.5h5.5a5 5 0 015 5V12"/><path d="M16.9 9.6l2.6 2.6 2.5-2.6"/></svg>';
+  const SYMBOL_UNDO = '<svg class="menue-symbol" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg>';
+  const SYMBOL_REDO = '<svg class="menue-symbol" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg>';
 
   // Menü an einer Stelle (Bildschirm-Koordinaten), z. B. wo zwei Finger lagen
   function menueBei(x, y, html, aktion) {
@@ -103,9 +105,9 @@ Daten.bereit.then(function () {
     }
 
     // Seite im Blick um 90° drehen (richtung +90 rechts herum, -90 links herum), samt allem, was darauf steht
-    function dreheSeite(richtung) {
+    function dreheSeite(richtung, nr) {
       if (!lw || istBrett(it)) return;
-      const s = lw.seiten()[lw.aktuelleSeite()];
+      const s = lw.seiten()[nr != null && nr >= 0 ? nr : lw.aktuelleSeite()];
       if (!s) return;
       const alt = { b: s.b, h: s.h }, sid = s.id;
       Bibliothek.aendere(id, x => {
@@ -266,6 +268,10 @@ Daten.bereit.then(function () {
       kopfFuellen();
       Bibliothek.aendere(id, x => { x.geoeffnet = Date.now(); });
       Zeit.sitzung(id);
+      // Die Handschrift dieses Dokuments holen (sie liegt nicht von Anfang an im Speicher, siehe daten.js)
+      const alleDa = await Daten.lade(Daten.keys('ink:' + id + ':'));
+      if (t !== token || weg) return;
+      if (!alleDa) meldung('Einige Seiten kommen noch aus der Cloud und erscheinen, sobald sie da sind.');
 
       lw = Leinwand(flaeche, {
         einst,
@@ -280,6 +286,8 @@ Daten.bereit.then(function () {
         hintergrund,
         dreheSeite: istBrett(it) ? null : dreheSeite,
         flaeche: s => (it.art === 'skript' ? flaecheSkript(s) : Leinwand.seitenfarbe(it.seitenfarbe).flaeche || Leinwand.flaecheThema()),
+        // Rechtsklick, Finger oder zwei Finger lange halten: Menü der Seite
+        kontextMenue: o => seitenKontext(o),
         // Neue Seite: per Knopf oder durch Wischen über das Ende hinaus (sofort: ohne Sprung zur neuen Seite)
         neueSeite: it.art === 'notizbuch' && !istBrett(it) ? o => seiteEinfuegen(it.seiten.length, !!(o && o.sofort)) : null,
         // Notizbuch: nur auf dem Blatt schreiben, drumherum kein Raster; Whiteboard: unendliche Fläche
@@ -412,18 +420,55 @@ Daten.bereit.then(function () {
 
     // ⋯ in der Werkzeugleiste: alles, was nicht zum Schreiben gehört, an einem Ort
     // Seiten-Menü (Geste "zwei Finger halten" und Pencil): Seite drehen, Gesten und Leiste einstellen
+    // Zwei Finger halten: dasselbe Menü wie Rechtsklick an der Stelle der Finger
     function seitenMenue(pos) {
       if (!lw) return;
-      const r0 = flaeche.getBoundingClientRect();
-      const nr = lw.aktuelleSeite() + 1;
-      const html = `${!istBrett(it) ? `<div class="kontext-titel">Seite ${nr}</div>
+      lw.kontextBei(pos[0], pos[1]);
+    }
+    // Menü an einer Stelle der Seite (Rechtsklick, Finger lange halten, zwei Finger halten): alles, was man dort mit der
+    // Seite tun kann. o = { x, y (Bildschirm), nr (Seite unter dem Zeiger), wo (Stelle im Dokument), maus }
+    function seitenKontext(o) {
+      if (!lw) return;
+      const nr = o.nr >= 0 ? o.nr : lw.aktuelleSeite(), n = nr + 1, brett = istBrett(it);
+      const teile = [];
+      teile.push(`<div class="kontext-titel">${brett ? 'Whiteboard' : `Seite ${n}`}</div>
+        <button type="button" data-a="undo" ${lw.kannRueckgaengig() ? '' : 'disabled'}>${SYMBOL_UNDO} Rückgängig</button>
+        <button type="button" data-a="redo" ${lw.kannWiederholen() ? '' : 'disabled'}>${SYMBOL_REDO} Wiederholen</button>`);
+      teile.push(`<div class="kontext-titel">Einfügen</div>
+        <button type="button" data-bild="datei">${o.maus ? 'Bild vom Computer …' : 'Bild aus Fotos oder Dateien …'}</button>
+        <button type="button" data-bild="ablage">Bild aus der Zwischenablage</button>`);
+      if (!brett) {
+        teile.push(`<div class="kontext-titel">Seite ${n} drehen</div>
           <button type="button" data-dreh="-90">${SYMBOL_LINKS} Nach links drehen</button>
-          <button type="button" data-dreh="90">${SYMBOL_RECHTS} Nach rechts drehen</button>` : ''}
-        <div class="kontext-titel">Einstellen</div>
+          <button type="button" data-dreh="90">${SYMBOL_RECHTS} Nach rechts drehen</button>`);
+      }
+      if (it.art === 'notizbuch' && !brett) {
+        teile.push(`<div class="kontext-titel">Seiten</div>
+          <button type="button" data-a="danach">Neue Seite nach Seite ${n}</button>
+          <button type="button" data-a="davor">Neue Seite vor Seite ${n}</button>
+          <button type="button" data-png="seite">Seite ${n} als PNG exportieren</button>
+          <button type="button" data-a="loeschen" class="gefahr">Seite ${n} löschen</button>`);
+      } else if (it.art === 'skript') {
+        const lz = sl && sl.istLesezeichen(n);
+        teile.push(`<div class="kontext-titel">Lesezeichen</div>
+          <button type="button" data-a="lesezeichen">${lz ? `Lesezeichen von Seite ${n} entfernen` : `Lesezeichen auf Seite ${n} setzen`}</button>
+          <button type="button" data-png="seite">Seite ${n} als PNG exportieren</button>`);
+      }
+      teile.push(`<div class="kontext-titel">Einstellen</div>
         <button type="button" data-a="gesten">Gesten einstellen …</button>
-        <button type="button" data-a="anpassen">Werkzeugleiste anpassen …</button>`;
-      menueBei(r0.left + pos[0], r0.top + pos[1], html, d => {
-        if (d.dreh) dreheSeite(Number(d.dreh));
+        <button type="button" data-a="anpassen">Werkzeugleiste anpassen …</button>`);
+      menueBei(o.x, o.y, teile.join(''), d => {
+        if (d.dreh) dreheSeite(Number(d.dreh), nr);
+        // Dateiauswahl und Zwischenablage brauchen das Tippen selbst: direkt aus dem Klick heraus starten
+        else if (d.bild === 'datei') lw.bildAusDatei(o.wo);
+        else if (d.bild === 'ablage') lw.bildAusAblage(o.wo);
+        else if (d.a === 'undo') lw.rueckgaengig();
+        else if (d.a === 'redo') lw.wiederholen();
+        else if (d.a === 'danach') seiteEinfuegen(nr + 1);
+        else if (d.a === 'davor') seiteEinfuegen(nr);
+        else if (d.a === 'loeschen') seiteLoeschen(nr);
+        else if (d.a === 'lesezeichen' && sl) sl.lesezeichen(n, !sl.istLesezeichen(n));
+        else if (d.png) Bibliothek.exportiere(id, 'png', { seite: nr });
         else if (d.a === 'gesten' && leiste && leiste.oeffneGesten) leiste.oeffneGesten();
         else if (d.a === 'anpassen' && leiste && leiste.anpassen) leiste.anpassen();
       });
@@ -568,14 +613,21 @@ Daten.bereit.then(function () {
       lw = null; leiste = null; sl = null;
       leistenEl.remove();
       el.remove();
+      // Handschrift wieder freigeben: erst alles an die Ablage geben, dann aus dem Speicher nehmen
+      Daten.flush();
+      Daten.vergiss(Daten.keys('ink:' + id + ':'));
     };
     // Änderungen von aussen (anderes Fenster, Explorer)
     F.extern = ({ key, quelle }) => {
       if (weg || !lw || quelle === 'lokal') return;
       if (key.startsWith('ink:' + id + ':')) {
         const sid = key.slice(('ink:' + id + ':').length);
-        lw.neuLaden(sid);
-        if (sl) sl.inkGeaendert(Number(sid.slice(1)));
+        // Von aussen geändert und noch nicht im Speicher: erst holen, dann zusammenführen
+        Daten.lade([key]).then(() => {
+          if (weg || !lw) return;
+          lw.neuLaden(sid);
+          if (sl) sl.inkGeaendert(Number(sid.slice(1)));
+        });
       }
       else if (key === 'bib:' + id) {
         const neu = Bibliothek.get(id);
@@ -1388,6 +1440,8 @@ Daten.bereit.then(function () {
     daneben: id => setzeSeite(id, 'rechts'),
     aktiv: () => sichtbar && !!geladen.get(fokusId()),
     leinwand: () => { const f = geladen.get(fokusId()); return f ? f.leinwand() : null; },
+    // In diesem Fenster offen (seine Handschrift bleibt dann im Speicher)
+    istGeladen: id => geladen.has(id),
     taste: e => {
       const f = geladen.get(fokusId());
       if (f && f.taste(e)) return true;

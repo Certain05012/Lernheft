@@ -67,7 +67,7 @@ fehlt das Feld, gibt es keine). Beim Zusammenführen gilt wie bei allen Eigensch
 * Ältere Versionen (vor den Bildern) lesen `k: "b"` als leeren Strich: wer dort die Seite ändert, verliert das Bild. Alle Geräte
   (auch das iPad) sollten daher dieselbe Version haben.
 
-Striche werden als Kurve durch alle ihre Punkte gezeichnet (Catmull-Rom; an Knicken über 75° eine Ecke) und seit 3.10 beim Speichern nicht mehr reduziert.
+Striche werden als Kurve durch alle ihre Punkte gezeichnet (Catmull-Rom; an Knicken über 75° eine Ecke), als eine gefüllte Fläche mit der Breite aus dem Druck, und seit 3.10 beim Speichern nicht mehr reduziert. Die Glättung (seit 3.11) wirkt beim Schreiben: gespeichert werden schon geglättete Punkte, das Format ändert sich nicht.
 
 **Text** (ab 3.9.0) `{ "k": "t", "i": Id, "x", "y", "b", "t": Text, "gr", "f", "erstellt", "m" }`
 
@@ -79,11 +79,11 @@ Striche werden als Kurve durch alle ihre Punkte gezeichnet (Catmull-Rom; an Knic
 
 ## Punkte vereinfachen
 
-Die Schreibfläche lässt beim Abschliessen eines Strichs Punkte weg, die auf der Verbindung ihrer Nachbarn liegen (Douglas-Peucker,
-`LHFormat.vereinfache` in `format.js`). Erlaubt ist eine Abweichung von 8 % der Strichdicke (mindestens 0,15 Einheiten), zusätzlich
-darf sich weder der Druck noch die Neigung gegenüber dem Verlauf zwischen den Nachbarn merklich ändern, damit auch die Breite der Linie
-gleich bleibt. Anfang und Ende bleiben. Das Dateiformat ändert sich dadurch nicht: ältere Dateien mit mehr Punkten lesen sich wie bisher,
-ältere Programme lesen auch die neuen. Formen (Linie, Pfeil, Vieleck, Kreis, …) werden nicht vereinfacht.
+Seit 3.10 nur noch für die Stücke, die beim Radieren entstehen (Striche behalten alle Punkte). Die Schreibfläche lässt dort Punkte weg, die auf der Verbindung ihrer Nachbarn liegen (Douglas-Peucker,
+`LHFormat.vereinfache` in `format.js`). Erlaubt ist eine Abweichung von 0,02 Einheiten (so fallen nur die künstlichen Zwischenpunkte
+des Radierens weg), zusätzlich darf sich weder der Druck noch die Neigung gegenüber dem Verlauf zwischen den Nachbarn merklich ändern,
+damit auch die Breite der Linie gleich bleibt. Anfang und Ende bleiben. Das Dateiformat ändert sich dadurch nicht. Formen (Linie, Pfeil,
+Vieleck, Kreis, …) werden nicht vereinfacht.
 
 ## Abgleich zwischen Geräten
 

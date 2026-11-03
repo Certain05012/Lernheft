@@ -20,6 +20,8 @@ const ok = [], fehler = [];
 const pruefe = (name, bedingung, detail) => { (bedingung ? ok : fehler).push(name + (detail !== undefined ? ' -> ' + JSON.stringify(detail) : '')); };
 const baum = dir => fs.readdirSync(dir, { recursive: true }).map(f => f.replace(/\\/g, '/')).sort();
 const meldungen = [];
+// Handschrift kommt seit 3.11 faul aus alle() und wird mit hole() gelesen (wie die Oberfläche es tut)
+const inkVon = (ab, k) => { const e = ab.hole([k])[k]; return e && !e.faul ? e.v : null; };
 const neueAblage = () => erstelleAblage({ wurzel: WURZEL, altDaten: null, melde: a => meldungen.push(Object.keys(a)), format });
 
 (async () => {
@@ -33,7 +35,7 @@ const neueAblage = () => erstelleAblage({ wurzel: WURZEL, altDaten: null, melde:
     const seitenDateien = nachStart.filter(f => f.endsWith('.lhz'));
     pruefe('Seiten-Dateien angelegt', seitenDateien.length > 0, seitenDateien);
     for (const k of Object.keys(a.alle()).filter(x => x.startsWith('ink:'))) {
-      const n = a.alle()[k].v.e.length;
+      const n = inkVon(a, k).e.length;
       pruefe('Inhalt übertragen ' + k, n > 0, n);
     }
     const metaPfad = path.join(WURZEL, 'Bibliothek', 'Mathe', 'Notizbuch 30. September', 'Handschrift.lernheft.json');
@@ -82,33 +84,33 @@ const neueAblage = () => erstelleAblage({ wurzel: WURZEL, altDaten: null, melde:
   pruefe('Konfliktkopie aufgeräumt', !fs.existsSync(path.join(dirA, 'Handschrift', 's1-ANDERER-PC.lhz')));
   pruefe('Konfliktkopie aufgehoben (nicht gelöscht)', fs.existsSync(path.join(WURZEL, 'Daten', 'Konflikte')) && baum(path.join(WURZEL, 'Daten', 'Konflikte')).some(f => f.endsWith('.lhz')));
   pruefe('Webseite benachrichtigt', meldungen.some(m => m.includes('ink:nbA:s1')), meldungen);
-  pruefe('Webseite hat neuen Stand', a.alle()['ink:nbA:s1'].v.e.length === 2);
+  pruefe('Webseite hat neuen Stand', inkVon(a, 'ink:nbA:s1').e.length === 2);
 
   // 5. Änderung von aussen (Cloud hat eine neuere Fassung geliefert)
   meldungen.length = 0;
   const neuer = { e: [...nach.e, strich('st4', 3000, 30, false)], x: nach.x };
   schreibeExtern(datei, 's1', neuer);
   await warte(3000);
-  pruefe('Änderung von aussen erkannt', a.alle()['ink:nbA:s1'].v.e.length === 3 && meldungen.some(m => m.includes('ink:nbA:s1')), a.alle()['ink:nbA:s1'].v.e.length);
+  pruefe('Änderung von aussen erkannt', inkVon(a, 'ink:nbA:s1').e.length === 3 && meldungen.some(m => m.includes('ink:nbA:s1')), inkVon(a, 'ink:nbA:s1').e.length);
 
   // 6. Eigene Schreibvorgänge lösen keine Meldung an die Webseite aus
   meldungen.length = 0;
-  a.setze({ 'ink:nbA:s1': { v: { e: [...a.alle()['ink:nbA:s1'].v.e, strich('st5', 4000, 20, false)], x: nach.x }, zeit: 9 } });
+  a.setze({ 'ink:nbA:s1': { v: { e: [...inkVon(a, 'ink:nbA:s1').e, strich('st5', 4000, 20, false)], x: nach.x }, zeit: 9 } });
   a.sichern();
   await warte(3500);
   pruefe('kein Echo auf eigene Datei', !meldungen.some(m => m.includes('ink:nbA:s1')), meldungen);
 
   // 6b. Die Cloud ändert die Datei, während hier noch ungesicherte Arbeit wartet: beim Schreiben wird zusammengeführt
   meldungen.length = 0;
-  const stand = a.alle()['ink:nbA:s1'].v;
+  const stand = inkVon(a, 'ink:nbA:s1');
   a.setze({ 'ink:nbA:s1': { v: { e: [...stand.e, strich('lokalNeu', 5000, 10)], x: stand.x }, zeit: 10 } });
   schreibeExtern(datei, 's1', { e: [...stand.e, strich('cloudNeu', 6000, 10)], x: stand.x });
   a.sichern();
   const gemischt = format.dekodiereSeite(zlib.gunzipSync(fs.readFileSync(datei)).toString());
   pruefe('beim Schreiben zusammengeführt', gemischt.e.some(e => e.id === 'lokalNeu') && gemischt.e.some(e => e.id === 'cloudNeu'), gemischt.e.map(e => e.id));
-  pruefe('Webseite bekommt gemeinsamen Stand', meldungen.some(m => m.includes('ink:nbA:s1')) && a.alle()['ink:nbA:s1'].v.e.some(e => e.id === 'cloudNeu'));
+  pruefe('Webseite bekommt gemeinsamen Stand', meldungen.some(m => m.includes('ink:nbA:s1')) && inkVon(a, 'ink:nbA:s1').e.some(e => e.id === 'cloudNeu'));
   await warte(3000);
-  pruefe('danach kein weiteres Echo', a.alle()['ink:nbA:s1'].v.e.length === 6, a.alle()['ink:nbA:s1'].v.e.length);
+  pruefe('danach kein weiteres Echo', inkVon(a, 'ink:nbA:s1').e.length === 6, inkVon(a, 'ink:nbA:s1').e.length);
 
   // 6c. Geräte-Einstellungen bleiben aus dem Speicherort heraus
   a.setze({ 'lokal:stift': { v: { druckKurve: 1.4 }, zeit: 11 }, 'lokal:thema': { v: 'light', zeit: 11 } });
@@ -126,16 +128,16 @@ const neueAblage = () => erstelleAblage({ wurzel: WURZEL, altDaten: null, melde:
   const b = erstelleAblage({ wurzel: WURZEL2, altDaten: null, melde: () => {}, format });
   const bericht = b.importiereAlles(paket);
   pruefe('Import: Dokumente', bericht.dokumente >= 1 && bericht.seiten >= 1, bericht);
-  pruefe('Import: Inhalt da', b.alle()['ink:nbA:s1'] && b.alle()['ink:nbA:s1'].v.e.length === 6, b.alle()['ink:nbA:s1'] && b.alle()['ink:nbA:s1'].v.e.length);
+  pruefe('Import: Inhalt da', inkVon(b, 'ink:nbA:s1') && inkVon(b, 'ink:nbA:s1').e.length === 6, inkVon(b, 'ink:nbA:s1') && inkVon(b, 'ink:nbA:s1').e.length);
   pruefe('Import: Einstellungen da', b.alle()['einst:stift'] && b.alle()['einst:stift'].v.farbe === 'blau');
   // Zweimal importieren ändert nichts (zusammenführen, nicht verdoppeln)
   const bericht2 = b.importiereAlles(paket);
-  pruefe('Zweiter Import verdoppelt nichts', b.alle()['ink:nbA:s1'].v.e.length === 6 && bericht2.neu === 0, bericht2);
+  pruefe('Zweiter Import verdoppelt nichts', inkVon(b, 'ink:nbA:s1').e.length === 6 && bericht2.neu === 0, bericht2);
   b.schliessen();
 
   // 8. Neuer Start liest alles unverändert
   const c = erstelleAblage({ wurzel: WURZEL2, altDaten: null, melde: () => {}, format });
-  pruefe('Neustart: Inhalt gleich', c.alle()['ink:nbA:s1'].v.e.length === 6);
+  pruefe('Neustart: Inhalt gleich', inkVon(c, 'ink:nbA:s1').e.length === 6);
   c.schliessen();
 
   const r = { ok: ok.length, fehler, zusammen: { ok } };

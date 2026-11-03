@@ -66,4 +66,7 @@ function ende(datei) {
   process.exitCode = fehlerZahl ? 1 : 0;
 }
 
-module.exports = { fs, path, fflate, LHKnoten, LHSpeicher, LHFormat, ladeAblage, kopiereHinein, pruefe, warte, ende, vorlage, QUELLE };
+// Stand der Ablage mit allen Seiten: Handschrift kommt seit 3.11 faul aus alle() und wird erst mit hole() gelesen
+const voll = ab => { const a = ab.alle(); const f = Object.keys(a).filter(k => k.startsWith('ink:') && a[k] && a[k].faul); if (f.length) ab.hole(f); return ab.alle(); };
+
+module.exports = { fs, path, fflate, LHKnoten, LHSpeicher, LHFormat, ladeAblage, kopiereHinein, pruefe, warte, ende, vorlage, QUELLE, voll };

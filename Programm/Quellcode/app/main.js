@@ -82,6 +82,10 @@ ipcMain.on('lh:hallo', e => {
 ipcMain.on('lh:geraet', e => { e.returnValue = frameErlaubt(e.senderFrame) ? 'Lernheft (' + os.hostname() + ')' : ''; });
 ipcMain.on('lh:wurzel', e => { e.returnValue = frameErlaubt(e.senderFrame) ? ablage.wurzel : ''; });
 ipcMain.on('lh:kv-alle', e => { e.returnValue = frameErlaubt(e.senderFrame) ? ablage.alle() : {}; });
+// Handschrift erst laden, wenn sie gebraucht wird, und wieder freigeben (nur Schlüssel ink:*, höchstens 5000 auf einmal)
+const nurInk = keys => (Array.isArray(keys) ? keys : []).slice(0, 5000).map(String).filter(k => k.startsWith('ink:'));
+ipcMain.handle('lh:kv-hole', (e, keys) => { pruefe(e); return ablage.hole(nurInk(keys)); });
+ipcMain.on('lh:kv-vergiss', (e, keys) => { if (frameErlaubt(e.senderFrame)) ablage.vergiss(nurInk(keys)); });
 ipcMain.on('lh:kv-setze', (e, aenderungen) => {
   if (!frameErlaubt(e.senderFrame) || !aenderungen || typeof aenderungen !== 'object') return;
   ablage.setze(aenderungen);

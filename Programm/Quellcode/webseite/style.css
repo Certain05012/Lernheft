@@ -195,6 +195,7 @@ img.dunkelblau { filter: invert(1) hue-rotate(180deg); mix-blend-mode: screen; }
 .vorschau.ohne::after { content: "PDF"; position: absolute; inset: 0; display: grid; place-items: center; color: var(--grau); font-weight: 700; background: var(--blatt); }
 .vorschau.mini { width: 44px; flex: none; border-radius: 5px; }
 .nb-vorschau { aspect-ratio: 1 / 1.414; background: var(--blatt); border-left: 6px solid var(--farbe); }
+.nb-vorschau.quer { aspect-ratio: 1.414 / 1; }
 .art-marke {
   position: absolute; left: 16px; top: 16px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700;
   letter-spacing: .04em; background: color-mix(in srgb, var(--papier) 82%, transparent); color: var(--tinte); border: 1px solid var(--linie);
@@ -409,7 +410,7 @@ img.dunkelblau { filter: invert(1) hue-rotate(180deg); mix-blend-mode: screen; }
   outline: 1.5px dashed var(--fueller); outline-offset: 5px; box-shadow: none; -webkit-appearance: none; appearance: none; touch-action: manipulation; }
 .lw-text-editor:focus { outline: 1.5px dashed var(--fueller); }
 .lw-text-editor[hidden] { display: none; }
-.leinwand.schiebbar .lw-canvas, .leinwand.hand .lw-canvas { cursor: grab; }
+.leinwand.schiebbar .lw-canvas, .leinwand.mit-hand .lw-canvas { cursor: grab; }
 .leinwand.schiebt .lw-canvas { cursor: grabbing; }
 .lw-hinweis {
   position: absolute; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
@@ -605,7 +606,7 @@ img.dunkelblau { filter: invert(1) hue-rotate(180deg); mix-blend-mode: screen; }
 .preset[aria-checked="true"] .preset-wert { color: inherit; }
 
 /* Diagnose und Druckkurve im Stift-Panel */
-.tasten-panel { max-height: calc(100% - 20px); overflow-y: auto; }
+.tasten-panel { max-height: calc(100% - 20px); overflow-y: auto; font-family: var(--f-text); font-size: 14px; font-weight: 400; }
 .tasten-panel input[type="range"] { width: 100%; accent-color: var(--fueller); }
 .tasten-panel label .diag-wert { float: right; font-weight: 400; color: var(--grau); font-variant-numeric: tabular-nums; }
 .diag-feld { width: 100%; height: 110px; touch-action: none; border: 1.5px dashed var(--linie); border-radius: 10px; background: var(--papier); cursor: crosshair; }
@@ -813,6 +814,25 @@ body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .vollbild .dok-leiste .leiste-ende { position: static !important; margin-left: 8px !important; height: auto !important; }
 /* Im Vollbild gibt es keinen Palettenknopf: Farben und Grössen öffnen sich beim Antippen von Stift oder Marker */
 .vollbild .eig-knopf { display: none !important; }
+/* Vollbild: die schwebende Leiste bleibt schlank, auch mit offenen Farben und Grössen (zwei niedrige Zeilen statt zwei
+   hoher), und nie breiter als der Bildschirm (Farben und Grössen schrumpfen, statt rechts abgeschnitten zu werden) */
+.vollbild .dok-leiste-slot .dok-leiste { max-width: calc(100vw - 24px); box-sizing: border-box; padding: 4px 10px; row-gap: 4px; column-gap: 6px; }
+.vollbild .dok-leiste .gruppe { padding-right: 6px; gap: 2px; }
+.vollbild .dok-leiste .wz, .vollbild .dok-leiste .farbreihe .wz { width: 40px; height: 40px; flex-basis: 40px; border-radius: 10px; }
+.vollbild .dok-leiste .wz.wz-text { width: auto; }
+.vollbild .dok-leiste .wz svg { width: 22px; height: 22px; }
+.vollbild .dok-leiste .farbreihe { gap: 4px; }
+.vollbild .dok-leiste .farbreihe .farbpunkt, .vollbild .dok-leiste .farbreihe .notizpunkt { width: min(24px, 70%); }
+.vollbild .dok-leiste .preset { height: 40px; min-width: 0; padding: 0 8px 0 2px; grid-template-columns: 24px auto; }
+.vollbild .dok-leiste .preset-name { font-size: 12px; }
+.vollbild .dok-leiste .preset-wert { font-size: 11px; }
+.vollbild .dok-leiste .dicke-regler { height: 30px; max-width: 160px; }
+.vollbild .dok-leiste .dicke-wert { min-width: 46px; font-size: 13px; }
+.vollbild .dok-leiste.eig-offen > [data-eig] { margin-top: 0; }
+@media (pointer: coarse) {
+  .vollbild .dok-leiste .wz, .vollbild .dok-leiste .farbreihe .wz { width: 44px; height: 44px; flex-basis: 44px; }
+  .vollbild .dok-leiste .preset { height: 44px; }
+}
 /* Symbole ziehen */
 .dok-leiste [data-ord] { touch-action: none; }
 .dok-leiste.ordnet, .dok-leiste.ordnet * { cursor: grabbing !important; user-select: none; }
@@ -1027,7 +1047,7 @@ html { scrollbar-width: none; }
 :hover::-webkit-scrollbar-thumb { background-color: rgba(150, 150, 150, .4); }
 ::-webkit-scrollbar-thumb:hover, ::-webkit-scrollbar-thumb:active { background-color: rgba(175, 175, 175, .8); border-width: 2px; }
 
-/* ================= Kopfleiste und Startseite im Stil eines Bücherregals (wie Goodnotes) =================
+/* ================= Kopfleiste und Startseite im Stil eines Bücherregals =================
    Oben eine Leiste mit runden Tabs: links das Haus, daneben die offenen Dokumente. Sie ist auf der Startseite und in den
    Dokumenten dieselbe, so wechselt man direkt zwischen Startseite und Skript. Ein Farbsatz für alles (data-bib-hg, von app.js
    aus Design und Wahl gesetzt): die Leiste ist eine Spur dunkler (--kopf-hg), der gewählte Tab hat die Farbe der Fläche
@@ -1135,6 +1155,7 @@ body { padding-inline: 0; }
 .bib .cover-huelle .vorschau { border: none; transition: transform .18s ease, box-shadow .18s ease; box-shadow: 0 2px 4px rgba(0, 0, 0, .3), 0 12px 24px rgba(0, 0, 0, .26); }
 .cover-huelle.skript .vorschau { width: 186px; border-radius: 3px 12px 12px 3px; }
 .cover-huelle.notizbuch .vorschau { width: 180px; border-radius: 4px 14px 14px 4px; border-left: 9px solid var(--farbe); }
+.cover-huelle.notizbuch .vorschau.quer { width: 224px; }
 .cover-huelle.brett { margin-bottom: 14px; }
 .cover-huelle.brett .vorschau { width: 214px; box-sizing: border-box; border-radius: 9px; border: 7px solid #cdd1d8; }
 .cover-huelle.brett::after { content: ""; position: absolute; left: 12%; right: 12%; bottom: -13px; height: 13px; border-radius: 0 0 14px 14px; background: linear-gradient(#e6e8ec, #b9bec6); box-shadow: 0 4px 8px rgba(0, 0, 0, .3); }
@@ -1251,7 +1272,24 @@ body { padding-inline: 0; }
 .werkzeugleiste.farbig [data-aktion="tasten"] svg { color: var(--s-tasten); }
 .werkzeugleiste.farbig [data-aktion="links"] svg, .werkzeugleiste.farbig [data-aktion="rechts"] svg { color: var(--s-drehen); }
 .werkzeugleiste.farbig .wz:disabled svg { opacity: .45; }
+/* Gestaltete Symbole (werkzeuge.js BUNT): nur mit "Farbige Symbole", sonst die Linien-Symbole. Flächen und Konturen
+   kommen aus den Variablen, damit sie auf hellen und dunklen Leisten passen; die Stiftspitze zeigt die gewählte Farbe. */
+.wz svg.sym-bunt { display: none; fill: none; stroke: none; }
+.werkzeugleiste.farbig .wz svg.sym-bunt { display: block; }
+.werkzeugleiste.farbig .wz svg.hat-bunt { display: none; }
+.werkzeugleiste, .leiste-wahl { --wz-tinte: #1b2232; --wz-marker: #f7d94c; --b-haut: #e8c3a4; --b-kontur: #cbd5e1; --b-schaft: #7f90b0; --b-metall: #d6dde8;
+  --b-holz: #e7c48f; --b-papier: #eef2f8; --b-kachel: #263a63; --b-textfarbe: #a9c8ff; --b-pfeil: #b4c0d6; }
+:root[data-theme="light"] .werkzeugleiste, :root[data-theme="light"] .leiste-wahl { --b-haut: #f4d3b8; --b-kontur: #475569; --b-schaft: #34405a; --b-metall: #b9c3d2;
+  --b-holz: #ecca96; --b-papier: #ffffff; --b-kachel: #dce7ff; --b-textfarbe: #1d4ed8; --b-pfeil: #5b6b85; }
+.werkzeugleiste.farbig .wz[aria-pressed="true"] svg.sym-bunt { filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, .25)); }
 /* Werkzeugleiste anpassen: Liste in zwei Spalten */
 .leiste-wahl { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px 16px; margin: 8px 0 12px; }
+.leiste-wahl .haken-label { align-items: center; }
+.leiste-wahl .wahl-symbol { display: inline-grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 8px; background: var(--papier); }
+.leiste-wahl .wahl-symbol svg { width: 22px; height: 22px; }
+.leiste-wahl .wahl-symbol svg.sym { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.leiste-wahl .wahl-symbol svg.sym-bunt { display: none; fill: none; stroke: none; }
+.leiste-wahl.farbig .wahl-symbol svg.sym-bunt { display: block; }
+.leiste-wahl.farbig .wahl-symbol svg.hat-bunt { display: none; }
 /* Symbole in Menüs (Seite drehen) */
 .kontext .menue-symbol { width: 18px; height: 18px; vertical-align: -4px; margin-right: 6px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }

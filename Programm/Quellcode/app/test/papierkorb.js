@@ -170,6 +170,8 @@ app.whenReady().then(async () => {
       li.querySelector('[data-pk-zurueck]').click();
       await new Promise(ok => setTimeout(ok, 2000));
       const it = Bibliothek.get(__nb.id);
+      // Handschrift kommt seit 3.11 erst geladen in den Speicher
+      if (Daten.lade) await Daten.lade(['ink:' + __nb.id + ':' + __nb.s2]);
       return { seiten: it.seiten.length, letzte: it.seiten[it.seiten.length - 1] === __nb.s2, strich: (Daten.get('ink:' + __nb.id + ':' + __nb.s2, { e: [] }).e || []).length, meldung: document.getElementById('toast').textContent };
     })()`);
 
@@ -187,6 +189,7 @@ app.whenReady().then(async () => {
       li.querySelector('[data-pk-zurueck]').click();
       for (let i = 0; i < 40 && !Bibliothek.get(id); i++) await new Promise(ok => setTimeout(ok, 100));
       const zurueck = Bibliothek.get(id);
+      if (Daten.lade) await Daten.lade(['ink:' + id + ':' + __nb.s1, 'ink:' + id + ':' + __nb.s2]);
       const ink = (Daten.get('ink:' + id + ':' + __nb.s1, { e: [] }).e || []).length + (Daten.get('ink:' + id + ':' + __nb.s2, { e: [] }).e || []).length;
       Bibliothek.loescheDokument(id);
       await __ja();

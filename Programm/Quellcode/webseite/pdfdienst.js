@@ -209,20 +209,19 @@
         page.drawSvgPath(pfad(pts.length === 1 ? [pts[0], [pts[0][0] + 0.1, pts[0][1]]] : pts), { x: 0, y: 0, borderColor: farbe, borderWidth: Leinwand.breite(e, 0.5) * massstab, borderOpacity: 0.35, borderLineCap: liniekappe });
         continue;
       }
-      if (pts.length === 1) {
-        page.drawCircle({ x: pts[0][0], y: pts[0][1], size: Leinwand.breite(e, e.p[0][2]) * massstab / 2, color: farbe });
-        continue;
-      }
-      // Abschnitte mit ähnlicher Breite zu einem Pfad zusammenfassen
-      let lauf = [pts[0]], b0 = null;
-      const fertig = () => { if (lauf.length > 1) page.drawSvgPath(pfad(lauf), { x: 0, y: 0, borderColor: farbe, borderWidth: b0, borderLineCap: liniekappe }); };
-      for (let i = 1; i < pts.length; i++) {
-        const bi = Math.round(Leinwand.breite(e, (e.p[i - 1][2] + e.p[i][2]) / 2) * massstab * 4) / 4;
-        if (b0 !== null && bi !== b0) { fertig(); lauf = [pts[i - 1]]; }
-        b0 = bi;
-        lauf.push(pts[i]);
-      }
-      fertig();
+      // Wie auf dem Bildschirm eine gefüllte Fläche (Bänder und Kreise, Leinwand.strichFlaeche) in einem Pfad. Alles wird
+      // in Einheiten der Seite gebaut und erst dann umgerechnet, so laufen alle Teile gleich herum und die Füllung vereint sie.
+      const teile = [];
+      const P = (x, y) => { const [a, b] = punkt(x, y); return a.toFixed(2) + ' ' + (-b).toFixed(2); };
+      Leinwand.strichFlaeche(e, {
+        kreis: (x, y, r) => {
+          const k = 0.5523 * r;
+          teile.push('M' + P(x + r, y) + ' C' + P(x + r, y + k) + ' ' + P(x + k, y + r) + ' ' + P(x, y + r) + ' C' + P(x - k, y + r) + ' ' + P(x - r, y + k) + ' ' + P(x - r, y) +
+            ' C' + P(x - r, y - k) + ' ' + P(x - k, y - r) + ' ' + P(x, y - r) + ' C' + P(x + k, y - r) + ' ' + P(x + r, y - k) + ' ' + P(x + r, y) + ' Z');
+        },
+        vieleck: v => teile.push('M' + v.map(([x, y]) => P(x, y)).join(' L') + ' Z')
+      });
+      if (teile.length) page.drawSvgPath(teile.join(' '), { x: 0, y: 0, color: farbe });
     }
   }
 
@@ -457,5 +456,7 @@
     }
   }
 
-  window.PdfDienst = { ladePdfJs, ladePdfLib, oeffnePdf, helligkeit, umfaerben, umfaerbenNoetig, vorschauErstellen, exportiereSkript, exportiereNotizbuch, exportierePng, EINHEIT };
+  // Die Handschrift liegt nicht im Speicher, solange ein Dokument zu ist: für den Export laden, danach wieder freigeben
+  const mitInk = fn => (id, ...rest) => Daten.mitHandschrift(id, () => fn(id, ...rest));
+  window.PdfDienst = { ladePdfJs, ladePdfLib, oeffnePdf, helligkeit, umfaerben, umfaerbenNoetig, vorschauErstellen, exportiereSkript: mitInk(exportiereSkript), exportiereNotizbuch: mitInk(exportiereNotizbuch), exportierePng: mitInk(exportierePng), EINHEIT };
 })();

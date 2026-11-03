@@ -3,7 +3,7 @@
 // ablage.js, abgleich.js), ein anderer Teil "den PC", der die Dateien in OneDrive ändert wie der OneDrive-Client.
 // Mit --dropbox derselbe Ablauf gegen die nachgebaute Dropbox (dropbox.js statt onedrive.js).
 //   node test/abgleich.js [--dropbox] [vorlage] [ausgabe.json]
-const { fs, path, LHKnoten, LHSpeicher, LHFormat, ladeAblage, pruefe, warte, ende, vorlage: waehleVorlage, QUELLE } = require('./hilfe');
+const { fs, path, LHKnoten, LHSpeicher, LHFormat, ladeAblage, pruefe, warte, ende, vorlage: waehleVorlage, QUELLE, voll } = require('./hilfe');
 const LHOneDrive = require('../web/onedrive.js');
 const LHDropbox = require('../web/dropbox.js');
 const LHAbgleich = require('../web/abgleich.js');
@@ -76,10 +76,10 @@ const nachEinlesen = () => warte(2600);
   const ablage = A.starteAblage();
   const platte = require(path.join(QUELLE, 'app', 'ablage.js')).erstelleAblage({ wurzel: fs.mkdtempSync(path.join(require('os').tmpdir(), 'lh-')), melde: () => {}, format: LHFormat });
   platte.schliessen();
-  const echt = (() => { const t = fs.mkdtempSync(path.join(require('os').tmpdir(), 'lh-')); fs.cpSync(vorlage, t, { recursive: true }); const a = require(path.join(QUELLE, 'app', 'ablage.js')).erstelleAblage({ wurzel: t, melde: () => {}, format: LHFormat, lokalDatei: t + '-lokal.json' }); a.schliessen(); return a.alle(); })();
+  const echt = (() => { const t = fs.mkdtempSync(path.join(require('os').tmpdir(), 'lh-')); fs.cpSync(vorlage, t, { recursive: true }); const a = require(path.join(QUELLE, 'app', 'ablage.js')).erstelleAblage({ wurzel: t, melde: () => {}, format: LHFormat, lokalDatei: t + '-lokal.json' }); a.schliessen(); return voll(a); })();
   const nurDaten = kv => Object.keys(kv).filter(k => !k.startsWith('lokal:')).sort();
-  pruefe('Ablage auf dem iPad sieht dasselbe wie am PC', JSON.stringify(nurDaten(ablage.alle())) === JSON.stringify(nurDaten(echt)), nurDaten(ablage.alle()).length + ' Schlüssel');
-  const skriptId = Object.keys(ablage.alle()).find(k => k.startsWith('bib:') && ablage.alle()[k].v.art === 'skript').slice(4);
+  pruefe('Ablage auf dem iPad sieht dasselbe wie am PC', JSON.stringify(nurDaten(voll(ablage))) === JSON.stringify(nurDaten(echt)), nurDaten(voll(ablage)).length + ' Schlüssel');
+  const skriptId = Object.keys(voll(ablage)).find(k => k.startsWith('bib:') && voll(ablage)[k].v.art === 'skript').slice(4);
   pruefe('Skript-PDF wird gefunden, solange sie fehlt', !!ablage.datei.pfad('pdf:' + skriptId));
 
   A.ab.starte(600000);
@@ -108,7 +108,7 @@ const nachEinlesen = () => warte(2600);
   A.gemeldet.length = 0;
   await A.ab.jetzt();
   await nachEinlesen();
-  const nachPc = ablage.alle()['ink:nb1:s1'];
+  const nachPc = voll(ablage)['ink:nb1:s1'];
   pruefe('Änderung vom PC auf dem iPad', nachPc && nachPc.v.e.map(e => e.id).sort().join() === 'a1,p1', nachPc && nachPc.v.e.map(e => e.id));
   pruefe('Oberfläche bekommt die Änderung gemeldet', A.gemeldet.some(a => a['ink:nb1:s1']));
 
@@ -120,7 +120,7 @@ const nachEinlesen = () => warte(2600);
   await A.ab.jetzt();
   await nachEinlesen();
   await A.ab.jetzt();
-  const beide = ablage.alle()['ink:nb1:s1'].v.e.map(e => e.id).sort().join();
+  const beide = voll(ablage)['ink:nb1:s1'].v.e.map(e => e.id).sort().join();
   const beideRemote = liesSeite(g.pc.lies('Lernheft/Bibliothek/iPad NB/Handschrift/s1.lhz')).e.map(e => e.id).sort().join();
   pruefe('gleichzeitig geändert: iPad hat alles', beide === 'a1,a2,p1,p2', beide);
   pruefe('gleichzeitig geändert: ' + NAME + ' hat alles', beideRemote === 'a1,a2,p1,p2', beideRemote);
@@ -140,8 +140,8 @@ const nachEinlesen = () => warte(2600);
   g.pc.verschiebe('Lernheft/Bibliothek/iPad Heft', 'Lernheft/Bibliothek/Vom PC umbenannt');
   await A.ab.jetzt();
   await nachEinlesen();
-  pruefe('PC-Umbenennung auf dem iPad', A.memfs.existsSync(L + '/Bibliothek/Vom PC umbenannt/Handschrift/s1.lhz') && ablage.alle()['bib:nb1'].v.name === 'Vom PC umbenannt', ablage.alle()['bib:nb1'] && ablage.alle()['bib:nb1'].v.name);
-  pruefe('Seite danach unverändert', ablage.alle()['ink:nb1:s1'].v.e.length === 4);
+  pruefe('PC-Umbenennung auf dem iPad', A.memfs.existsSync(L + '/Bibliothek/Vom PC umbenannt/Handschrift/s1.lhz') && voll(ablage)['bib:nb1'].v.name === 'Vom PC umbenannt', voll(ablage)['bib:nb1'] && voll(ablage)['bib:nb1'].v.name);
+  pruefe('Seite danach unverändert', voll(ablage)['ink:nb1:s1'].v.e.length === 4);
 
   /* 7. Auf dem iPad löschen: in OneDrive im Papierkorb des Lernhefts */
   ablage.setze({ 'bib:nb1': null });
@@ -155,7 +155,7 @@ const nachEinlesen = () => warte(2600);
   g.pc.verschiebe('Lernheft/Bibliothek/' + skriptOrdner, 'Lernheft/Daten/Papierkorb/2026-10-09-12-00 ' + skriptOrdner);
   await A.ab.jetzt();
   await nachEinlesen();
-  const nochDa = Object.values(ablage.alle()).some(e => e.v && e.v.name === skriptOrdner);
+  const nochDa = Object.values(voll(ablage)).some(e => e.v && e.v.name === skriptOrdner);
   pruefe('am PC gelöscht: auf dem iPad weg', !nochDa && !A.memfs.existsSync(L + '/Bibliothek/' + skriptOrdner));
   pruefe('und im Papierkorb des iPads', ablage.papierkorb.liste().some(e => e.titel === skriptOrdner), ablage.papierkorb.liste().map(e => e.titel));
 
@@ -184,7 +184,7 @@ const nachEinlesen = () => warte(2600);
   const vorherB = g.protokoll.length;
   await B.ab.jetzt();
   await nachEinlesen();
-  pruefe('nach Neustart: neue Seite vom PC da', !!ablageB.alle()['ink:nb2:s2']);
+  pruefe('nach Neustart: neue Seite vom PC da', !!voll(ablageB)['ink:nb2:s2']);
   pruefe('nach Neustart: nichts unnötig hochgeladen', !g.protokoll.slice(vorherB).some(z => hochgeladen(z)), g.protokoll.slice(vorherB).filter(schreibend));
 
   /* 11. Grosse PDF (in Teilen hochladen) */
@@ -204,7 +204,7 @@ const nachEinlesen = () => warte(2600);
   const neuVorher = token.neu;
   await B.ab.jetzt();
   await nachEinlesen();
-  pruefe((DBX ? 'reset' : '410') + ': alles neu gelesen, Änderung da', !!ablageB.alle()['ink:nb2:s3']);
+  pruefe((DBX ? 'reset' : '410') + ': alles neu gelesen, Änderung da', !!voll(ablageB)['ink:nb2:s3']);
   pruefe('401: neues Token geholt', token.neu > neuVorher);
   pruefe('kein Fehler im Status', B.ab.status().zustand === 'bereit', B.ab.status());
 

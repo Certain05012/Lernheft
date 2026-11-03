@@ -4,7 +4,7 @@
 // vorlage: ein Lernheft-Ordner (mit Bibliothek und Daten), wird nur gelesen. Standard: die Sicherung vor dem Umbau,
 // falls es sie gibt, sonst ein kleines Beispiel (test/hilfe.js).
 const os = require('os');
-const { fs, path, LHKnoten, LHSpeicher, LHFormat, ladeAblage, kopiereHinein, pruefe, warte, ende, vorlage: waehleVorlage, QUELLE } = require('./hilfe');
+const { fs, path, LHKnoten, LHSpeicher, LHFormat, ladeAblage, kopiereHinein, pruefe, warte, ende, vorlage: waehleVorlage, QUELLE, voll } = require('./hilfe');
 
 const vorlage = waehleVorlage(process.argv[2]);
 const WURZEL = '/Lernheft';
@@ -33,7 +33,7 @@ const werte = kv => { const o = {}; for (const [k, e] of Object.entries(kv)) if 
   const gemeldet = [];
   const A = ladeAblage(memfs).erstelleAblage({ wurzel: WURZEL, melde: a => gemeldet.push(a), format: LHFormat, lokalDatei: '/geraet/geraet-einstellungen.json' });
 
-  const a = werte(A.alle()), b = werte(echt.alle());
+  const a = werte(voll(A)), b = werte(voll(echt));
   const schluesselA = Object.keys(a).sort(), schluesselB = Object.keys(b).sort();
   pruefe('gleiche Schlüssel wie auf der Festplatte', stabil(schluesselA) === stabil(schluesselB), `${schluesselA.length} Schlüssel`);
   const anders = schluesselA.filter(k => stabil(a[k]) !== stabil(b[k]));
@@ -84,7 +84,7 @@ const werte = kv => { const o = {}; for (const [k, e] of Object.entries(kv)) if 
   const memfs2 = LHKnoten.erstelleSpeicherFs();
   const sicherung2 = await LHSpeicher.verbinde(memfs2, speicher, { verzoegerung: 20 });
   const A2 = ladeAblage(memfs2).erstelleAblage({ wurzel: WURZEL, melde: () => {}, format: LHFormat, lokalDatei: '/geraet/geraet-einstellungen.json' });
-  const c = werte(A2.alle()), d = werte(A.alle());
+  const c = werte(voll(A2)), d = werte(voll(A));
   // Handschrift steht in der Datei gerundet (Zehntel-Pixel), der Stand im Speicher der Ablage ist noch ungerundet
   const wieInDatei = (k, v) => (k.startsWith('ink:') ? LHFormat.dekodiereSeite(LHFormat.kodiereSeite('x', v)).e : v);
   const anders2 = Object.keys(d).filter(k => stabil(wieInDatei(k, c[k])) !== stabil(wieInDatei(k, d[k])));
@@ -101,9 +101,9 @@ const werte = kv => { const o = {}; for (const [k, e] of Object.entries(kv)) if 
   memfs.meldeBeobachter([kopie]);
   // Die Ablage liest nach eigenen Schreibvorgängen bis zu 1,8 s nichts von aussen ein (ruheBis in ablage.js) und
   // wartet danach noch kurz: auf das Ergebnis warten statt eine feste Zeit (höchstens 8 s)
-  const zusammen = () => { const x = A.alle()['ink:nbtest:s1']; return x && x.v.e.length === 2 && gemeldet.some(g => g['ink:nbtest:s1']); };
+  const zusammen = () => { const x = voll(A)['ink:nbtest:s1']; return x && x.v.e.length === 2 && gemeldet.some(g => g['ink:nbtest:s1']); };
   for (let i = 0; i < 80 && !zusammen(); i++) await warte(100);
-  const k = A.alle()['ink:nbtest:s1'];
+  const k = voll(A)['ink:nbtest:s1'];
   pruefe('Konfliktkopie zusammengeführt', k && k.v.e.length === 2, k && k.v.e.map(e => e.id));
   pruefe('Kopie liegt in Daten/Konflikte', !memfs.existsSync(kopie) && memfs.unter(WURZEL + '/Daten/Konflikte').some(q => q.endsWith('s1 (OneDrive).lhz')));
   pruefe('Oberfläche bekommt den neuen Stand gemeldet', gemeldet.some(g => g['ink:nbtest:s1']));

@@ -200,5 +200,6 @@
     meldung(`Whiteboard „${r.name}“ angelegt`, { text: 'Öffnen', fn: () => { location.hash = '#/dok/' + neu; } });
   }
 
-  window.Umwandeln = { brettZuSeiten, seitenZuBrett, schneide };
+  // Die Handschrift des Dokuments zuerst laden (sie liegt nicht im Speicher, solange es zu ist)
+  window.Umwandeln = { brettZuSeiten: id => Daten.mitHandschrift(id, () => brettZuSeiten(id)), seitenZuBrett: id => Daten.mitHandschrift(id, () => seitenZuBrett(id)), schneide };
 })();

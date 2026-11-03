@@ -81,6 +81,13 @@ function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei }) {
   const zaehler = { zusammengefuehrt: 0, migriert: 0 };
 
   const eintrag = v => ({ v, zeit: Date.now(), basis: null, dirty: false, weg: false });
+  // Handschrift wird erst gelesen, wenn eine Seite gebraucht wird (hole): bis dahin steht nur fest, dass es die Datei gibt.
+  // In docs ist so eine Seite null, in kv ein Eintrag mit faul: true und ohne Inhalt. So liegt nicht die ganze Bibliothek
+  // im Arbeitsspeicher (eine voll beschriebene Seite braucht dort rund 3 MB, auf dem iPad liegt alles im selben Speicher
+  // wie die Oberfläche). vergiss gibt Seiten geschlossener Dokumente wieder frei.
+  const FAUL = Object.freeze({ faul: true });
+  const faulEintrag = zeit => ({ v: null, faul: true, zeit: zeit || Date.now(), basis: null, dirty: false, weg: false });
+  const alsEintrag = v => (v === FAUL ? faulEintrag() : eintrag(v));
   const still = () => { ruheBis = Date.now() + 1500; };
   const sigVon = p => { try { const s = fs.statSync(p); return s.mtimeMs + ':' + s.size; } catch (e) { return null; } };
 
@@ -134,14 +141,15 @@ function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei }) {
     cache.set(p, { sig: sigVon(p), wert: inhalt });
   }
   // null, wenn es die Datei nicht gibt oder sie (noch) nicht lesbar ist, z. B. weil die Cloud sie gerade erst lädt
-  function liesSeitenDatei(p) {
+  // merken: false liest nur (Export aller Seiten), ohne den Inhalt danach im Speicher zu behalten
+  function liesSeitenDatei(p, merken) {
     const s = sigVon(p);
     if (!s) return null;
     const c = cache.get(p);
     if (c && c.sig === s) return c.wert;
     try {
       const w = F.dekodiereSeite(zlib.gunzipSync(fs.readFileSync(p)).toString('utf8'));
-      cache.set(p, { sig: s, wert: w });
+      if (merken !== false) cache.set(p, { sig: s, wert: w });
       return w;
     } catch (e) { return null; }
   }
@@ -167,7 +175,9 @@ function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei }) {
 
   // Alle Seiten-Dateien eines Ordners. muster trennt den Namen der Seite von einem Zusatz, den die Cloud bei einer
   // Konfliktkopie anhängt. Gibt Map Seite -> { inhalt, sig } zurück; spaeter: etwas war noch nicht lesbar.
-  function ladeSeiten(dir, muster, bezug) {
+  // brauche(seite): nur dann wird die Datei gelesen, sonst ist inhalt FAUL (ohne brauche wird alles gelesen). Konfliktkopien
+  // werden immer gelesen und zusammengeführt.
+  function ladeSeiten(dir, muster, bezug, brauche) {
     const ergebnis = new Map();
     let spaeter = false, namen = [];
     try { namen = fs.readdirSync(dir); } catch (e) { return { ergebnis, spaeter }; }
@@ -181,6 +191,11 @@ function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei }) {
     }
     for (const [id, g] of gruppen) {
       let p = g.haupt ? path.join(dir, g.haupt) : null;
+      if (p && !g.konflikte.length && brauche && !brauche(id)) {
+        const s = sigVon(p);
+        if (s) ergebnis.set(id, { inhalt: FAUL, sig: s }); else spaeter = true;
+        continue;
+      }
       let seite = p ? liesSeitenDatei(p) : null;
       const gelesen = [];
       for (const k of g.konflikte) {
@@ -239,10 +254,14 @@ function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei }) {
     const p = path.join(d.dir, SEITEN_ORDNER, dateiName(sid) + ENDUNG);
     const key = 'ink:' + id + ':' + sid;
     let inh = d.seiten.get(sid);
+    // Nie geladen und nicht geändert: nichts zu schreiben (und schon gar nicht als leere Seite)
+    if (inh === null) return;
     // Hat die Cloud die Datei geändert, seit wir sie kannten? Dann nicht überschreiben, sondern zusammenführen:
-    // nichts vom anderen Gerät geht verloren, und die Webseite bekommt den gemeinsamen Stand gemeldet.
+    // nichts vom anderen Gerät geht verloren, und die Webseite bekommt den gemeinsamen Stand gemeldet. Ebenso, wenn
+    // die Oberfläche eine Seite schreibt, die hier noch nie gelesen wurde (faul): was in der Datei steht, bleibt.
     const bekannt = kvSig.get(key), jetzt = sigVon(p);
-    if (bekannt && jetzt && jetzt !== bekannt) {
+    const ungelesen = !!(d.ungelesen && d.ungelesen.delete(sid));
+    if (jetzt && (ungelesen || (bekannt && jetzt !== bekannt))) {
       const extern = liesSeitenDatei(p);
       if (extern) {
         const m = F.fuehreSeiteZusammen(inh || { e: [] }, extern);
@@ -325,8 +344,9 @@ function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei }) {
     }
     ziel['bib:' + m.id] = item;
     for (const [sid, inh] of doc.seiten) {
-      if (istLeer(inh)) continue;
       const k = 'ink:' + m.id + ':' + sid;
+      if (inh === null) { ziel[k] = FAUL; sigs[k] = doc.sigs.get(sid); continue; }
+      if (istLeer(inh)) continue;
       ziel[k] = inh;
       sigs[k] = doc.sigs.get(sid);
     }
@@ -390,8 +410,10 @@ function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei }) {
       }
 
       if (!seiten) {
-        const r = ladeSeiten(path.join(dir, SEITEN_ORDNER), MUSTER_SEITE, path.basename(dir));
-        seiten = new Map([...r.ergebnis].map(([sid, w]) => [sid, w.inhalt]));
+        // Gelesen wird nur, was schon geladen war (ein offenes Dokument); der Rest bleibt faul
+        const vorher = docs.get(d.id);
+        const r = ladeSeiten(path.join(dir, SEITEN_ORDNER), MUSTER_SEITE, path.basename(dir), sid => !!(vorher && vorher.seiten.get(sid)));
+        seiten = new Map([...r.ergebnis].map(([sid, w]) => [sid, w.inhalt === FAUL ? null : w.inhalt]));
         for (const [sid, w] of r.ergebnis) sigsDok.set(sid, w.sig);
         if (r.spaeter) spaeterNochmal = true;
       } else {
@@ -462,7 +484,7 @@ function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei }) {
       // Die Handschrift wird am Kennzeichen der Datei erkannt (Änderungszeit und Grösse), nicht am Inhalt
       const geaendert = !kv[k] || (k.startsWith('ink:') ? kvSig.get(k) !== sigs[k] : stabil(kv[k].v) !== stabil(v));
       if (!geaendert) continue;
-      kv[k] = eintrag(v);
+      kv[k] = alsEintrag(v);
       if (k.startsWith('ink:')) kvSig.set(k, sigs[k]);
       aenderungen[k] = kv[k];
     }
@@ -741,6 +763,7 @@ function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei }) {
       wartendeInk.set(id, w);
       return;
     }
+    if (d.seiten.get(sid) === null) (d.ungelesen || (d.ungelesen = new Set())).add(sid);
     if (istLeer(inh)) d.seiten.delete(sid); else d.seiten.set(sid, inh);
     dokSeiteMerken(id, sid);
   }
@@ -751,6 +774,48 @@ function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei }) {
     d.meta.statistik = v || {};
     d.meta.geaendert = Date.now();
     dokMetaMerken(id);
+  }
+
+  // Seiten laden, die gebraucht werden (Dokument öffnen, Vorschaubild, Export). Gibt Schlüssel -> Eintrag; eine Seite, die
+  // (noch) nicht lesbar ist (die Cloud lädt sie gerade), kommt mit fehlt: true und bleibt faul.
+  function hole(keys) {
+    const raus = {};
+    for (const k of Array.isArray(keys) ? keys : []) {
+      if (typeof k !== 'string' || !k.startsWith('ink:')) continue;
+      const e = kv[k];
+      if (!e) continue;
+      if (!e.faul) { raus[k] = e; continue; }
+      const teile = k.split(':'), id = teile[1], sid = teile.slice(2).join(':');
+      const d = docs.get(id);
+      const p = d && path.join(d.dir, SEITEN_ORDNER, dateiName(sid) + ENDUNG);
+      const w = p ? liesSeitenDatei(p) : null;
+      if (!w) { raus[k] = Object.assign({}, e, { fehlt: true }); continue; }
+      d.seiten.set(sid, w);
+      kv[k] = Object.assign(eintrag(w), { zeit: e.zeit });
+      kvSig.set(k, sigVon(p));
+      raus[k] = kv[k];
+    }
+    return raus;
+  }
+  // Seiten wieder freigeben (Dokument geschlossen). Was noch geschrieben werden muss, wird zuerst geschrieben.
+  function vergiss(keys) {
+    for (const k of Array.isArray(keys) ? keys : []) {
+      if (typeof k !== 'string' || !k.startsWith('ink:')) continue;
+      const e = kv[k];
+      if (!e || e.faul || e.weg) continue;
+      const teile = k.split(':'), id = teile[1], sid = teile.slice(2).join(':');
+      const d = docs.get(id);
+      if (!d || !d.seiten.get(sid)) continue;
+      if (seitenZuSchreiben.delete(id + '\u0000' + sid)) {
+        try { seiteSchreibenJetzt(id, sid); } catch (err) { console.error('Lernheft: Seite speichern', id, sid, err); continue; }
+      }
+      if (!d.seiten.get(sid) || (d.ungelesen && d.ungelesen.has(sid))) continue;
+      const p = path.join(d.dir, SEITEN_ORDNER, dateiName(sid) + ENDUNG);
+      if (!fs.existsSync(p)) continue;
+      d.seiten.set(sid, null);
+      kv[k] = faulEintrag(e.zeit);
+      cache.delete(p);
+    }
   }
 
   function setze(aenderungen) {
@@ -944,7 +1009,10 @@ function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei }) {
     }
     for (const [id, d] of docs) {
       const seiten = {};
-      for (const [sid, inh] of d.seiten) if (!istLeer(inh)) seiten[sid] = JSON.parse(F.kodiereSeite(sid, inh));
+      for (const [sid, inh0] of d.seiten) {
+        const inh = inh0 === null ? liesSeitenDatei(path.join(d.dir, SEITEN_ORDNER, dateiName(sid) + ENDUNG), false) : inh0;
+        if (!istLeer(inh)) seiten[sid] = JSON.parse(F.kodiereSeite(sid, inh));
+      }
       dokumente.push({ id, pfad: relativ(d.dir), meta: d.meta, seiten });
     }
     const whiteboard = {};
@@ -1046,7 +1114,7 @@ function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei }) {
     const { aenderungen } = ladeDatenDateien(true);
     if (erstesMal) altesUebernehmen();
     const { neu, sigs, idx, neueDocs, spaeterNochmal } = scanne();
-    for (const [k, v] of Object.entries(neu)) { kv[k] = eintrag(v); if (k.startsWith('ink:')) kvSig.set(k, sigs[k]); }
+    for (const [k, v] of Object.entries(neu)) { kv[k] = alsEintrag(v); if (k.startsWith('ink:')) kvSig.set(k, sigs[k]); }
     index = idx;
     docs = neueDocs;
     if (spaeterNochmal) planeEinlesen(3500);
@@ -1101,6 +1169,8 @@ function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei }) {
     wurzel, BIB, DATEN,
     alle: () => kv,
     setze,
+    hole,
+    vergiss,
     datei,
     exportiere,
     exportiereAlles,

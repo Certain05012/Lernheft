@@ -604,6 +604,8 @@
     kv: {
       alle: async () => klon((await start).alle()),
       setze: aenderungen => { const a = klon(aenderungen); start.then(ab => ab.setze(a)); },
+      hole: async keys => klon((await start).hole(klon(keys))),
+      vergiss: keys => { const a = klon(keys); start.then(ab => ab.vergiss(a)); },
       aufAenderung: fn => { hoerer.add(fn); }
     },
     vorSchliessen: fn => { schliessHoerer.add(fn); },

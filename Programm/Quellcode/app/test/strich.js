@@ -90,11 +90,12 @@ app.whenReady().then(async () => {
         return { punkteEingabe: pts.length, punkteGespeichert: st.p.length, groessteAbweichungPx: Math.round(max * a.s * 100) / 100, zoom: a.s, dpr: devicePixelRatio };
       })()`);
       const danach = await bild(flaeche);
-      // Vergleich nur im Teil, der mitten im Strich schon fertig war (x bis Punkt 95), Bildpunkte als RGBA
+      // Vergleich nur im Teil, der mitten im Strich schon fest war: die Glättung legt einen Punkt erst fest, wenn ein
+      // paar weitere da sind (höchstens 5 bei Niedrig), dazu hängt ein Abschnitt vom übernächsten Punkt ab (bis Punkt 91)
       const A = mitten.toBitmap(), B = danach.toBitmap(), g = mitten.getSize();
       const k = (A.length / 4) / (g.width * g.height) === 1 ? 1 : Math.sqrt((A.length / 4) / (g.width * g.height));
       const W = Math.round(g.width * k), H = Math.round(g.height * k);
-      const xMax = Math.round((300 + 95 * 4 - 2) * k);
+      const xMax = Math.round((300 + 91 * 4 - 2) * k);
       let anders = 0, heller = 0, dunkler = 0, tinte = 0, groesst = 0, stark = 0;
       const diff = Buffer.alloc(A.length);
       for (let y = 0; y < H; y++) for (let x = 0; x < Math.min(W, xMax); x++) {
@@ -110,6 +111,34 @@ app.whenReady().then(async () => {
       fs.writeFileSync(path.join(AUS, `danach-${glaettung}.png`), danach.toPNG());
       fs.writeFileSync(path.join(AUS, `unterschied-${glaettung}.png`), nativeImage.createFromBitmap(diff, { width: W, height: H }).toPNG());
       r.laeufe.push({ glaettung, ...daten, tintePixel: tinte, verschiedenePixel: anders, starkVerschieden: stark, mittenHeller: heller, mittenDunkler: dunkler, groessterUnterschied: Math.round(groesst) });
+    }
+    // Zittern: langsam geschriebene Welle, Punkte auf ganze Bildschirm-px gerundet (wie manche Browser melden) und mit
+    // etwas Rauschen des Stifts. Gemessen wird, wie weit die gespeicherte Linie von der wahren Welle abweicht (Mittel und
+    // grösste Abweichung in Bildschirm-px) und wie unruhig sie ist (mittlere Richtungsänderung je Punkt in Grad).
+    r.zittern = [];
+    for (const glaettung of ['aus', 'niedrig', 'mittel', 'hoch']) {
+      let z = 11; const zz = () => (z = (z * 16807) % 2147483647) / 2147483647 - 0.5;
+      const wahr = i => [300 + i * 1.3, 300 + 40 * Math.sin(i / 60)];
+      const pts = []; for (let i = 0; i <= 400; i++) { const [x, y] = wahr(i); pts.push([Math.round(x + zz() * 0.6), Math.round(y + zz() * 0.6), 0.4 + zz() * 0.1]); }
+      r.zittern.push(await js(`(async () => {
+        await __neu();
+        const lw = Dokument.leinwand();
+        lw.setzeWerkzeug('stift'); lw.einst.glaettung = ${JSON.stringify(glaettung)}; lw.einst.halteForm = false; lw.einst.kritzelLoeschen = false;
+        const pts = ${JSON.stringify(pts)};
+        __start(pts); await __weiter(pts.slice(1)); await __ende(pts[pts.length - 1]); lw.sichern();
+        const sid = lw.seiten()[0].id, id = location.hash.split('/').pop();
+        const st = Daten.get('ink:' + id + ':' + sid).e.find(e => e.w === 'stift');
+        const a = lw.ansicht(), s = lw.seiten()[0];
+        const ideal = []; for (let i = 0; i <= 4000; i++) { const t = i / 10; ideal.push([(300 + t * 1.3 - a.x) / a.s - s.x, (300 + 40 * Math.sin(t / 60) - a.y) / a.s - s.y]); }
+        let summe = 0, max = 0, n = 0, dreh = 0;
+        for (let i = 3; i < st.p.length - 3; i++) {
+          let m = Infinity; for (const q of ideal) m = Math.min(m, Math.hypot(q[0] - st.p[i][0], q[1] - st.p[i][1]));
+          summe += m; n++; max = Math.max(max, m);
+          const u = [st.p[i][0] - st.p[i - 1][0], st.p[i][1] - st.p[i - 1][1]], v = [st.p[i + 1][0] - st.p[i][0], st.p[i + 1][1] - st.p[i][1]];
+          dreh += Math.abs(Math.atan2(u[0] * v[1] - u[1] * v[0], u[0] * v[0] + u[1] * v[1]));
+        }
+        return { glaettung: ${JSON.stringify(glaettung)}, punkte: st.p.length, mittlereAbweichungPx: Math.round(summe / n * a.s * 100) / 100, groessteAbweichungPx: Math.round(max * a.s * 100) / 100, unruheGradJePunkt: Math.round(dreh / n * 180 / Math.PI * 10) / 10 };
+      })()`));
     }
   } catch (e) { r.fehler = String(e && e.stack || e); }
   r.log = log.slice(0, 20);

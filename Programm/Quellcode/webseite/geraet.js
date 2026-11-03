@@ -32,6 +32,7 @@
   const gunzip = async blob => new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).text();
 
   async function exportieren() {
+    await Daten.lade(Daten.keys('ink:'));
     const kv = {};
     for (const k of Daten.keys('')) if (!k.startsWith('lokal:')) kv[k] = Daten.get(k);
     const dateien = {};
@@ -54,6 +55,7 @@
     try { p = JSON.parse(text); } catch (e) { throw new Error('Das ist keine Lernheft-Sicherung.'); }
     if (!p || p.art !== 'lernheft-web-sicherung') throw new Error('Das ist keine Lernheft-Sicherung für die Web-App.');
     const bericht = { neu: 0, zusammengefuehrt: 0, dateien: 0 };
+    await Daten.lade(Object.keys(p.kv || {}).filter(k => k.startsWith('ink:')));
     for (const [k, v] of Object.entries(p.kv || {})) {
       const da = Daten.get(k, undefined);
       if (da === undefined) { Daten.set(k, v); bericht.neu++; }

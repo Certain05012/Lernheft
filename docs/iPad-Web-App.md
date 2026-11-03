@@ -96,9 +96,9 @@ Danach startet das Lernheft sofort, auch im Flugmodus. Die Anmeldung bei Dropbox
   sich nach wenigen Sekunden damit neu (vorher wird alles gesichert). Ist sie schon länger offen, übernimmt sie die
   neue Version, sobald du in die App zurückkehrst, oder über den Knopf „Neu laden“ im Hinweis. Welche Version läuft,
   steht im Menü › Dropbox.
-- **Gesten:** zwei Finger tippen = Rückgängig, drei Finger tippen = Wiederholen, zwei Finger halten = Seiten-Menü (drehen, Gesten einstellen). Einstellbar im Stift-Panel › Gesten. Doppeltippen und Zusammendrücken am Apple Pencil gibt Safari nicht an Webseiten weiter, das geht nur in der iPad-App.
+- **Gesten:** zwei Finger tippen = Rückgängig, drei Finger tippen = Wiederholen, zwei Finger halten oder ein Finger lange halten = Menü der Seite (Rückgängig, Bild einfügen, Seite drehen, Seiten, Gesten, Werkzeugleiste). Einstellbar im Stift-Panel › Gesten. Doppeltippen und Zusammendrücken am Apple Pencil gibt Safari nicht an Webseiten weiter, das geht nur in der iPad-App.
 - **120 Hz:** Safari zeichnet Webseiten auf dem iPad sonst mit 60 Bildern pro Sekunde. Einstellungen › Apps › Safari › Erweitert › Feature Flags › „Prefer Page Rendering Updates near 60fps“ ausschalten, dann läuft das Lernheft auf iPads mit ProMotion mit 120.
-- **Platz:** Dropbox Basic hat 2 GB. Notizen sind klein, den meisten Platz brauchen die PDFs der Skripte.
+- **Platz:** Dropbox Basic hat 2 GB. Notizen sind klein (eine voll beschriebene Seite etwa 80 KB, also rund 25 000 volle Seiten in 2 GB), den meisten Platz brauchen die PDFs der Skripte. Auf dem iPad liegt nur die Handschrift der offenen Dokumente im Arbeitsspeicher, auch grosse Bibliotheken bleiben flüssig.
 
 ---
 

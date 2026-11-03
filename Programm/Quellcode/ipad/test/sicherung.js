@@ -5,7 +5,7 @@
 // Schutz vor leerem iPad, grosse Dateien, Wiederherstellen auf einem neuen iPad samt PDFs.
 //   node test/sicherung.js [vorlage] [ausgabe.json]
 const os = require('os');
-const { fs, path, LHKnoten, LHSpeicher, LHFormat, ladeAblage, kopiereHinein, pruefe, warte, ende, vorlage: waehleVorlage, QUELLE } = require('./hilfe');
+const { fs, path, LHKnoten, LHSpeicher, LHFormat, ladeAblage, kopiereHinein, pruefe, warte, ende, vorlage: waehleVorlage, QUELLE, voll } = require('./hilfe');
 const LHSicherung = require('../web/sicherung.js');
 
 const vorlage = waehleVorlage(process.argv[2]);
@@ -102,7 +102,7 @@ const dateienIn = d => { const r = []; const geh = q => { for (const e of fs.rea
   const pcBericht = pcAblage.importiereAlles(fs.readFileSync(path.join(ziel, r1.tagesSicherung)));
   // Dokumente und ihre Seiten (Seiten gelöschter Dokumente zählen nicht: die Ablage behält sie im Speicher)
   const nurDoks = kv => Object.keys(kv).filter(k => k.startsWith('bib:') || (k.startsWith('ink:') && kv['bib:' + k.split(':')[1]])).sort();
-  pruefe('Tages-Sicherung lässt sich am PC importieren', JSON.stringify(nurDoks(pcAblage.alle())) === JSON.stringify(nurDoks(ablage.alle())), pcBericht);
+  pruefe('Tages-Sicherung lässt sich am PC importieren', JSON.stringify(nurDoks(voll(pcAblage))) === JSON.stringify(nurDoks(voll(ablage))), pcBericht);
   pcAblage.schliessen();
 
   /* 2. Nichts geändert: nichts geschrieben */
@@ -163,17 +163,17 @@ const dateienIn = d => { const r = []; const geh = q => { for (const e of fs.rea
   const r7 = await S3.wiederherstellen();
   await warte(2600);
   pruefe('wiederhergestellt aus der neuesten Datei', r7.datei === tage[0] && r7.dokumente > 0, r7);
-  const vorlageDoks = nurDoks(ablage.alle());
-  pruefe('alle Dokumente und Seiten wieder da', JSON.stringify(nurDoks(ablageB.alle())) === JSON.stringify(vorlageDoks), { hier: nurDoks(ablageB.alle()), dort: vorlageDoks });
+  const vorlageDoks = nurDoks(voll(ablage));
+  pruefe('alle Dokumente und Seiten wieder da', JSON.stringify(nurDoks(voll(ablageB))) === JSON.stringify(vorlageDoks), { hier: nurDoks(voll(ablageB)), dort: vorlageDoks });
   const pdfB = await B.sicherung.lies(L + '/' + pdfPfad).catch(() => null) || (B.memfs.knoten.get(L + '/' + pdfPfad) || {}).daten;
   pruefe('PDF aus der Kopie zurück (war noch nicht aus iCloud geladen)', r7.pdfs >= 1 && pdfB && Buffer.compare(Buffer.from(pdfB), Buffer.from(gross)) === 0, r7.pdfs);
   pruefe('Skript findet seine PDF', !!ablageB.datei.pfad('pdf:gr'));
   pruefe('Oberfläche bekommt den Stand gemeldet', gemeldet.some(a => Object.keys(a).some(k => k.startsWith('bib:'))));
   // Wiederherstellen ein zweites Mal: nichts doppelt
-  const vorDoppelt = Object.keys(ablageB.alle()).length;
+  const vorDoppelt = Object.keys(voll(ablageB)).length;
   const r7b = await S3.wiederherstellen();
   await warte(2600);
-  pruefe('zweimal wiederherstellen: nichts doppelt', Object.keys(ablageB.alle()).length === vorDoppelt && r7b.neu === 0 && r7b.pdfs === 0, r7b);
+  pruefe('zweimal wiederherstellen: nichts doppelt', Object.keys(voll(ablageB)).length === vorDoppelt && r7b.neu === 0 && r7b.pdfs === 0, r7b);
 
   /* 8. Kein Ordner gewählt */
   O.waehlbar(false);

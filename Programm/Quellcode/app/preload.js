@@ -34,6 +34,8 @@ if (location.hostname === '127.0.0.1' && location.port === '47823') {
       kv: {
         alle: () => ipcRenderer.sendSync('lh:kv-alle'),
         setze: aenderungen => ipcRenderer.send('lh:kv-setze', aenderungen),
+        hole: keys => ipcRenderer.invoke('lh:kv-hole', keys),
+        vergiss: keys => ipcRenderer.send('lh:kv-vergiss', keys),
         aufAenderung: fn => { aenderungsHoerer.add(fn); }
       },
       vorSchliessen: fn => { schliessHoerer.add(fn); },

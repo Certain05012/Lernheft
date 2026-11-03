@@ -5,7 +5,7 @@
     werkzeug: 'stift', farbe: 'tinte', markerFarbe: 'gelb', eigeneFarben: [], eigeneMarker: [], dicke: 3, markerDicke: 3.5, radierGroesse: 14,
     seite: 'lasso', radier: 'radierer', druck: true, druckModus: 'pencil', neigung: false, neigungAb: 30, druckKurve: 1, druckMin: 0, druckMax: 1,
     finger: false, radiermodus: 'strich', notizFarbe: 'gelb', laserFarbe: '#ff2d2d', textFarbe: 'tinte',
-    glaettung: 'aus', halteForm: true, halteMs: 700, kritzelLoeschen: true, gesten: {}
+    glaettung: 'niedrig', halteForm: true, halteMs: 700, kritzelLoeschen: true, gesten: {}
   };
   // Drei Grössen je Werkzeug in Millimetern (Stift, Marker: Strichbreite; Radierer: Durchmesser), jede lässt sich mit
   // dem Regler einstellen und bleibt gespeichert
@@ -86,7 +86,7 @@
       // Bisherige Grössen (Pixel, ein Wert je Werkzeug oder drei) werden in Millimeter umgerechnet
       aufMillimeter();
       ordnePresets();
-      if (!GLAETTUNGEN.includes(einst.glaettung)) einst.glaettung = 'aus';
+      if (!GLAETTUNGEN.includes(einst.glaettung)) einst.glaettung = 'niedrig';
       // Version 3.9: einmal auf das neue Schreibgefühl umstellen (weniger Nachziehen, Breite ohne Neigung wie beim
       // Stift in Apple Notizen). Beides lässt sich im Stift-Panel wieder ändern.
       // Version 3.9.2: feinere Stiftgrössen (vorher 0,4 / 0,8 / 1,6 mm, die meisten schrieben nur bis 0,8). Einmal für
@@ -97,10 +97,11 @@
         ordnePresets();
         speichereEinst();
       }
-      // Version 3.10: Glättung aus (Linie genau unter dem Stift, wie auf Papier)
-      if (!einst.schreibgefuehl3) {
-        einst.glaettung = 'aus';
-        einst.schreibgefuehl2 = einst.schreibgefuehl3 = true;
+      // Version 3.11: Glättung ohne Nachziehen (Mittel aus Nachbarn vor und nach jedem Punkt), Niedrig nimmt nur das
+      // Zittern weg. Einmal für alle, danach bleibt, was man einstellt.
+      if (!einst.schreibgefuehl4) {
+        einst.glaettung = 'niedrig';
+        einst.schreibgefuehl2 = einst.schreibgefuehl3 = einst.schreibgefuehl4 = true;
         speichereEinst();
       }
       if (!einst.schreibgefuehl2) {
@@ -150,14 +151,36 @@
     text: '<path d="M5 7V4.5h14V7"/><path d="M12 4.5v15"/><path d="M9 19.5h6"/>',
     laser: '<circle cx="12" cy="12" r="3"/><path d="M12 3.5v3M12 17.5v3M3.5 12h3M17.5 12h3M6 6l2.1 2.1M15.9 15.9L18 18M18 6l-2.1 2.1M8.1 15.9L6 18"/>',
     plus: '<path d="M12 6v12M6 12h12"/>',
-    links: '<path d="M8 4L4 8l4 4"/><path d="M4 8h9a7 7 0 010 14h-3"/>',
-    rechts: '<path d="M16 4l4 4-4 4"/><path d="M20 8h-9a7 7 0 000 14h3"/>',
+    zoom: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5M8.5 11h5"/>',
+    // Seite drehen: ein Blatt mit einem Bogen darüber (anders als Rückgängig/Wiederholen, die nur Pfeile sind)
+    links: '<rect x="9.5" y="9" width="10" height="12" rx="1.6"/><path d="M15 4.5H9.5a5 5 0 00-5 5V12"/><path d="M2 9.6l2.5 2.6 2.6-2.6"/>',
+    rechts: '<rect x="4.5" y="9" width="10" height="12" rx="1.6"/><path d="M9 4.5h5.5a5 5 0 015 5V12"/><path d="M16.9 9.6l2.6 2.6 2.5-2.6"/>',
     undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/>',
     redo: '<path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/>',
     tasten: '<path d="M8 3h8v14l-4 4-4-4z"/><path d="M10 7h4"/><path d="M10 10h4"/>',
     eigenschaften: '<path d="M12 3.5a8.5 8.5 0 100 17c1.2 0 1.8-.8 1.8-1.7 0-1.3-1-1.6-1-2.7 0-1 .8-1.6 1.8-1.6h2.1c2 0 3.8-1.6 3.8-3.8C20.5 6.6 16.7 3.5 12 3.5z"/><circle cx="7.8" cy="11.5" r="1.2"/><circle cx="10" cy="7.6" r="1.2"/><circle cx="14.6" cy="7.6" r="1.2"/>'
   };
-  const icon = n => `<svg viewBox="0 0 24 24" aria-hidden="true">${SVG[n]}</svg>`;
+  // Gestaltete Symbole (Werkzeugleiste mit "Farbige Symbole"): Werkzeuge mit Körper, Licht und Schatten; die Spitze des
+  // Stifts und der Textmarker zeigen die gewählte Farbe (--wz-tinte, --wz-marker, gesetzt in aktualisiere). Nur Flächen
+  // in einer festen SVG, kostet beim Zeichnen nichts.
+  const BUNT = {
+    hand: '<path d="M8 12.5V6.2a1.6 1.6 0 013.2 0v5.3V4.7a1.6 1.6 0 013.2 0V11V6.3a1.6 1.6 0 013.2 0v7.4c0 4.1-2.7 7.2-6.7 7.2-2.5 0-4-1-5.3-2.8l-2.3-3.4a1.6 1.6 0 012.6-1.9L8 14.6z" fill="var(--b-haut)" stroke="var(--b-kontur)" stroke-width="1.2" stroke-linejoin="round"/><path d="M11.2 11.5V8M14.4 11V8.5" stroke="var(--b-kontur)" stroke-width="1" stroke-linecap="round" opacity=".45"/>',
+    finger: '<path d="M3.5 20.5c2-1.6 3.6-1.6 5.2 0" fill="none" stroke="var(--wz-tinte)" stroke-width="2" stroke-linecap="round"/><path d="M10 12V4.6a1.6 1.6 0 013.2 0V11v-.4a1.6 1.6 0 013.2 0V12v-.3a1.6 1.6 0 013.1 0V15c0 3.4-2.4 6-5.8 6h-1.3c-2 0-3.3-.9-4.4-2.4L5.6 15.3a1.6 1.6 0 012.6-1.9L10 15.5z" fill="var(--b-haut)" stroke="var(--b-kontur)" stroke-width="1.2" stroke-linejoin="round"/>',
+    stift: '<g transform="rotate(45 12 12)"><rect x="9.6" y="0.8" width="4.8" height="15.6" rx="1.7" fill="var(--b-schaft)"/><rect x="10.5" y="2.4" width="1.1" height="12" rx=".55" fill="#fff" opacity=".35"/><rect x="9.6" y="14.2" width="4.8" height="2.4" fill="var(--b-metall)"/><path d="M9.7 16.6h4.6L12.6 21.6a.7.7 0 01-1.2 0z" fill="var(--b-holz)"/><path d="M11.1 19.8h1.8l-.6 1.8a.35.35 0 01-.6 0z" fill="var(--wz-tinte)"/><rect x="9.6" y="0.8" width="4.8" height="3" rx="1.5" fill="var(--wz-tinte)"/></g>',
+    marker: '<rect x="2.5" y="18.3" width="11" height="3.6" rx="1.2" fill="var(--wz-marker)" opacity=".5"/><g transform="rotate(40 12 12)"><rect x="8.6" y="0.6" width="6.8" height="12.6" rx="1.8" fill="var(--b-schaft)"/><rect x="9.6" y="2.2" width="1.3" height="9.4" rx=".65" fill="#fff" opacity=".35"/><rect x="8.6" y="11.6" width="6.8" height="3" fill="var(--wz-marker)"/><path d="M9.6 14.6h4.8l-.7 4.4h-3.4z" fill="var(--b-metall)"/><path d="M10.4 19h3.2l-.5 2.2h-2.2z" fill="var(--wz-marker)"/></g>',
+    radierer: '<path d="M4 21h15" stroke="var(--b-kontur)" stroke-width="1.4" stroke-linecap="round" opacity=".5"/><g transform="rotate(-40 12 12)"><rect x="3.4" y="7.6" width="17.2" height="8.8" rx="2.4" fill="#ff7aa2"/><rect x="3.4" y="7.6" width="7" height="8.8" rx="2.4" fill="var(--b-papier)"/><rect x="8.4" y="7.6" width="2" height="8.8" fill="var(--b-papier)"/><rect x="3.4" y="7.6" width="17.2" height="8.8" rx="2.4" fill="none" stroke="var(--b-kontur)" stroke-width="1" opacity=".35"/><rect x="12" y="9.2" width="7" height="1.3" rx=".65" fill="#fff" opacity=".4"/></g>',
+    lasso: '<ellipse cx="12" cy="9.2" rx="8.4" ry="5.4" fill="#a78bfa" opacity=".18"/><ellipse cx="12" cy="9.2" rx="8.4" ry="5.4" fill="none" stroke="#8b5cf6" stroke-width="1.9" stroke-dasharray="3.2 2.4" stroke-linecap="round"/><path d="M6.8 13.4c-1.2 3-.4 6 2.6 7.4" fill="none" stroke="#8b5cf6" stroke-width="1.9" stroke-linecap="round"/><circle cx="9.6" cy="21" r="1.5" fill="#8b5cf6"/>',
+    notiz: '<path d="M4.5 4.8a1.3 1.3 0 011.3-1.3h12.4a1.3 1.3 0 011.3 1.3V15l-5.5 5.5H5.8a1.3 1.3 0 01-1.3-1.3z" fill="#ffd84d"/><path d="M14 20.5V16.3a1.3 1.3 0 011.3-1.3h4.2z" fill="#e8a800"/><path d="M7.5 8h9M7.5 11h9M7.5 14h5" stroke="#b07f00" stroke-width="1.2" stroke-linecap="round" opacity=".55"/>',
+    text: '<rect x="2.8" y="2.8" width="18.4" height="18.4" rx="4.6" fill="var(--b-kachel)"/><path d="M7.4 8.2V6.6h9.2v1.6M12 6.6v10.8M10 17.4h4" fill="none" stroke="var(--b-textfarbe)" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>',
+    laser: '<circle cx="12" cy="12" r="9" fill="#ff3b3b" opacity=".14"/><circle cx="12" cy="12" r="6" fill="#ff3b3b" opacity=".3"/><circle cx="12" cy="12" r="3.6" fill="#ff3b3b"/><circle cx="11" cy="11" r="1.3" fill="#fff" opacity=".9"/>',
+    undo: '<path d="M9 14L4 9l5-5" fill="none" stroke="var(--b-pfeil)" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9h10a6 6 0 010 12h-3" fill="none" stroke="var(--b-pfeil)" stroke-width="2.1" stroke-linecap="round"/>',
+    redo: '<path d="M15 14l5-5-5-5" fill="none" stroke="var(--b-pfeil)" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 9H10a6 6 0 000 12h3" fill="none" stroke="var(--b-pfeil)" stroke-width="2.1" stroke-linecap="round"/>',
+    links: '<rect x="9.5" y="9" width="10" height="12" rx="1.6" fill="var(--b-papier)" stroke="var(--b-kontur)" stroke-width="1.2"/><path d="M11.8 12.5h5.4M11.8 15h5.4M11.8 17.5h3.4" stroke="var(--b-kontur)" stroke-width="1" stroke-linecap="round" opacity=".4"/><path d="M15 4.5H9.5a5 5 0 00-5 5V12" fill="none" stroke="#14b8a6" stroke-width="2" stroke-linecap="round"/><path d="M2 9.6l2.5 2.6 2.6-2.6" fill="none" stroke="#14b8a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    rechts: '<rect x="4.5" y="9" width="10" height="12" rx="1.6" fill="var(--b-papier)" stroke="var(--b-kontur)" stroke-width="1.2"/><path d="M6.8 12.5h5.4M6.8 15h5.4M6.8 17.5h3.4" stroke="var(--b-kontur)" stroke-width="1" stroke-linecap="round" opacity=".4"/><path d="M9 4.5h5.5a5 5 0 015 5V12" fill="none" stroke="#14b8a6" stroke-width="2" stroke-linecap="round"/><path d="M16.9 9.6l2.6 2.6 2.5-2.6" fill="none" stroke="#14b8a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    tasten: '<g transform="rotate(45 12 12)"><rect x="9.4" y="1.2" width="5.2" height="16" rx="2.4" fill="var(--b-schaft)"/><rect x="10.3" y="5" width="3.4" height="4.6" rx="1.2" fill="#c084fc"/><path d="M9.6 17.2h4.8L12.6 21.8a.7.7 0 01-1.2 0z" fill="var(--b-metall)"/></g>',
+    eigenschaften: '<path d="M12 3.2a8.8 8.8 0 100 17.6c1.3 0 2-.8 2-1.8 0-1.3-1-1.7-1-2.8 0-1 .8-1.7 1.9-1.7h2.2c2.1 0 3.9-1.7 3.9-3.9C21 6.4 17 3.2 12 3.2z" fill="var(--b-papier)" stroke="var(--b-kontur)" stroke-width="1.2"/><circle cx="7.6" cy="11.6" r="1.6" fill="var(--wz-tinte)"/><circle cx="9.9" cy="7.4" r="1.6" fill="#3b82f6"/><circle cx="14.6" cy="7.2" r="1.6" fill="#ef4444"/><circle cx="17.4" cy="10.6" r="1.6" fill="#f5b700"/>'
+  };
+  const icon = n => `<svg class="sym${BUNT[n] ? ' hat-bunt' : ''}" viewBox="0 0 24 24" aria-hidden="true">${SVG[n]}</svg>${BUNT[n] ? `<svg class="sym-bunt" viewBox="0 0 24 24" aria-hidden="true">${BUNT[n]}</svg>` : ''}`;
   const WERKZEUGE = [['hand', 'Hand: Fläche verschieben (H)'], ['stift', 'Stift (P)'], ['marker', 'Textmarker (M)'], ['radierer', 'Radierer (E)'], ['lasso', 'Lasso: auswählen, verschieben, grösser/kleiner (L)'], ['notiz', 'Haftnotiz (N)'], ['text', 'Text: tippen und schreiben, Grösse und Farbe wählen (T)'], ['laser', 'Laserpointer: leuchtender Punkt mit Spur, nichts wird gezeichnet (R)']];
   const zahl = w => String(w).replace('.', ',');
   const GESTEN_LISTE = [['zweiFinger', 'Zwei Finger tippen'], ['dreiFinger', 'Drei Finger tippen'], ['zweiFingerLang', 'Zwei Finger halten'], ['pencilDoppel', 'Pencil doppelt tippen (iPad-App)'], ['pencilDruecken', 'Pencil zusammendrücken (iPad-App, Pencil Pro)']];
@@ -166,6 +189,13 @@
     ['a:finger', 'Mit dem Finger schreiben'], ['a:undo', 'Rückgängig'], ['a:redo', 'Wiederholen'], ['a:tasten', 'Stift einstellen'], ['a:links', 'Seite nach links drehen'], ['a:rechts', 'Seite nach rechts drehen'], ['a:zoom', 'Zoom (Einpassen)']];
   const AUS_KEY = 'lokal:leiste-aus', FARBIG_KEY = 'lokal:leiste-farbig';
   const GLAETTUNGEN = ['aus', 'niedrig', 'mittel', 'hoch'];
+
+  document.addEventListener('change', ev => {
+    const k = ev.target;
+    if (!k || k.name !== 'farbig' || !k.closest) return;
+    const w = k.closest('.dialog-form') && k.closest('.dialog-form').querySelector('.leiste-wahl');
+    if (w) w.classList.toggle('farbig', k.checked);
+  });
 
   function baue(leiste, lw) {
     const e = lw.einst;
@@ -320,6 +350,9 @@
       leiste.querySelector('[data-plus="marker"]').value = hexVon(e.markerFarbe, Leinwand.MARKER);
       leiste.querySelector('[data-plus="laser"]').value = istHex(e.laserFarbe) ? e.laserFarbe : STANDARD.laserFarbe;
       leiste.querySelector('[data-plus="text"]').value = hexVon(e.textFarbe, Leinwand.TINTE[fl()]);
+      // Farben für die gestalteten Symbole: Spitze des Stifts, Textmarker
+      leiste.style.setProperty('--wz-tinte', hexVon(e.farbe, Leinwand.TINTE[fl()]));
+      leiste.style.setProperty('--wz-marker', hexVon(e.markerFarbe, Leinwand.MARKER));
       panelWerte();
     }
 
@@ -456,7 +489,7 @@
       panel.querySelectorAll('[data-geste]').forEach(sel => { sel.value = g[sel.dataset.geste]; });
       panel.querySelector('[data-t="seite"]').value = e.seite;
       panel.querySelector('[data-t="radier"]').value = e.radier;
-      panel.querySelector('[data-t="glaettung"]').value = GLAETTUNGEN.includes(e.glaettung) ? e.glaettung : 'aus';
+      panel.querySelector('[data-t="glaettung"]').value = GLAETTUNGEN.includes(e.glaettung) ? e.glaettung : 'niedrig';
       const eigen = e.druckModus === 'eigen';
       panel.querySelector('[data-t="druckModus"]').value = eigen ? 'eigen' : 'pencil';
       panel.querySelector('.diag-pencil').hidden = eigen;
@@ -683,10 +716,13 @@
       let aus = Daten.get(AUS_KEY, []);
       if (!Array.isArray(aus)) aus = [];
       const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+      // Jeder Eintrag mit seinem Symbol aus der Leiste (gestaltet oder als Linie, je nach "Farbige Symbole")
+      const farbig = Daten.get(FARBIG_KEY, true) !== false;
+      const farben = `--wz-tinte: ${hexVon(e.farbe, Leinwand.TINTE[fl()])}; --wz-marker: ${hexVon(e.markerFarbe, Leinwand.MARKER)}`;
       const ergebnis = await UI.oeffneDialog(`<form class="dialog-form">
           <h2>Werkzeugleiste anpassen</h2>
           <p class="dialog-klein">Was du nicht brauchst, nimm weg. Die Reihenfolge änderst du direkt in der Leiste: ein Symbol gedrückt halten und ziehen.</p>
-          <div class="leiste-wahl">${LEISTE_TEILE.map(([k, n]) => `<label class="haken-label"><input type="checkbox" name="teil" value="${esc(k)}" ${aus.includes(k) ? '' : 'checked'}> ${esc(n)}</label>`).join('')}</div>
+          <div class="leiste-wahl${farbig ? ' farbig' : ''}" style="${farben}">${LEISTE_TEILE.map(([k, n]) => `<label class="haken-label"><input type="checkbox" name="teil" value="${esc(k)}" ${aus.includes(k) ? '' : 'checked'}><span class="wahl-symbol">${icon(k.slice(2))}</span>${esc(n)}</label>`).join('')}</div>
           <label class="haken-label"><input type="checkbox" name="farbig" ${Daten.get(FARBIG_KEY, true) !== false ? 'checked' : ''}> Farbige Symbole</label>
           <div class="dialog-knoepfe"><button type="button" class="btn-leise" data-wahl="alle">Alle zeigen</button><button type="button" class="btn-leise" data-abbrechen>Abbrechen</button><button type="submit" class="btn-primaer">Übernehmen</button></div>
         </form>`, { wert: d => ({ an: [...d.querySelectorAll('[name="teil"]')].filter(x => x.checked).map(x => x.value), farbig: d.querySelector('[name="farbig"]').checked }) });
