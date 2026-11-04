@@ -54,7 +54,9 @@ function dokAlsTextAlt(d) {
 }
 
 // lokalDatei: Datei im Profil des Geräts für Einstellungen, die nicht in den Speicherort gehören
-function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei }) {
+// beschaeftigt(): ms, die das Schreiben noch warten soll (iPad: solange der Stift schreibt, sonst stockt der Strich,
+// weil Packen und Speichern im selben Ablauf wie die Oberfläche laufen). Höchstens WARTEN_MAX ms.
+function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei, beschaeftigt }) {
   const F = format;
   const BIB = path.join(wurzel, 'Bibliothek');
   const DATEN = path.join(wurzel, 'Daten');
@@ -283,7 +285,19 @@ function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei }) {
   // Kurz gesammelt schreiben: Änderungen, die direkt aufeinander folgen, werden zu einem Schreibvorgang. Danach geht es
   // sofort auf die Platte (die Oberfläche hat selbst schon nur kurz gewartet), so geht bei einem Absturz höchstens der
   // Strich verloren, der gerade geschrieben wird.
-  function plane() { if (!schreibTimer) schreibTimer = setTimeout(allesSchreiben, 200); }
+  const WARTEN_MAX = 4000;
+  let wartetSeit = 0;
+  function plane() { if (!schreibTimer) schreibTimer = setTimeout(geplantSchreiben, 200); }
+  function geplantSchreiben() {
+    schreibTimer = null;
+    const ms = beschaeftigt ? beschaeftigt() : 0;
+    if (ms > 0) {
+      if (!wartetSeit) wartetSeit = Date.now();
+      if (Date.now() - wartetSeit < WARTEN_MAX) { schreibTimer = setTimeout(geplantSchreiben, Math.min(ms, 400)); return; }
+    }
+    wartetSeit = 0;
+    allesSchreiben();
+  }
   let nachMelden = {};   // Stände, die beim Schreiben mit einer Änderung von aussen zusammengeführt wurden
   function allesSchreiben() {
     clearTimeout(schreibTimer);

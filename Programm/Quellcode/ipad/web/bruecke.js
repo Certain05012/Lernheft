@@ -191,7 +191,10 @@
       memfs.writeFileSync(LOKAL_DATEI, JSON.stringify({ 'lokal:migriert-v2': true }));
     }
     const u = LHKnoten.umgebung(memfs);
-    ablage = window.LHAblageFabrik(u.require, u.Buffer).erstelleAblage({ wurzel: L, melde: verteile, format: LHFormat, lokalDatei: LOKAL_DATEI });
+    ablage = window.LHAblageFabrik(u.require, u.Buffer).erstelleAblage({ wurzel: L, melde: verteile, format: LHFormat, lokalDatei: LOKAL_DATEI,
+      // Solange der Stift schreibt (oder eben noch schrieb), nicht packen und speichern: das liefe im selben Ablauf wie
+      // die Schreibfläche, und der Strich stockte
+      beschaeftigt: () => { const t = window.Leinwand && Leinwand.stiftZuletzt ? Leinwand.stiftZuletzt() : 0; const r = 500 - (performance.now() - t); return t && r > 0 ? r : 0; } });
     if (abgleich) abgleich.starte(K.abgleichAlleMs || 30000);
     if (Ordner) {
       ordnerSicherung = LHSicherung.erstelle({

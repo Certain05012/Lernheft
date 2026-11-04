@@ -59,7 +59,8 @@
   // Filter, der nur die Vergangenheit kennt (früher One-Euro: Niedrig verschob Spitzen bis 7 px). Das Stück, das noch
   // nicht fest ist, zeigt die Spitze genau unter dem Stift. Standard: Niedrig (wirkt nur auf wenige px).
   const GLAETTUNG = { aus: 0, niedrig: 1.6, mittel: 2.8, hoch: 4.5 };
-  const DRUCK_FENSTER = 3;    // so viele Punkte vor und nach einem Punkt glätten den Druck (die Breite zittert sonst)
+  const DRUCK_FENSTER = 3;
+  let stiftZuletzt = 0;       // performance.now() des letzten Stiftereignisses auf irgendeiner Schreibfläche    // so viele Punkte vor und nach einem Punkt glätten den Druck (die Breite zittert sonst)
   const HALTE_MS = 700;       // Stift so lange ruhig halten: Linie oder Form wird sauber (einstellbar: einst.halteMs, 0,4 bis 1,5 s)
   const haltezeit = einst => { const v = Number(einst.halteMs); return v >= 300 && v <= 3000 ? v : HALTE_MS; };
   const HALTE_TOL = 4;        // so viel (Bildschirm-px) darf die Hand dabei zittern
@@ -456,9 +457,26 @@
     else { ctx.lineWidth = t.w; ctx.stroke(t.pfad); }
   }
   function baueTeile(s, von, bis) {
+    const p = s.p, n = p.length, a = Math.max(0, von), z = Math.min(bis, n - 1);
+    // Überall gleich breit (Formen, Maus, Stift ohne Druck): eine Linie mit runden Enden und Ecken. Das sieht genauso aus
+    // wie die Fläche, kostet aber weniger (eine Kurve statt Bänder und Kreise).
+    if (n > 1 && z > a && gleichBreit(p)) {
+      const pfad = new Path2D();
+      for (let k = a; k < z; k++) {
+        const c = crStueck(p, k);
+        if (k === a) pfad.moveTo(c[0], c[1]);
+        pfad.bezierCurveTo(c[2], c[3], c[4], c[5], c[6], c[7]);
+      }
+      return [{ w: breite(s, p[0][2], s.w === 'marker' ? 0 : p[0][3] || 0), a: 1, pfad }];
+    }
     const pfad = new Path2D();
     fuelleStrich(pfad, strichProben(s, von, bis));
     return [{ fuellen: true, a: 1, pfad }];
+  }
+  function gleichBreit(p) {
+    const d = p[0][2], t = p[0][3] || 0;
+    for (let i = 1; i < p.length; i++) if (p[i][2] !== d || (p[i][3] || 0) !== t) return false;
+    return true;
   }
   // Proben [x, y, Radius] entlang der Abschnitte von bis: so viele je Abschnitt, dass die Kurve rund bleibt (eine je 6°
   // Richtungsänderung, höchstens 12), der Radius dazwischen linear
@@ -1866,7 +1884,9 @@
       liveTransform();
       lctx.translate(ox, oy);
       lctx.lineCap = lctx.lineJoin = 'round';
-      lctx.strokeStyle = a.farbe;
+      // Füllfarbe UND Linienfarbe: Stiftstriche sind Flächen (fill), der Textmarker eine Linie (stroke). Fehlte die
+      // Füllfarbe, malte die Ebene schwarz, bis der fertige Strich in seiner Farbe auf das Blatt kam.
+      lctx.strokeStyle = lctx.fillStyle = a.farbe;
       zaehl.live++;
       malAbschnitte(lctx, a.strich, 0, bis);
       a.gemalt = bis;
@@ -3787,6 +3807,22 @@
     }
     canvas.addEventListener('pointerup', ende);
     canvas.addEventListener('pointercancel', ende);
+    // Safari auf dem iPad: der Apple Pencil darf nie an das System gehen (Scribble = Handschrift in Textfelder,
+    // Textauswahl, Lupe). Greift Safari den Stift, bricht es den Strich mit pointercancel ab und die Linie reisst mitten
+    // im Schreiben; touch-action: none allein verhindert das in Safari nicht. Die Pointer Events kommen trotzdem. Finger
+    // bleiben unberührt (verschieben und zoomen laufen über Pointer Events), ausser ein Finger schreibt gerade.
+    // Stift erkannt an touchType (Safari) oder daran, dass gerade ein Stift aufliegt (Pointer Events kommen vor den Touch-Ereignissen)
+    let stiftUnten = 0;
+    const stiftBeruehrung = e => { if (stiftUnten) return true; for (const t of e.changedTouches || []) if (t.touchType === 'stylus') return true; return false; };
+    for (const typ of ['touchstart', 'touchmove', 'touchend']) {
+      canvas.addEventListener(typ, e => {
+        if (e.cancelable && (stiftBeruehrung(e) || (aktion && aktion.touch && aktion.art === 'zeichnen'))) e.preventDefault();
+      }, { passive: false });
+    }
+    // Wann zuletzt ein Stift da war (alle Schreibflächen): die Ablage auf dem iPad schiebt ihr Schreiben solange auf
+    canvas.addEventListener('pointerdown', e => { if (e.pointerType === 'pen') { stiftZuletzt = performance.now(); stiftUnten = e.pointerId + 1; } }, true);
+    for (const typ of ['pointerup', 'pointercancel']) canvas.addEventListener(typ, e => { if (e.pointerId + 1 === stiftUnten) stiftUnten = 0; }, true);
+    canvas.addEventListener('pointermove', e => { if (e.pointerType === 'pen') stiftZuletzt = performance.now(); }, true);
     // Der Zeiger verlässt die Fläche: der Laserpunkt verblasst mit seiner Spur
     canvas.addEventListener('pointerleave', e => { if (einst.werkzeug === 'laser' && (!aktion || aktion.art !== 'laser') && e.pointerType !== 'touch') laserWeg(); });
 
@@ -3943,6 +3979,7 @@
   Leinwand.LINIEN = LINIEN;
   Leinwand.FORMATE = FORMATE;
   Leinwand.breite = breite;
+  Leinwand.stiftZuletzt = () => stiftZuletzt;
   // Fläche eines Stiftstrichs für andere Zeichner (PDF-Export): kreis(x, y, r) und vieleck([[x, y], …]) in Einheiten der Seite
   Leinwand.strichFlaeche = (s, z) => fuelleStrich(null, strichProben(s, 0, s.p.length - 1), z.kreis, z.vieleck);
   Leinwand.stiftDaten = stiftDaten;

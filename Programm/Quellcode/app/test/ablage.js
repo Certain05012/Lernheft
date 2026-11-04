@@ -140,6 +140,22 @@ const neueAblage = () => erstelleAblage({ wurzel: WURZEL, altDaten: null, melde:
   pruefe('Neustart: Inhalt gleich', inkVon(c, 'ink:nbA:s1').e.length === 6);
   c.schliessen();
 
+  // 9. Solange der Stift schreibt (beschaeftigt), wartet das Schreiben; danach kommt es sofort (iPad: kein Stocken)
+  let stiftAktiv = true;
+  const d = erstelleAblage({ wurzel: WURZEL2, altDaten: null, melde: () => {}, format, beschaeftigt: () => (stiftAktiv ? 300 : 0) });
+  const vorher = inkVon(d, 'ink:nbA:s1');
+  const seitePfad = fs.readdirSync(path.join(WURZEL2, 'Bibliothek'), { recursive: true }).map(f => path.join(WURZEL2, 'Bibliothek', f)).find(f => /Handschrift[\\/]s1\.lhz$/.test(f));
+  const mtime0 = fs.statSync(seitePfad).mtimeMs;
+  d.setze({ 'ink:nbA:s1': { v: { e: [...vorher.e, strich('stWarten', 9000, 40, false)], x: vorher.x }, zeit: 10 } });
+  await warte(900);
+  const waehrend = fs.statSync(seitePfad).mtimeMs === mtime0;
+  stiftAktiv = false;
+  await warte(700);
+  const danach = fs.statSync(seitePfad).mtimeMs !== mtime0 && liesDatei(seitePfad).e.some(e => e.id === 'stWarten');
+  pruefe('Schreiben wartet, solange der Stift schreibt', waehrend);
+  pruefe('und kommt danach sofort', danach);
+  d.schliessen();
+
   const r = { ok: ok.length, fehler, zusammen: { ok } };
   fs.writeFileSync(path.join(AUS, 'ablage.json'), JSON.stringify(r, null, 2));
   console.log(`${ok.length} bestanden, ${fehler.length} fehlgeschlagen`);
@@ -147,6 +163,7 @@ const neueAblage = () => erstelleAblage({ wurzel: WURZEL, altDaten: null, melde:
   process.exit(fehler.length ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(2); });
 
+function liesDatei(p) { return format.dekodiereSeite(zlib.gunzipSync(fs.readFileSync(p)).toString('utf8')); }
 function schreibeExtern(p, id, inhalt) {
   fs.writeFileSync(p, zlib.gzipSync(Buffer.from(format.kodiereSeite(id, inhalt))));
 }

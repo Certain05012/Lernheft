@@ -1,5 +1,5 @@
 'use strict';
-// Neue Funktionen 3.11: Form nach dem Einrasten anpassen (Pfeil dreht/streckt sich um den Anfang, Kreis wächst um die
+// Neue Funktionen 3.11 (und 3.11.1: Farbe sofort beim Schreiben, Pencil in Safari): Form nach dem Einrasten anpassen (Pfeil dreht/streckt sich um den Anfang, Kreis wächst um die
 // Mitte), Menü der Seite (Rechtsklick mit echter Maus, zwei Finger halten mit echten Touch-Ereignissen), gestaltete
 // Symbole, schlanke Leiste im Vollbild, normale Schrift im Stift-Panel mit dem Hand-Werkzeug, liegendes Cover.
 // Aufruf: electron test/neuerungen311.js <ausgabeordner>  -> neuerungen311.json (ok je Prüfung) und Fotos
@@ -145,6 +145,47 @@ app.whenReady().then(async () => {
     // 6. Stift-Panel mit dem Hand-Werkzeug: normale Schrift
     const schrift = await js(`(async () => { Dokument.leinwand().setzeWerkzeug('hand'); document.querySelector('[data-aktion="tasten"]').click(); await __warte(300); const p = document.querySelector('.tasten-panel p'); const f = getComputedStyle(p).fontFamily; document.querySelector('[data-aktion="tasten"]').click(); return { f, schriftGroesse: getComputedStyle(p).fontSize, hostKlasse: Dokument.leinwand().el.className }; })()`);
     pruefe('Stift-Panel: normale Schrift mit Hand-Werkzeug', !/Caveat/.test(schrift.f) && !schrift.hostKlasse.split(' ').includes('hand'), schrift);
+
+    // 8. Farbe sofort beim Schreiben (3.11.1): auf dunkler und auf weisser Seite zeigt die Ebene unter dem Stift schon
+    // mitten im Strich die gewählte Farbe, nicht erst nach dem Absetzen (vorher kurz schwarz)
+    for (const [seitenfarbe, farbe] of [['dunkelgrau', 'tinte'], ['dunkelgrau', 'rot'], ['weiss', 'blau']]) {
+      const live = await js(`(async () => {
+        const id = UI.neueId(), s1 = UI.neueId();
+        Bibliothek.speichere(id, { art: 'notizbuch', name: 'Farbe', eltern: null, format: 'A4', papier: 'blanko', seitenfarbe: '${seitenfarbe}', farbe: 'blau', seiten: [s1], erstellt: Date.now(), geoeffnet: 0, seite: 1, favorit: false });
+        location.hash = '#/dok/' + id;
+        for (let i = 0; i < 80 && !(Dokument.leinwand() && Dokument.leinwand().seiten().length && Dokument.leinwand().seiten()[0].id === s1); i++) await __warte(100);
+        await __warte(900);
+        const lw = Dokument.leinwand(); lw.setzeWerkzeug('stift'); lw.setzeFarbe('${farbe}'); lw.einst.halteForm = false;
+        const ev = __stift();
+        ev('pointerdown', 250, 300);
+        for (let i = 1; i <= 50; i++) { ev('pointermove', 250 + i * 6, 300 + Math.sin(i / 4) * 20); await __warte(8); }
+        await new Promise(ok => requestAnimationFrame(() => requestAnimationFrame(ok)));
+        // Ebene "live" mitten im Strich: Farbe der deckenden Pixel
+        const cv = document.querySelector('.dok-bereich:not([hidden]) .lw-live'), d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+        let n = 0, r = 0, g = 0, b = 0;
+        for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 250) { n++; r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+        ev('pointerup', 550, 300); await __warte(300);
+        return { pixel: n, mittel: n ? [Math.round(r / n), Math.round(g / n), Math.round(b / n)] : null };
+      })()`);
+      const m = live.mittel || [0, 0, 0];
+      const ok = live.pixel > 300 && (farbe === 'tinte' ? m[0] > 200 && m[1] > 200 && m[2] > 200 : farbe === 'rot' ? m[0] > 150 && m[0] > m[1] + 60 : m[2] > 120 && m[2] > m[0] + 40);
+      pruefe(`Farbe sofort beim Schreiben (${farbe} auf ${seitenfarbe})`, ok, live);
+    }
+
+    // 9. Safari: Berührungen des Apple Pencil gehen nicht an das System (Scribble, Textauswahl), Finger schon
+    const safari = await js(`(() => {
+      const cv = document.querySelector('.dok-bereich:not([hidden]) .lw-canvas');
+      const t = typ => { try { const tt = new Touch({ identifier: 1, target: cv, clientX: 300, clientY: 300, touchType: typ }); const e = new TouchEvent('touchmove', { touches: [tt], changedTouches: [tt], cancelable: true, bubbles: true }); cv.dispatchEvent(e); return { art: tt.touchType, verhindert: e.defaultPrevented }; } catch (err) { return { fehler: String(err) }; } };
+      // Wie in Safari: erst das Pointer-Ereignis des Stifts, dann die Berührung dazu
+      const b = cv.parentElement.getBoundingClientRect();
+      const pe = typ => cv.dispatchEvent(new PointerEvent(typ, { pointerId: 3, pointerType: 'pen', isPrimary: true, clientX: b.left + 300, clientY: b.top + 300, pressure: typ === 'pointerup' ? 0 : 0.5, buttons: typ === 'pointerup' ? 0 : 1, bubbles: true, cancelable: true }));
+      cv.setPointerCapture = () => {}; cv.releasePointerCapture = () => {};
+      pe('pointerdown');
+      const stift = t('stylus');
+      pe('pointerup');
+      return { stift, finger: t('direct') };
+    })()`);
+    pruefe('Safari: Pencil-Berührung bleibt bei der Seite, Finger nicht', safari.stift.verhindert === true && safari.finger.verhindert === false, safari);
 
     // 7. Liegendes Cover für ein Notizbuch im Querformat
     const cover = await js(`(async () => {
