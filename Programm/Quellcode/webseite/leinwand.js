@@ -1912,6 +1912,7 @@
     // In ruhigen Momenten die Pfade der Striche auf den Seiten rund um das Bild schon bauen (teileVon), in Häppchen von
     // wenigen Millisekunden: kommt eine Seite beim Scrollen ins Bild, muss sie nur noch gemalt werden.
     let vorbauTimer = 0;
+    const textBereit = new WeakSet();
     function planeVorbau() { if (!vorbauTimer) vorbauTimer = setTimeout(vorbau, 250); }
     function vorbau() {
       vorbauTimer = 0;
@@ -1922,11 +1923,11 @@
       for (const sd of sichtbareSeiten(oben - 2 * hoehe, unten + 2 * hoehe)) {
         for (const e of inhalt(sd.id).e) {
           if (istKasten(e) || !e.p || e.p.length < 2) continue;
+          // Den Text des Strichs für das Speichern und den Verlauf vorbereiten: sonst schriebe das erste Speichern nach
+          // dem Öffnen die ganze Seite auf einmal
+          if (!textBereit.has(e)) { elText(e); textBereit.add(e); if (performance.now() - t0 > 4) { planeVorbau(); return; } }
           if (pfadSpeicher.has(e) && pfadSpeicher.get(e).p === e.p) continue;
           teileVon(e);
-          // ... und den Text des Strichs für das Speichern und den Verlauf: sonst schriebe das erste Speichern nach dem
-          // Öffnen die ganze Seite auf einmal
-          elText(e);
           if (performance.now() - t0 > 4) { planeVorbau(); return; }
         }
       }
@@ -4261,7 +4262,7 @@
       if (!an) {
         if (editiert) editor.blur();
         if (textEdit) L.beendeText();
-        schliesseNotizMenue(); langDruckAus(); laserLeeren(); auswahl.clear(); aktion = null; lassoPunkte = null; finger.clear(); touchPos.clear(); geste = null; zug.px = 0; zug.erledigt = false; knopfTipp = null; stoppeAnim();
+        schliesseNotizMenue(); langDruckAus(); laserLeeren(); schwebeWeg(); kreis = null; auswahl.clear(); aktion = null; lassoPunkte = null; finger.clear(); touchPos.clear(); geste = null; zug.px = 0; zug.erledigt = false; knopfTipp = null; stoppeAnim();
         sichernJetzt();
       }
       plane();
