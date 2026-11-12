@@ -68,12 +68,26 @@
   // Gesten (einstellbar im Stift-Panel, einst.gesten, nur auf diesem Gerät). Finger: tippen = alle Finger kurz auf und
   // wieder weg, ohne zu wischen; halten = zwei Finger ruhig liegen lassen. Pencil (nur in der iPad-App, Safari meldet sie
   // nicht): Doppeltippen am Stift, Zusammendrücken (Pencil Pro).
-  const GESTEN_STANDARD = { zweiFinger: 'rueckgaengig', dreiFinger: 'wiederholen', zweiFingerLang: 'seite', pencilDoppel: 'radierer', pencilDruecken: 'eigenschaften' };
+  const GESTEN_STANDARD = { zweiFinger: 'rueckgaengig', dreiFinger: 'wiederholen', zweiFingerLang: 'seite', pencilDoppel: 'radierer', pencilDruecken: 'palette' };
   const GESTEN_AKTIONEN = {
     aus: 'Nichts', rueckgaengig: 'Rückgängig', wiederholen: 'Wiederholen', radierer: 'Radierer an/aus', letztes: 'Letztes Werkzeug',
     stift: 'Stift', marker: 'Textmarker', lasso: 'Lasso', text: 'Text', hand: 'Hand', laser: 'Laserpointer',
+    palette: 'Palette am Stift (Werkzeuge, Farben, Grössen)',
     seite: 'Seiten-Menü (drehen, Gesten)', eigenschaften: 'Farben und Grössen', leiste: 'Werkzeugleiste ein/aus', vollbild: 'Vollbild ein/aus'
   };
+  // Stiftarten (einst.stiftArt). Gespeichert wird ein Strich immer gleich (Punkte mit Druck, Format 2): die Art formt
+  // nur den Druck, der beim Schreiben in die Punkte kommt, so sieht der Strich auf jedem Gerät und in jeder Version
+  // gleich aus.
+  //   fueller  Druck gibt die Breite (wie bisher), schnelle Züge werden etwas feiner, wie Tinte, die nicht nachkommt;
+  //            mit einem Stift, der seine Drehung meldet (Apple Pencil Pro), ist die Feder breit und dreht sich mit
+  //   kugel    überall gleich breit, ohne Druck (eine Linie: am schnellsten zu zeichnen)
+  //   pinsel   weiche Spitze: setzt fein an, wird mit Druck (ohne Druck: langsam) breit und läuft am Ende spitz aus;
+  //            doppelte Strichbreite, damit die feinen Stellen wirklich fein sind
+  const STIFTARTEN = { fueller: 'Füller', kugel: 'Kugelschreiber', pinsel: 'Pinselstift' };
+  const PINSEL_FAKTOR = 2;
+  const stiftArt = einst => (STIFTARTEN[einst.stiftArt] ? einst.stiftArt : 'fueller');
+  const stiftDicke = einst => einst.dicke * (stiftArt(einst) === 'pinsel' ? PINSEL_FAKTOR : 1);
+  const weich = t => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
   const TIPP_MS = 350, TIPP_TOL = 12, HALTEN_MS = 600, HALTEN_TOL = 32;
   const LASER_NACHLEUCHTEN = 1400;   // ms, bis die Spur des Laserpunkts ganz verblasst ist
   const LASER_STANDARD = '#ff2d2d';
@@ -401,6 +415,9 @@
     return neigung ? b * (1 + NEIGUNG_BREITE * neigung) : b;
   };
   const neigungAlpha = () => 1;
+  // Breite im Verhältnis zur Dicke aus dem Druck und zurück (wie in breite)
+  const breiteVonDruck = p => 0.2 + 1.5 * Math.pow(p, 0.8);
+  const druckVonBreite = w => Math.pow(Math.max(0, w - 0.2) / 1.5, 1.25);
   // Punkt mit neuer Lage, Druck und Neigung bleiben erhalten
   const punktMit = (q, x, y) => (q.length > 3 ? [x, y, q[2], q[3]] : [x, y, q[2]]);
 
@@ -1250,8 +1267,43 @@
         const k = Math.exp(-(j - i) * (j - i) / 4);
         sd += (roh[j][2] == null ? 0.5 : roh[j][2]) * k; sn += (roh[j][3] || 0) * k; sk += k;
       }
-      const d = stufe(sd / sk, DRUCK_STUFEN), ne = stufe(sn / sk, NEIGUNG_STUFEN);
+      let dr = sd / sk, nei = sn / sk;
+      if (a.stil) { dr = stilDruck(a, i, dr); if (a.stil === 'kugel') nei = 0; }
+      const d = stufe(dr, DRUCK_STUFEN), ne = stufe(nei, NEIGUNG_STUFEN);
       return ne ? [r1(x), r1(y), d, ne] : [r1(x), r1(y), d];
+    }
+    // Druck eines Punkts nach der Stiftart (siehe STIFTARTEN): Tempo aus den Zeiten der Punkte (mm je Sekunde auf dem
+    // Glas, also unabhängig vom Zoom), Feder aus der Drehung des Stifts, Ansatz des Pinsels aus dem Weg seit dem Aufsetzen
+    function stilDruck(a, i, dr) {
+      if (a.stil === 'kugel') return 0.5;
+      const pinsel = a.stil === 'pinsel';
+      const roh = a.roh, n = roh.length, w = a.weg, z = a.zeit, zoom = a.zoom || 1;
+      if (pinsel) dr = a.stiftDruck ? Math.min(1, 1.05 * Math.pow(dr, 1.6)) : 0.55;
+      let k = 1;
+      const i0 = Math.max(0, i - 3), i1 = Math.min(n - 1, i + 3), dt = z[i1] - z[i0];
+      if (dt > 0) {
+        const mmS = (w[i1] - w[i0]) * zoom / dt * 1000 / MM;
+        k *= 1 - (pinsel ? (a.stiftDruck ? 0.35 : 0.6) : 0.2) * weich((mmS - (pinsel ? 25 : 45)) / (pinsel ? 230 : 260));
+      }
+      if (!pinsel && a.hatDreh && einst.federDrehung !== false && n > 1) {
+        const u = roh[Math.max(0, i - 1)], v = roh[Math.min(n - 1, i + 1)];
+        const feder = (45 + (a.dreh[i] || 0)) * Math.PI / 180;
+        k *= 0.72 + 0.56 * Math.abs(Math.sin(Math.atan2(v[1] - u[1], v[0] - u[0]) - feder));
+      }
+      if (pinsel) k *= 0.3 + 0.7 * weich(w[i] * zoom / (2.2 * MM));
+      if (k === 1) return dr;
+      return Math.max(pinsel ? 0 : 0.03, Math.min(1, druckVonBreite(breiteVonDruck(dr) * k)));
+    }
+    // Pinselstift beim Abheben: die letzten gut 2 mm laufen spitz aus (mit echtem Druck weniger, der Stift wird beim
+    // Abheben ohnehin leichter)
+    function pinselAuslauf(a) {
+      const p = a.strich.p, zoom = a.zoom || 1, lang = 2.4 * MM / zoom, lo = a.stiftDruck ? 0.55 : 0.22;
+      let weg = 0;
+      for (let i = p.length - 1; i >= 0 && weg < lang; i--) {
+        if (i < p.length - 1) weg += Math.hypot(p[i + 1][0] - p[i][0], p[i + 1][1] - p[i][1]);
+        if (weg >= lang) break;
+        p[i][2] = stufe(Math.max(0, Math.min(1, druckVonBreite(breiteVonDruck(p[i][2] == null ? 0.5 : p[i][2]) * (lo + (1 - lo) * weich(weg / lang))))), DRUCK_STUFEN);
+      }
     }
     // Alle Punkte festlegen, deren Nachbarn schon da sind (ende: alle)
     function festige(a, ende) {
@@ -1898,6 +1950,42 @@
       sctx.setTransform(1, 0, 0, 1, 0, 0);
       sctx.clearRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
     }
+    // Vorschau beim Schweben (Apple Pencil über dem Glas, ohne es zu berühren): ein Punkt in Farbe und Breite des
+    // Stifts zeigt, wo und wie breit der Strich ansetzt; beim Radierer ein Ring in seiner Grösse. Nur auf Geräten ohne
+    // Mauszeiger (dort zeigt schon der Zeiger den Punkt, punktCursor). Liegt auf "spitze", geleert wird nur sein Bereich.
+    const ohneZeiger = window.matchMedia ? matchMedia('(hover: none)') : null;
+    const schwebeAn = () => einst.schwebeVorschau !== false && (einst.schwebeVorschau === 'immer' || !ohneZeiger || ohneZeiger.matches);
+    let schwebe = null, schwebeTimer = 0;
+    function setzeSchwebe(x, y) {
+      schwebe = { x, y, t: performance.now() };
+      clearTimeout(schwebeTimer);
+      // Der Stift geht aus der Reichweite, ohne dass der Browser es meldet: nach kurzer Zeit verschwindet der Punkt
+      schwebeTimer = setTimeout(schwebeWeg, 1500);
+      anfordern();
+    }
+    function schwebeWeg() { clearTimeout(schwebeTimer); if (schwebe) { schwebe = null; anfordern(); } }
+    // Wo der Stift zuletzt schwebte (für die Palette am Stift), höchstens ein paar Sekunden alt
+    let schwebeOrt = null;
+    function zeichneSchwebe() {
+      if (!schwebe || aktion || finger.size || !schwebeAn()) return;
+      const w = einst.werkzeug, [dx, dy] = zuDok(schwebe.x, schwebe.y), s = seiteBeiY(dy);
+      const fl = s && aufSeite(s, dx, dy) ? flaecheSeite(s) : flaecheThema();
+      let r = 0, farbe = '', alpha = 1, ring = false;
+      if (w === 'stift') { r = breite({ w: 'stift', d: stiftDicke(einst) }, 0.5) * ansicht.s / 2; farbe = tintenFarbe(einst.farbe, fl); alpha = 0.6; }
+      else if (w === 'marker') { const f = einst.markerFarbe || 'gelb'; r = breite({ w: 'marker', d: einst.markerDicke || einst.dicke }) * ansicht.s / 2; farbe = istHex(f) ? f : MARKER[f] || MARKER.gelb; alpha = 0.35; }
+      else if (w === 'radierer') { r = radiererRadius(); farbe = thema.grau; ring = true; }
+      else if (w === 'laser') { r = Math.max(5, laserDurchmesser() * 0.35); farbe = laserFarbe(); ring = true; }
+      else return;
+      r = Math.max(ring ? 3 : 1.2, r);
+      sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      sctx.beginPath();
+      sctx.arc(schwebe.x, schwebe.y, r, 0, Math.PI * 2);
+      if (ring) { sctx.globalAlpha = 0.9; sctx.lineWidth = 1.5; sctx.strokeStyle = farbe; sctx.stroke(); }
+      else { sctx.globalAlpha = alpha; sctx.fillStyle = farbe; sctx.fill(); }
+      sctx.globalAlpha = 1;
+      const g = (r + 3) * dpr, x = schwebe.x * dpr, y = schwebe.y * dpr;
+      spitzeRect = { x1: Math.max(0, Math.floor(x - g)), y1: Math.max(0, Math.floor(y - g)), x2: Math.min(spitze.width, Math.ceil(x + g)), y2: Math.min(spitze.height, Math.ceil(y + g)) };
+    }
     function zeichneSpitze() {
       leereSpitze();
       const a = aktion;
@@ -1906,7 +1994,11 @@
       if (!s) return;
       // Nur das Ende des Strichs: ab dem Punkt vor dem ersten Abschnitt, den "live" noch nicht hat (für dessen Richtung)
       const alle = a.strich.p, ab = Math.max(0, alle.length - 3);
-      const p = ab ? alle.slice(ab) : alle, offen = offenePunkte(a), extra = a.spitze || [];
+      const p = ab ? alle.slice(ab) : alle, offen = offenePunkte(a);
+      let extra = a.spitze || [];
+      // Die Punkte ganz vorn kommen roh vom Stift: mit einer Stiftart bekommen sie die Breite des letzten Punkts davor,
+      // sonst wäre die Spitze z. B. beim Kugelschreiber dicker oder dünner als die Linie
+      if (a.stil && extra.length) { const v = (offen.length ? offen[offen.length - 1] : alle[alle.length - 1])[2]; extra = extra.map(q => [q[0], q[1], v]); }
       const q = offen.length || extra.length ? p.concat(offen, extra) : p;
       if (!q.length) return;
       const ox = s.x + (a.notiz ? a.notiz.x : 0), oy = s.y + (a.notiz ? a.notiz.y : 0);
@@ -1995,7 +2087,7 @@
       // Beim Verschieben (Leertaste, mittlere Maustaste) gilt der Greifer, nicht der Punkt
       if ((!hatZeiger || hatZeiger.matches) && !leertaste && !host.classList.contains('schiebt')) {
         const w = einst.werkzeug, fl = flaecheThema();
-        if (w === 'stift') c = punktCursor(breite({ w: 'stift', d: einst.dicke }, 0.5) * ansicht.s, tintenFarbe(einst.farbe, fl), 0.92);
+        if (w === 'stift') c = punktCursor(breite({ w: 'stift', d: stiftDicke(einst) }, 0.5) * ansicht.s, tintenFarbe(einst.farbe, fl), 0.92);
         else if (w === 'marker') {
           const f = einst.markerFarbe || 'gelb';
           c = punktCursor(breite({ w: 'marker', d: einst.markerDicke || einst.dicke }) * ansicht.s, istHex(f) ? f : MARKER[f] || MARKER.gelb, 0.6);
@@ -2064,6 +2156,7 @@
         zeichneSpitze();
       } else {
         leereSpitze();
+        zeichneSchwebe();
         const etwas = auswahl.size || lassoPunkte || radiererPunkt, laserDa = laserSichtbar();
         if (!etwas && !laserDa && ol.leer) { overlayNeu = false; return; }
         live.style.opacity = '';
@@ -2386,6 +2479,7 @@
       emit('werkzeug', w);
       plane();
     };
+    L.setzeStiftArt = art => { einst.stiftArt = STIFTARTEN[art] ? art : 'fueller'; opt.einstGeaendert && opt.einstGeaendert(); emit('werkzeug', einst.werkzeug); };
     const keinSchreibwerkzeug = () => ['radierer', 'lasso', 'notiz', 'hand', 'laser', 'text'].includes(einst.werkzeug);
     L.setzeFarbe = f => {
       einst.farbe = f;
@@ -3080,7 +3174,11 @@
       else if (was === 'radierer') L.setzeWerkzeug(einst.werkzeug === 'radierer' ? (vorherigesWerkzeug && vorherigesWerkzeug !== 'radierer' ? vorherigesWerkzeug : letztesSchreibwerkzeug) : 'radierer');
       else if (was === 'letztes') L.setzeWerkzeug(vorherigesWerkzeug && vorherigesWerkzeug !== einst.werkzeug ? vorherigesWerkzeug : letztesSchreibwerkzeug);
       else if (['stift', 'marker', 'lasso', 'text', 'hand', 'laser'].includes(was)) L.setzeWerkzeug(was);
-      else emit('geste', { was, pos: pos || [b / 2, h / 2], name });
+      else {
+        // Gesten am Stift (doppelt tippen, zusammendrücken): dort, wo der Stift gerade schwebte
+        const beimStift = schwebeOrt && performance.now() - schwebeOrt.t < 4000 ? [schwebeOrt.x, schwebeOrt.y] : null;
+        emit('geste', { was, pos: pos || beimStift || [b / 2, h / 2], name });
+      }
     };
     // Seite um 90° gedreht (richtung +90 = rechts herum, -90 = links herum; B x H = Grösse vorher): alles darauf dreht
     // mit. Striche Punkt für Punkt; Haftnotizen, Bilder und Text wandern mit ihrer Mitte und bleiben aufrecht lesbar.
@@ -3396,7 +3494,7 @@
         aktualisiereCursor();
         return;
       }
-      if (e.pointerType === 'pen') { penZeit = performance.now(); letzterRoh = e.pressure > 0 ? e.pressure : 0.5; rohProben = []; tastenTest(e); }
+      if (e.pointerType === 'pen') { penZeit = performance.now(); letzterRoh = e.pressure > 0 ? e.pressure : 0.5; rohProben = []; tastenTest(e); schwebeWeg(); }
 
       if (neueSeiteZone(dx, dy) && einst.werkzeug !== 'laser') { aktion = { art: 'knopf', id: e.pointerId, touch }; return; }
 
@@ -3474,7 +3572,7 @@
         return;
       }
       const marker = wz === 'marker';
-      const strich = { id: kurzId(), w: marker ? 'marker' : 'stift', f: marker ? einst.markerFarbe || 'gelb' : einst.farbe, d: marker ? einst.markerDicke || einst.dicke : einst.dicke };
+      const strich = { id: kurzId(), w: marker ? 'marker' : 'stift', f: marker ? einst.markerFarbe || 'gelb' : einst.farbe, d: marker ? einst.markerDicke || einst.dicke : stiftDicke(einst) };
       // Auf einer Haftnotiz gehört der Strich zur Notiz: er wandert mit, wird mit ihr zugeklappt und gelöscht
       const t = notizBei(dx, dy);
       if (t && !t.n.zu) {
@@ -3500,6 +3598,14 @@
       a.fenster = px > 0 ? Math.ceil(px * 2.5 / 0.8) : 0;
       a.roh = [a.strich.p[0]];
       a.weg = [0];
+      // Für die Stiftart: wann jeder Punkt kam (Tempo), wie der Stift gedreht war (Feder), ob er Druck meldet
+      a.zeit = [e && e.timeStamp ? e.timeStamp : performance.now()];
+      a.dreh = [(e && e.twist) || 0];
+      a.hatDreh = !!(e && e.twist);
+      a.zoom = ansicht.s;
+      a.stiftDruck = !!(e && e.pointerType === 'pen' && einst.druck);
+      a.stil = a.strich.w === 'stift' ? stiftArt(einst) : null;
+      if (a.stil) a.strich.p = [festerPunkt(a, 0)];
       halteStarten(a, sx, sy);
       emit('schreibstart');
     }
@@ -3516,6 +3622,9 @@
       if (d < 0.8 / ansicht.s && !(letzterPunkt && d > 0.05)) return false;
       roh.push(pt);
       a.weg.push(a.weg[a.weg.length - 1] + d);
+      a.zeit.push(ev.timeStamp || performance.now());
+      a.dreh.push(ev.twist || 0);
+      if (ev.twist) a.hatDreh = true;
       festige(a, false);
       return true;
     }
@@ -3602,6 +3711,8 @@
       const diag = e.pointerType === 'pen' && opt.stifttasteTest && opt.stifttasteTest();
       if (diag) diagMelden(e);
       const [sx, sy] = lokalPunkt(e);
+      // Der Stift schwebt über dem Blatt (berührt es nicht): Vorschau-Punkt, und die Stelle für die Palette am Stift
+      if (e.pointerType === 'pen' && !aktion && !e.buttons && !(e.pressure > 0)) { schwebeOrt = { x: sx, y: sy, t: performance.now() }; if (schwebeAn()) setzeSchwebe(sx, sy); }
       if (touchPos.has(e.pointerId)) touchPos.set(e.pointerId, [sx, sy]);
       if (tippen && tippen.pos.has(e.pointerId) && !tippen.bewegt) {
         const q = tippen.pos.get(e.pointerId);
@@ -3785,7 +3896,7 @@
       if (e.pointerType === 'pen') penZeit = performance.now();
       clearTimeout(a.halteTimer);
       if (a.art === 'zeichnen' && e.type === 'pointerup') { aktion = a; strichPunkt(e, true); aktion = null; }   // der letzte Punkt beim Abheben
-      if (a.art === 'zeichnen' && !a.formFertig) festige(a, true);
+      if (a.art === 'zeichnen' && !a.formFertig) { festige(a, true); if (a.stil === 'pinsel') pinselAuslauf(a); }
       abschliessen(a, e);
     }
 
@@ -3796,6 +3907,9 @@
       st.m = Date.now();
       // Ein Zickzack über Geschriebenem löscht es und bleibt selbst nicht stehen
       if (!a.original && ueberkritzelt(a)) return;
+      // Auf einen eben gezogenen Kreis getippt: was er umschliesst, ist ausgewählt
+      if (!a.original && kreisTipp(a)) return;
+      kreis = kreisKandidat(a);
       // Alle Punkte bleiben: so sieht der Strich danach genau so aus wie beim Schreiben (test/strich.js: 0 Bildpunkte
       // Unterschied). Reduziert wurden sie früher hier; selbst eng gerechnet änderte das Kanten sichtbar, und es sparte
       // nur noch rund 17 %. Reduziert werden nur die Stücke beim Radieren (künstliche Zwischenpunkte, siehe unten).
@@ -3815,6 +3929,60 @@
       speichere(a.sid);
       if (seiten.some(s => s.endlos)) aktualisiereLayout();
       uebernehmeStrich(a);
+    }
+
+    // Einkreisen und antippen (wie "Circle to Lasso"): Mit dem Stift etwas einkreisen und dann auf die Kreislinie tippen
+    // wählt aus, was der Kreis umschliesst; der Kreis selbst verschwindet (Rückgängig bringt ihn zurück). Ohne das
+    // Tippen bleibt er ein ganz normaler Strich. So muss man zum Verschieben nicht erst zum Lasso wechseln.
+    const KREIS_MS = 8000;
+    let kreis = null;
+    const umschlossen = (el, poly) => (istKasten(el)
+      ? (g => innen((g.x1 + g.x2) / 2, (g.y1 + g.y2) / 2, poly))(grenzen(el))
+      : el.p.filter(q => innen(q[0], q[1], poly)).length >= Math.max(1, el.p.length / 2));
+    // Ist der Strich eine geschlossene Runde um etwas herum? Dann merken (kurz), sonst null
+    function kreisKandidat(a) {
+      const st = a.strich, p = st.p;
+      if (einst.kreisAuswahl === false || a.notiz || st.w !== 'stift' || p.length < 8) return null;
+      const g = grenzen(st), diag = Math.hypot(g.x2 - g.x1, g.y2 - g.y1);
+      if (diag * ansicht.s < 36) return null;
+      let lang = 0;
+      for (let i = 1; i < p.length; i++) lang += Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]);
+      if (lang < 1.9 * diag) return null;
+      // Das Ende kommt wieder am Anfang an (oder kreuzt ihn): nah an einem Punkt des ersten Drittels
+      const ende = p[p.length - 1], drittel = Math.max(1, Math.floor(p.length / 3));
+      let nah = Infinity;
+      for (let i = 0; i < drittel; i++) nah = Math.min(nah, Math.hypot(p[i][0] - ende[0], p[i][1] - ende[1]));
+      if (nah > 0.2 * diag) return null;
+      const inh = inhalt(a.sid);
+      if (!inh.e.some(el => el !== st && umschlossen(el, p))) return null;
+      return { el: st, sid: a.sid, bis: performance.now() + KREIS_MS };
+    }
+    function kreisTipp(a) {
+      const k = kreis;
+      if (!k) return false;
+      if (performance.now() > k.bis || a.notiz || a.sid !== k.sid || einst.kreisAuswahl === false) { kreis = null; return false; }
+      // Nur ein Tippen (kein Strich) auf oder dicht neben der Kreislinie
+      if (a.weg[a.weg.length - 1] * ansicht.s > 6) return false;
+      const inh = inhalt(k.sid), q = a.roh[0], p = k.el.p;
+      if (!inh.e.includes(k.el)) { kreis = null; return false; }
+      const reichweite = breite(k.el, 1) / 2 + 14 / ansicht.s;
+      let trifft = false;
+      for (let i = 1; i < p.length && !trifft; i++) trifft = abstand(q[0], q[1], p[i - 1], p[i]) <= reichweite;
+      if (!trifft) return false;
+      const gewaehlt = inh.e.filter(el => el !== k.el && umschlossen(el, p));
+      kreis = null;
+      if (!gewaehlt.length) return false;
+      beginne();
+      beruehre(k.sid);
+      inh.e.splice(inh.e.indexOf(k.el), 1);
+      beende();
+      auswahl.clear();
+      for (const el of gewaehlt) auswahl.set(el, k.sid);
+      olLeeren();
+      live.style.opacity = '';
+      plane();
+      emit('werkzeug', einst.werkzeug);
+      return true;
     }
 
     // Zickzack über Geschriebenem: alles, was zum grössten Teil darunter liegt und vom Gekritzel berührt wird, ist weg.
@@ -3983,7 +4151,7 @@
     for (const typ of ['pointerup', 'pointercancel']) canvas.addEventListener(typ, e => { if (e.pointerId + 1 === stiftUnten) stiftUnten = 0; }, true);
     canvas.addEventListener('pointermove', e => { if (e.pointerType === 'pen') stiftZuletzt = performance.now(); }, true);
     // Der Zeiger verlässt die Fläche: der Laserpunkt verblasst mit seiner Spur
-    canvas.addEventListener('pointerleave', e => { if (einst.werkzeug === 'laser' && (!aktion || aktion.art !== 'laser') && e.pointerType !== 'touch') laserWeg(); });
+    canvas.addEventListener('pointerleave', e => { if (einst.werkzeug === 'laser' && (!aktion || aktion.art !== 'laser') && e.pointerType !== 'touch') laserWeg(); if (e.pointerType === 'pen') schwebeWeg(); });
 
     // Mausrad und Touchpad: scrollen verschiebt, Strg + Rad (oder Touchpad-Pinch) zoomt
     host.addEventListener('wheel', e => {
@@ -4158,6 +4326,8 @@
   Leinwand.istText = istText;
   Leinwand.GESTEN_STANDARD = GESTEN_STANDARD;
   Leinwand.GESTEN_AKTIONEN = GESTEN_AKTIONEN;
+  Leinwand.STIFTARTEN = STIFTARTEN;
+  Leinwand.stiftDicke = stiftDicke;
   Leinwand.drehungVon = drehungVon;
   Leinwand.seitenFormat = seitenFormat;
   Leinwand.pdfAnsicht = pdfAnsicht;

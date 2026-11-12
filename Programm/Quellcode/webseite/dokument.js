@@ -324,6 +324,7 @@ Daten.bereit.then(function () {
         if (g.was === 'vollbild') vollbild(!voll);
         else if (g.was === 'leiste') { const an = !q('werkzeuge').classList.contains('leiste-zu'); Daten.set('lokal:leiste-zu', an); setzeLeisteZu(an); }
         else if (g.was === 'eigenschaften') { if (leiste && leiste.zeigeEigenschaften) leiste.zeigeEigenschaften(); }
+        else if (g.was === 'palette') { if (leiste && leiste.zeigePalette) leiste.zeigePalette(g.pos); }
         else if (g.was === 'seite') seitenMenue(g.pos);
       });
       // Seitenanzeige unten links, nur beim Scrollen
@@ -433,7 +434,8 @@ Daten.bereit.then(function () {
       const teile = [];
       teile.push(`<div class="kontext-titel">${brett ? 'Whiteboard' : `Seite ${n}`}</div>
         <button type="button" data-a="undo" ${lw.kannRueckgaengig() ? '' : 'disabled'}>${SYMBOL_UNDO} Rückgängig</button>
-        <button type="button" data-a="redo" ${lw.kannWiederholen() ? '' : 'disabled'}>${SYMBOL_REDO} Wiederholen</button>`);
+        <button type="button" data-a="redo" ${lw.kannWiederholen() ? '' : 'disabled'}>${SYMBOL_REDO} Wiederholen</button>
+        <button type="button" data-a="palette">Palette: Werkzeuge, Farben, Grössen</button>`);
       teile.push(`<div class="kontext-titel">Einfügen</div>
         <button type="button" data-bild="datei">${o.maus ? 'Bild vom Computer …' : 'Bild aus Fotos oder Dateien …'}</button>
         <button type="button" data-bild="ablage">Bild aus der Zwischenablage</button>`);
@@ -471,6 +473,7 @@ Daten.bereit.then(function () {
         else if (d.png) Bibliothek.exportiere(id, 'png', { seite: nr });
         else if (d.a === 'gesten' && leiste && leiste.oeffneGesten) leiste.oeffneGesten();
         else if (d.a === 'anpassen' && leiste && leiste.anpassen) leiste.anpassen();
+        else if (d.a === 'palette' && leiste && leiste.zeigePalette) { const r = lw.el.getBoundingClientRect(); leiste.zeigePalette([o.x - r.left, o.y - r.top]); }
       });
     }
 
@@ -493,7 +496,8 @@ Daten.bereit.then(function () {
         const lz = sl && sl.istLesezeichen(pos + 1);
         teile.push(`<div class="kontext-titel">Lesezeichen</div>
           <button type="button" data-a="lesezeichen">${lz ? `Lesezeichen von Seite ${pos + 1} entfernen` : `Lesezeichen auf Seite ${pos + 1} setzen`}</button>
-          <button type="button" data-a="alle-lesezeichen">Alle Lesezeichen zeigen</button>`);
+          <button type="button" data-a="alle-lesezeichen">Alle Lesezeichen zeigen</button>
+          ${sl && sl.herkunft() ? `<button type="button" data-a="zurueck">Zurück zu Seite ${sl.herkunft()}</button>` : ''}`);
         teile.push(`<div class="kontext-titel">Darstellung</div>
           ${[['original', 'Original'], ['hell', 'Weiss'], ['dunkelgrau', 'Dunkelgrau'], ['dunkel', 'Dunkelblau']].map(([m, n]) => `<button type="button" role="menuitemradio" aria-checked="${(it.modus || 'original') === m}" data-modus="${m}">${n}</button>`).join('')}`);
       }
@@ -526,6 +530,7 @@ Daten.bereit.then(function () {
       teile.push(`<div class="kontext-titel">Werkzeugleiste</div>
         <button type="button" data-a="anpassen">Werkzeugleiste anpassen …</button>
         <button type="button" data-a="gesten">Gesten einstellen …</button>
+        <button type="button" data-a="einst">Alle Einstellungen …</button>
         <button type="button" data-a="leistereset" title="Die Symbole lassen sich in der Leiste mit gedrückter Maus, Stift oder Finger ziehen und umsortieren">Reihenfolge der Symbole zurücksetzen</button>`);
       teile.push(fensterHtml(id));
       menue(knopf, teile.join(''), d => {
@@ -538,6 +543,8 @@ Daten.bereit.then(function () {
         else if (d.a === 'loeschen') seiteLoeschen(pos);
         else if (d.a === 'lesezeichen' && sl) sl.lesezeichen(pos + 1, !sl.istLesezeichen(pos + 1));
         else if (d.a === 'alle-lesezeichen' && sl) sl.oeffne('lesezeichen');
+        else if (d.a === 'zurueck' && sl) sl.zurueck();
+        else if (d.a === 'einst') { if (window.Einstellungen) Einstellungen.zeige(); }
         else if (d.papier) { Bibliothek.aendere(id, x => { x.papier = d.papier; }); it = Bibliothek.get(id); lw.setzeSeiten(notizbuchSeiten()); }
         else if (d.sfarbe) { Bibliothek.aendere(id, x => { if (d.sfarbe === 'auto') delete x.seitenfarbe; else x.seitenfarbe = d.sfarbe; }); it = Bibliothek.get(id); lw.setzeSeiten(notizbuchSeiten()); lw.plane(); }
         else if (d.raster) { Bibliothek.aendere(id, x => { x.raster = d.raster; }); it = Bibliothek.get(id); lw.setzeSeiten(notizbuchSeiten()); lw.plane(); }
@@ -596,6 +603,8 @@ Daten.bereit.then(function () {
       if (!an && leiste) leiste.schliesseEigenschaften();
     };
     F.leinwand = () => lw;
+    // Stift-Panel (Druck, Neigung, Tasten, Diagnose) öffnen, z. B. aus den Einstellungen
+    F.stiftPanel = () => { const k = q('werkzeuge').querySelector('[data-aktion="tasten"]'); if (k && k.getAttribute('aria-pressed') !== 'true') k.click(); return !!k; };
     F.taste = e => (sl && sl.taste(e)) || (lw ? lw.taste(e) : false);
     F.zeigeZeit = zeigeZeit;
     F.name = () => (it ? it.name : '');
@@ -1440,6 +1449,7 @@ Daten.bereit.then(function () {
     daneben: id => setzeSeite(id, 'rechts'),
     aktiv: () => sichtbar && !!geladen.get(fokusId()),
     leinwand: () => { const f = geladen.get(fokusId()); return f ? f.leinwand() : null; },
+    stiftPanel: () => { const f = sichtbar && geladen.get(fokusId()); return f ? f.stiftPanel() : false; },
     // In diesem Fenster offen (seine Handschrift bleibt dann im Speicher)
     istGeladen: id => geladen.has(id),
     taste: e => {

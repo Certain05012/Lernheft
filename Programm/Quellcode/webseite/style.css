@@ -1293,3 +1293,104 @@ body { padding-inline: 0; }
 .leiste-wahl.farbig .wahl-symbol svg.hat-bunt { display: none; }
 /* Symbole in Menüs (Seite drehen) */
 .kontext .menue-symbol { width: 18px; height: 18px; vertical-align: -4px; margin-right: 6px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ================= 3.12: Einstellungen in Bereichen, Palette am Stift, Stiftarten, Zurück nach einem Sprung ================= */
+
+/* Einstellungen: links die Bereiche, rechts Gruppen mit Zeilen (Text links, Schalter oder Wahl rechts) */
+.dialog.einst-dialog { border-radius: 20px; overflow: hidden; }
+.dialog-form.einst { width: min(760px, calc(100vw - 24px)); height: min(640px, calc(100vh - 32px)); height: min(640px, calc(100dvh - 32px)); padding: 0; gap: 0; }
+.einst-kopf { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px 12px 22px; border-bottom: 1px solid var(--linie); }
+.einst-kopf h2 { font-size: 20px; }
+.einst-koerper { flex: 1; min-height: 0; display: grid; grid-template-columns: 188px 1fr; }
+.einst-nav { display: flex; flex-direction: column; gap: 2px; padding: 12px 10px; border-right: 1px solid var(--linie); background: color-mix(in srgb, var(--papier) 55%, var(--blatt)); overflow-y: auto; }
+.einst-nav button { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: none; border-radius: 10px; background: none; color: var(--tinte); font: inherit; font-size: 15px; font-weight: 700; text-align: left; cursor: pointer; }
+.einst-nav button svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.einst-nav button:hover { background: var(--fueller-hell); }
+.einst-nav button[aria-selected="true"] { background: var(--fueller); color: var(--blatt); }
+.einst-nav button:focus-visible { outline: 2px solid var(--fueller); outline-offset: 2px; }
+.einst-seiten { min-width: 0; overflow-y: auto; padding: 6px 20px 22px; -webkit-overflow-scrolling: touch; }
+.einst-seiten h3 { margin: 18px 4px 8px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--grau); }
+.einst-gruppe { border: 1px solid var(--linie); border-radius: 14px; background: color-mix(in srgb, var(--papier) 40%, var(--blatt)); overflow: hidden; }
+.einst-zeile { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 52px; padding: 10px 14px; cursor: default; }
+.einst-zeile + .einst-zeile { border-top: 1px solid var(--linie); }
+label.einst-zeile { cursor: pointer; }
+.einst-zeile.hoch { flex-wrap: wrap; row-gap: 10px; }
+.einst-zeile.aus { opacity: .45; }
+.einst-text { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.einst-text b { font-size: 15px; font-weight: 700; }
+.einst-text small { font-size: 13px; line-height: 1.35; color: var(--grau); overflow-wrap: anywhere; }
+.einst-zeile select { flex: none; max-width: 230px; font: inherit; font-size: 14px; padding: 8px 10px; border: 1.5px solid var(--linie); border-radius: 9px; background: var(--blatt); color: var(--tinte); }
+.einst-regler { flex: none; display: flex; align-items: center; gap: 10px; }
+.einst-regler input[type="range"] { width: 150px; accent-color: var(--fueller); }
+.einst-regler output { min-width: 52px; text-align: right; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--grau); }
+.einst-hinweis { margin: 6px 4px 10px !important; font-size: 13px; line-height: 1.4; color: var(--grau); }
+.einst-knoepfe { display: flex; justify-content: flex-end; margin-top: 12px; }
+/* Schalter (wie auf dem iPad) aus einem Ankreuzfeld */
+.schalter { appearance: none; -webkit-appearance: none; flex: none; position: relative; width: 48px; height: 28px; margin: 0; border-radius: 999px; background: var(--linie); cursor: pointer; transition: background .15s ease; }
+.schalter::after { content: ""; position: absolute; left: 3px; top: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .35); transition: transform .15s ease; }
+.schalter:checked { background: var(--fueller); }
+.schalter:checked::after { transform: translateX(20px); }
+.schalter:focus-visible { outline: 2px solid var(--fueller); outline-offset: 2px; }
+/* Wahl aus wenigen Möglichkeiten nebeneinander */
+.segmente { display: flex; flex: none; max-width: 100%; padding: 3px; border-radius: 11px; background: var(--linie); }
+.segmente label { position: relative; display: block; cursor: pointer; }
+.segmente input { position: absolute; opacity: 0; pointer-events: none; }
+.segmente span { display: flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px; font-size: 14px; font-weight: 700; white-space: nowrap; color: var(--tinte); }
+.segmente svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.segmente input:checked + span { background: var(--blatt); color: var(--fueller); box-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
+.segmente label:has(input:focus-visible) span { outline: 2px solid var(--fueller); outline-offset: 1px; }
+@media (max-width: 640px) {
+  .einst-koerper { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .einst-nav { flex-direction: row; border-right: none; border-bottom: 1px solid var(--linie); padding: 8px 10px; overflow-x: auto; scrollbar-width: none; }
+  .einst-nav button { flex: none; padding: 8px 12px; font-size: 14px; }
+  .einst-seiten { padding: 2px 12px 18px; }
+  .segmente span { padding: 7px 9px; font-size: 13px; }
+}
+
+/* Stift-Panel: Kopfzeile mit dem Weg zu allen Einstellungen */
+.panel-kopf { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+/* Stiftart in der Leiste (Füller, Kugelschreiber, Pinselstift) */
+.gruppe.stiftarten { gap: 2px; }
+.gruppe.stiftarten[hidden] { display: none; }
+
+/* Palette am Stift */
+.lw-palette {
+  position: absolute; z-index: 9; display: flex; flex-direction: column; gap: 6px; max-width: calc(100% - 16px); padding: 8px;
+  border: 1px solid var(--linie); border-radius: 16px; background: color-mix(in srgb, var(--blatt) 97%, transparent);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); box-shadow: 0 10px 34px rgba(0, 0, 0, .34); touch-action: manipulation;
+  animation: palette-auf .12s ease-out;
+}
+@keyframes palette-auf { from { opacity: 0; transform: translateY(6px) scale(.97); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .lw-palette { animation: none; } }
+.pal-reihe { display: flex; align-items: center; gap: 4px; }
+.pal-reihe + .pal-reihe { padding-top: 6px; border-top: 1px solid var(--linie); }
+.lw-palette .wz { width: 42px; height: 42px; flex: none; border-radius: 11px; }
+.lw-palette .wz svg { width: 23px; height: 23px; }
+.pal-trenner { width: 1px; height: 26px; margin: 0 4px; background: var(--linie); }
+.pal-arten .wz.wz-text { flex: 1 1 0; width: auto; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 8px; font-size: 13px; }
+.pal-arten .wz svg { width: 19px; height: 19px; }
+.pal-farben { flex-wrap: wrap; max-width: 372px; }
+.pal-farben .wz { width: 38px; height: 38px; }
+.pal-farben .farbpunkt { width: 24px; height: 24px; }
+.pal-farben .farbpunkt.marker { width: 26px; height: 16px; }
+.pal-groessen .preset { flex: 1 1 0; min-width: 0; height: 42px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 8px; }
+.pal-groessen .preset-wert { align-self: center; font-size: 13px; }
+.pal-groessen .preset-punkt { align-self: center; flex: none; }
+.lw-palette[data-art="marker"] .preset-punkt { border-radius: 4px; opacity: .6; }
+.lw-palette[data-art="radierer"] .preset-punkt { background: transparent; border: 1.5px dashed currentColor; box-shadow: none; }
+
+/* Zurück zu der Stelle vor dem Sprung (Lesezeichen, Inhalt, Suche) */
+.sl-zurueck {
+  position: absolute; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 7; transform: translateX(-50%); display: flex; align-items: stretch;
+  max-width: calc(100% - 24px); border-radius: 999px; background: var(--fueller); color: var(--blatt); box-shadow: 0 6px 22px rgba(0, 0, 0, .34); overflow: hidden;
+  animation: zurueck-auf .16s ease-out;
+}
+.sl-zurueck[hidden] { display: none; }
+@keyframes zurueck-auf { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) { .sl-zurueck { animation: none; } }
+.sl-zurueck button { display: flex; align-items: center; gap: 8px; border: none; background: none; color: inherit; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+.sl-zurueck svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.sl-zurueck-geh { padding: 11px 12px 11px 18px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sl-zurueck-zu { padding: 0 14px 0 10px; border-left: 1px solid color-mix(in srgb, var(--blatt) 35%, transparent) !important; opacity: .85; }
+.sl-zurueck button:hover, .sl-zurueck button:focus-visible { background: color-mix(in srgb, var(--blatt) 16%, transparent); outline: none; }
