@@ -265,7 +265,7 @@ public class LHOrdnerPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDelega
 
 // Der Bridge-ViewController der App: wie der von Capacitor, meldet zusätzlich das Modul für die Sicherung an und gibt die
 // Gesten des Apple Pencil an die Oberfläche weiter (Doppeltippen: Pencil 2 und Pro; Zusammendrücken: Pencil Pro).
-// Die Oberfläche (leinwand.js, Ereignis "lh-pencil") entscheidet, was sie tun (Einstellung "Gesten" im Stift-Panel).
+// Die Oberfläche (leinwand.js, Ereignis "lh-pencil") entscheidet, was sie tun (Einstellungen, Bereich "Gesten").
 // Safari gibt diese Gesten an Webseiten nicht weiter, in der Web-App gibt es sie deshalb nicht.
 class LernheftViewController: CAPBridgeViewController, UIPencilInteractionDelegate {
     override open func capacitorDidLoad() {

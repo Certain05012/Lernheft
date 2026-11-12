@@ -162,13 +162,66 @@
     return frei.length;
   }
 
+  // Handschrift (ink:*) wird nach jedem Strich gespeichert. Die ganze Seite jedes Mal als Text zu schreiben und wieder
+  // einzulesen (für die eigene Kopie) kostete bei einer vollen Seite rund 30 ms, mitten im Schreiben. Deshalb merkt
+  // sich jedes Element der Schreibfläche seinen Text und seine Kopie: geschrieben wird nur, was neu oder geändert ist,
+  // die Seite ist dann nur noch eine Liste davon. Ob ein Strich noch derselbe ist, zeigt ein Kennzeichen aus allen
+  // seinen Werten (Punkte gewichtet aufsummiert, das kostet fast nichts); alles andere (Notizen, Text, Bilder,
+  // Unbekanntes) wird wie bisher jedes Mal geschrieben. Die Kopien werden nie verändert (wer sie über get bekommt,
+  // liest nur), so dürfen aufeinanderfolgende Fassungen einer Seite sie teilen.
+  const elementSpeicher = new WeakMap();
+  const STRICH_FELDER = { id: 1, w: 1, f: 1, d: 1, m: 1, p: 1 };
+  function strichKennzeichen(el) {
+    if (!el || el.typ || !Array.isArray(el.p)) return null;
+    for (const k in el) if (!STRICH_FELDER[k]) return null;
+    const p = el.p;
+    let sx = 0, sy = 0, sd = 0;
+    for (let i = 0; i < p.length; i++) {
+      const q = p[i], g = i + 1;
+      if (q.length > 4) return null;
+      sx += q[0] * g; sy += q[1] * g; sd += (q[2] == null ? -1 : q[2]) * g + (q.length > 3 ? (q[3] + 1) * g * 7 : 0);
+    }
+    return el.id + '|' + el.w + '|' + el.f + '|' + el.d + '|' + el.m + '|' + p.length + '|' + sx + '|' + sy + '|' + sd;
+  }
+  function elementFassung(el) {
+    const sig = strichKennzeichen(el);
+    if (sig === null) { const j = JSON.stringify(el); return { j, kopie: JSON.parse(j) }; }
+    let z = elementSpeicher.get(el);
+    if (!z || z.sig !== sig) {
+      const j = JSON.stringify(el);
+      z = { sig, j, kopie: JSON.parse(j) };
+      elementSpeicher.set(el, z);
+    }
+    return z;
+  }
+  // Text eines Strichs aus demselben Speicher (für den Verlauf der Schreibfläche); null: kein einfacher Strich
+  const strichText = el => (strichKennzeichen(el) === null ? null : elementFassung(el).j);
+  // Seite { e: [...], x?: {...} } -> { j: genau der Text von JSON.stringify, v: eigene Kopie }; null: anders aufgebaut
+  function inkFassung(v) {
+    if (!v || typeof v !== 'object' || !Array.isArray(v.e)) return null;
+    const felder = Object.keys(v);
+    if (!(felder.length === 1 || (felder.length === 2 && felder[0] === 'e' && felder[1] === 'x' && v.x && typeof v.x === 'object'))) return null;
+    const teile = new Array(v.e.length), kopien = new Array(v.e.length);
+    for (let i = 0; i < v.e.length; i++) {
+      const el = v.e[i];
+      if (!el || typeof el !== 'object') return null;
+      const f = elementFassung(el);
+      teile[i] = f.j; kopien[i] = f.kopie;
+    }
+    const kopie = { e: kopien };
+    let j = '{"e":[' + teile.join(',') + ']';
+    if (felder.length === 2) { const x = JSON.stringify(v.x); j += ',"x":' + x; kopie.x = JSON.parse(x); }
+    return { j: j + '}', v: kopie };
+  }
+
   // Gibt true zurück, wenn sich wirklich etwas geändert hat
   function set(k, v) {
     if (v === undefined) return del(k);
-    const j = JSON.stringify(v);
+    const schnell = k.startsWith('ink:') ? inkFassung(v) : null;
+    const j = schnell ? schnell.j : JSON.stringify(v);
     const alt = eintraege.get(k);
     if (alt && !alt.weg && !alt.faul && alt.j === j) return false;
-    eintraege.set(k, { v: JSON.parse(j), j, zeit: Date.now(), basis: alt ? alt.basis : null, dirty: !istLokal(k), weg: false });
+    eintraege.set(k, { v: schnell ? schnell.v : JSON.parse(j), j, zeit: Date.now(), basis: alt ? alt.basis : null, dirty: !istLokal(k), weg: false });
     sichere(k);
     melde(k, 'lokal');
     return true;
@@ -433,7 +486,7 @@
   })();
 
   const Daten = window.Daten = {
-    bereit, get, set, del, keys, datei, lade, vergiss, istFaul,
+    bereit, get, set, del, keys, datei, lade, vergiss, istFaul, strichText,
     // Stand eines Eintrags (ändert sich mit jeder Änderung, auch von aussen), z. B. für zwischengespeicherte Vorschaubilder
     // fn mit geladener Handschrift des Dokuments id ausführen (Export, Umwandeln) und danach wieder freigeben, was vorher
     // nicht im Speicher lag (ausser das Dokument ist offen)

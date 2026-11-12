@@ -13,7 +13,8 @@
     seiten: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>',
     inhalt: '<path d="M9.5 6.5h10.5M9.5 12h10.5M9.5 17.5h10.5"/><circle cx="5" cy="6.5" r="1.3" class="voll"/><circle cx="5" cy="12" r="1.3" class="voll"/><circle cx="5" cy="17.5" r="1.3" class="voll"/>',
     lesezeichen: '<path d="M7 3.5h10v17l-5-4-5 4z"/>',
-    zu: '<path d="M7 7l10 10M17 7L7 17"/>'
+    zu: '<path d="M7 7l10 10M17 7L7 17"/>',
+    zurueck: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/>'
   };
   const icon = n => `<svg viewBox="0 0 24 24" aria-hidden="true">${SVG[n]}</svg>`;
   // Suchen ohne Rücksicht auf Gross/klein und Akzente ("uber" findet auch "Über" und "ÜBER")
@@ -129,6 +130,42 @@
       else bauSuche();
     }
 
+    /* ----- Zurück zur Stelle vor dem Sprung ----- */
+
+    // Springt man über die Seitenleiste auf eine andere Seite (Lesezeichen, Inhalt, Seitenbild, Suchtreffer), erscheint
+    // unten ein Knopf "Zurück zu Seite X". Er führt genau dorthin zurück, wo man war (gleiche Stelle, gleicher Zoom), und
+    // merkt sich dabei die Stelle, von der man kommt: mit einem Tippen wechselt man hin und her, z. B. zwischen den
+    // Aufgaben und dem Lesezeichen bei den Lösungen. Das Kreuz blendet ihn aus.
+    let herkunft = null;   // { ansicht (lw.merkAnsicht), nr }
+    const zurueckEl = document.createElement('div');
+    zurueckEl.className = 'sl-zurueck';
+    zurueckEl.hidden = true;
+    o.el.appendChild(zurueckEl);
+    function zeigeZurueck() {
+      zurueckEl.hidden = !herkunft;
+      if (!herkunft) { zurueckEl.innerHTML = ''; return; }
+      zurueckEl.innerHTML = `<button type="button" class="sl-zurueck-geh" data-z="geh" title="Zurück zu der Stelle, an der du vorher warst (nochmal tippen wechselt wieder hierher)">${icon('zurueck')}<span>Zurück zu Seite ${herkunft.nr}</span></button>
+        <button type="button" class="sl-zurueck-zu" data-z="zu" title="Ausblenden" aria-label="Zurück-Knopf ausblenden">${icon('zu')}</button>`;
+    }
+    function merkeHerkunft(zielNr) {
+      if (!lw() || weg) return;
+      const jetzt = aktuelleNr();
+      if (zielNr === jetzt) return;
+      herkunft = { ansicht: lw().merkAnsicht(), nr: jetzt };
+      zeigeZurueck();
+    }
+    zurueckEl.addEventListener('click', e => {
+      const k = e.target.closest('[data-z]');
+      if (!k) return;
+      if (k.dataset.z === 'zu' || !lw() || !herkunft) { herkunft = null; zeigeZurueck(); return; }
+      const ziel = herkunft;
+      herkunft = { ansicht: lw().merkAnsicht(), nr: aktuelleNr() };
+      lw().setzeAnsicht(ziel.ansicht);
+      zeigeZurueck();
+    });
+    S.zurueck = () => { const k = zurueckEl.querySelector('[data-z="geh"]'); if (k) k.click(); return !!k; };
+    S.herkunft = () => (herkunft ? herkunft.nr : 0);
+
     /* ----- Seiten als kleine Bilder ----- */
 
     let beobachter = null;
@@ -165,6 +202,7 @@
     });
     function gehZu(nr, y) {
       if (!lw()) return;
+      merkeHerkunft(nr);
       lw().springeZuSeite(nr - 1, true, y);
       // Auf schmalen Bildschirmen deckt die Leiste das Blatt zu: nach der Wahl Platz machen
       if (window.innerWidth < 700) schliessen();
@@ -216,10 +254,28 @@
       minis.set(nr, stempel(nr));
     }
     // Nach dem Schreiben: Vorschau der Seite auffrischen, wenn sie zu sehen ist
+    // Erst, wenn der Stift eine Weile ruht: das kleine Bild rendert die PDF-Seite neu, im selben Ablauf wie die
+    // Schreibfläche. Nach jedem Strich sofort liess das Schreiben bei offener Seitenleiste stocken.
+    const frischeAuf = new Set();
+    let frischTimer = 0;
+    function frischeMinis() {
+      frischTimer = 0;
+      const stift = window.Leinwand && Leinwand.stiftZuletzt ? Leinwand.stiftZuletzt() : 0;
+      if (stift && performance.now() - stift < 1500) { frischTimer = setTimeout(frischeMinis, 600); return; }
+      const nummern = [...frischeAuf];
+      frischeAuf.clear();
+      if (weg || !offen || (modus !== 'seiten' && modus !== 'lesezeichen')) return;
+      for (const nr of nummern) {
+        if (!minis.has(nr) || minis.get(nr) === stempel(nr)) continue;
+        const k = liste.querySelector(`.sl-seite[data-nr="${nr}"] canvas`);
+        if (k) { minis.delete(nr); miniAnfordern(nr, k); }
+      }
+    }
     S.inkGeaendert = nr => {
-      if (!offen || (modus !== 'seiten' && modus !== 'lesezeichen') || !minis.has(nr) || minis.get(nr) === stempel(nr)) return;
-      const k = liste.querySelector(`.sl-seite[data-nr="${nr}"] canvas`);
-      if (k) { minis.delete(nr); miniAnfordern(nr, k); }
+      if (!offen || (modus !== 'seiten' && modus !== 'lesezeichen') || !minis.has(nr)) return;
+      frischeAuf.add(nr);
+      clearTimeout(frischTimer);
+      frischTimer = setTimeout(frischeMinis, 1500);
     };
 
     /* ----- Lesezeichen ----- */
@@ -481,6 +537,7 @@
       if (!h) return;
       aktuell = i;
       const y = h.rechtecke.length ? h.rechtecke[0].y : 0;
+      merkeHerkunft(h.nr);
       if (lw()) { lw().springeZuSeite(h.nr - 1, true, Math.max(0, y - 120)); lw().plane(); }
       liste.querySelectorAll('.sl-treffer.aktuell').forEach(k => k.classList.remove('aktuell'));
       const k = liste.querySelector(`[data-treffer="${i}"]`);
@@ -563,6 +620,8 @@
       clearTimeout(suchTimer);
       if (beobachter) beobachter.disconnect();
       miniSchlange = [];
+      clearTimeout(frischTimer);
+      zurueckEl.remove();
       aside.remove();
       o.el.classList.remove('sl-offen');
       if (S.anfang) S.anfang.innerHTML = '';

@@ -56,8 +56,12 @@ function dokAlsTextAlt(d) {
 // lokalDatei: Datei im Profil des Geräts für Einstellungen, die nicht in den Speicherort gehören
 // beschaeftigt(): ms, die das Schreiben noch warten soll (iPad: solange der Stift schreibt, sonst stockt der Strich,
 // weil Packen und Speichern im selben Ablauf wie die Oberfläche laufen). Höchstens WARTEN_MAX ms.
-function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei, beschaeftigt }) {
+// packStufe: gzip-Stufe für Seiten (Standard 6).
+function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei, beschaeftigt, packStufe }) {
   const F = format;
+  // Wie stark Seiten gepackt werden (gzip 1 bis 9). Am PC 6; das iPad nimmt 2: dort läuft das Packen im selben Ablauf
+  // wie die Schreibfläche, Stufe 2 braucht ein Drittel der Zeit und die Datei wird nur rund 10 % grösser.
+  const PACK_STUFE = packStufe >= 1 && packStufe <= 9 ? Math.round(packStufe) : 6;
   const BIB = path.join(wurzel, 'Bibliothek');
   const DATEN = path.join(wurzel, 'Daten');
   const VORSCHAU = path.join(DATEN, 'Vorschaubilder');
@@ -139,7 +143,7 @@ function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei, beschaeft
     fs.mkdirSync(path.dirname(p), { recursive: true });
     sichereVorgaenger(p);
     // Stufe 6: knapp ein Prozent grösser als Stufe 9, aber fast doppelt so schnell (wird nach jedem Strich geschrieben)
-    schreibeAtomar(p, zlib.gzipSync(Buffer.from(F.kodiereSeite(id, inhalt)), { level: 6 }));
+    schreibeAtomar(p, zlib.gzipSync(Buffer.from(F.kodiereSeite(id, inhalt)), { level: PACK_STUFE }));
     cache.set(p, { sig: sigVon(p), wert: inhalt });
   }
   // null, wenn es die Datei nicht gibt oder sie (noch) nicht lesbar ist, z. B. weil die Cloud sie gerade erst lädt
