@@ -103,8 +103,9 @@ Lernheft/
 ## Neues Release veröffentlichen
 
 1. Version in `Programm/Quellcode/app/package.json` (und `ipad/package.json`) erhöhen, Notizen in `docs/Release-<Version>.md` schreiben, committen.
-2. Tag setzen und pushen: `git tag v<Version>` und `git push origin v<Version>`.
-3. GitHub baut daraufhin das Windows-Paket und veröffentlicht das Release mit den Notizen (`.github/workflows/release.yml`).
+2. Nach `main` bringen. GitHub baut daraufhin das Windows-Paket, legt den Tag `v<Version>` an und veröffentlicht das Release mit den
+   Notizen (`.github/workflows/release.yml`); die Web-App fürs iPad wird im selben Zug neu veröffentlicht (`pages.yml`).
+   Dasselbe passiert, wenn man selbst einen Tag pusht (`git tag v<Version>` und `git push origin v<Version>`).
 
 Von Hand (am eigenen PC, Lernheft vorher schliessen), in `Programm/Quellcode/app`:
 ```bash
