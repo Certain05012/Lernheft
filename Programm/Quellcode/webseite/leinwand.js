@@ -268,6 +268,30 @@
   }
   const alsText = o => (o && ((o.e && o.e.some(istBild)) || istBild(o)) ? JSON.stringify(o, ersetzeSrc) : JSON.stringify(o));
   const ausText = j => (j.includes('"lhbild:') ? JSON.parse(j, (k, v) => (k === 'src' && zeichenBild.has(v) ? zeichenBild.get(v) : v)) : JSON.parse(j));
+  // Stand einer Seite für den Verlauf: der Text jedes Elements einzeln (Schnappschuss). Striche merken sich ihren Text
+  // (daten.js strichText, derselbe Speicher wie beim Speichern), solange sie sich nicht ändern. So kostet ein Schritt
+  // (Radieren, Verschieben, Löschen) auf einer vollen Seite fast nichts mehr statt mehrmals rund 15 ms für die ganze
+  // Seite als Text, und 80 Schritte im Verlauf teilen sich die Texte der unveränderten Striche, statt je zwei ganze
+  // Seiten zu halten.
+  const elText = el => { const t = window.Daten && Daten.strichText ? Daten.strichText(el) : null; return t != null ? t : alsText(el); };
+  const schnapp = inh => ({ t: inh.e.map(elText), ids: inh.e.map(e => e.id), x: inh.x && Object.keys(inh.x).length ? JSON.stringify(inh.x) : '' });
+  function gleicherSchnapp(a, b) {
+    if (a.x !== b.x || a.t.length !== b.t.length) return false;
+    for (let i = 0; i < a.t.length; i++) if (a.t[i] !== b.t[i]) return false;
+    return true;
+  }
+  // Kennung -> Text der Elemente eines Schnappschusses
+  const texteVon = sn => { const m = new Map(); for (let i = 0; i < sn.t.length; i++) m.set(sn.ids[i], sn.t[i]); return m; };
+  // Seite aus einem Schnappschuss; Elemente von "jetzt", die noch genau so aussehen, bleiben dieselben (kein Einlesen,
+  // ihre gebauten Pfade bleiben gültig)
+  function ausSchnapp(sn, jetzt) {
+    const da = new Map();
+    for (const el of (jetzt && jetzt.e) || []) { const t = elText(el); if (!da.has(t)) da.set(t, el); }
+    const e = sn.t.map(t => { const el = da.get(t); if (el) { da.delete(t); return el; } return ausText(t); });
+    const r = { e };
+    if (sn.x) r.x = JSON.parse(sn.x);
+    return r;
+  }
 
   new MutationObserver(() => { leseThema(); alleLeinwaende.forEach(l => l.plane()); })
     .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-bib-hg'] });
@@ -480,82 +504,192 @@
   }
   // Proben [x, y, Radius] entlang der Abschnitte von bis: so viele je Abschnitt, dass die Kurve rund bleibt (eine je 6°
   // Richtungsänderung, höchstens 12), der Radius dazwischen linear
+  const radiusBei = (s, k) => breite(s, s.p[k][2], s.w === 'marker' ? 0 : s.p[k][3] || 0) / 2;
+  // Proben eines Abschnitts an fn(x, y, r); erster: auch den Anfangspunkt des Abschnitts
+  function abschnittProben(s, k, erster, fn) {
+    const c = crStueck(s.p, k), ra = radiusBei(s, k), rb = radiusBei(s, k + 1);
+    if (erster) fn(c[0], c[1], ra);
+    const sx = c[6] - c[0], sy = c[7] - c[1];
+    const w1 = winkelZwischen(c[2] - c[0], c[3] - c[1], sx, sy), w2 = winkelZwischen(sx, sy, c[6] - c[4], c[7] - c[5]);
+    const m = Math.max(1, Math.min(12, Math.ceil((w1 + w2) / 0.105)));
+    for (let i = 1; i <= m; i++) {
+      const t = i / m, u = 1 - t;
+      fn(u * u * u * c[0] + 3 * u * u * t * c[2] + 3 * u * t * t * c[4] + t * t * t * c[6],
+        u * u * u * c[1] + 3 * u * u * t * c[3] + 3 * u * t * t * c[5] + t * t * t * c[7],
+        ra + (rb - ra) * t);
+    }
+  }
   function strichProben(s, von, bis) {
     const p = s.p, n = p.length, raus = [];
-    const r = k => breite(s, p[k][2], s.w === 'marker' ? 0 : p[k][3] || 0) / 2;
-    if (n === 1) return [[p[0][0], p[0][1], r(0)]];
-    for (let k = Math.max(0, von); k < Math.min(bis, n - 1); k++) {
-      const c = crStueck(p, k), ra = r(k), rb = r(k + 1);
-      if (!raus.length) raus.push([c[0], c[1], ra]);
-      const sx = c[6] - c[0], sy = c[7] - c[1];
-      const w1 = winkelZwischen(c[2] - c[0], c[3] - c[1], sx, sy), w2 = winkelZwischen(sx, sy, c[6] - c[4], c[7] - c[5]);
-      const m = Math.max(1, Math.min(12, Math.ceil((w1 + w2) / 0.105)));
-      for (let i = 1; i <= m; i++) {
-        const t = i / m, u = 1 - t;
-        raus.push([
-          u * u * u * c[0] + 3 * u * u * t * c[2] + 3 * u * t * t * c[4] + t * t * t * c[6],
-          u * u * u * c[1] + 3 * u * u * t * c[3] + 3 * u * t * t * c[5] + t * t * t * c[7],
-          ra + (rb - ra) * t
-        ]);
-      }
-    }
+    if (n === 1) return [[p[0][0], p[0][1], radiusBei(s, 0)]];
+    const fn = (x, y, r) => { raus.push([x, y, r]); };
+    for (let k = Math.max(0, von); k < Math.min(bis, n - 1); k++) abschnittProben(s, k, !raus.length, fn);
     return raus;
   }
   function winkelZwischen(ax, ay, bx, by) {
     const l = Math.hypot(ax, ay) * Math.hypot(bx, by);
     return l > 1e-9 ? Math.acos(Math.max(-1, Math.min(1, (ax * bx + ay * by) / l))) : 0;
   }
-  // Fläche aus den Proben in pfad (Path2D oder alles mit moveTo/lineTo/arc/closePath): Bänder, deren Ränder links und
-  // rechts im Abstand des Radius neben der Kurve laufen, und Kreise an den Enden und dort, wo ein Band brechen muss
-  // (Knick über 8° oder eine Biegung enger als der Strich breit ist, sonst überschlüge sich der innere Rand). Innerhalb
-  // eines Bandes gibt es keine inneren Kanten; wo zwei Bänder aneinanderstossen, deckt der Kreis die Naht. (Einzelne
-  // Vierecke je Stück zeigten an jeder Stossfuge eine feine helle Linie quer durch den Strich.)
+  // Fläche aus den Proben: Bänder, deren Ränder links und rechts im Abstand des Radius neben der Kurve laufen, und Kreise
+  // an den Enden und dort, wo ein Band brechen muss (Knick über 8° oder eine Biegung enger als der Strich breit ist,
+  // sonst überschlüge sich der innere Rand). Innerhalb eines Bandes gibt es keine inneren Kanten; wo zwei Bänder
+  // aneinanderstossen, deckt der Kreis die Naht. (Einzelne Vierecke je Stück zeigten an jeder Stossfuge eine feine helle
+  // Linie quer durch den Strich.)
+  // Gebaut wird Probe für Probe (StrichBau): was einmal fertig ist, ändert sich nicht mehr, nur das letzte offene Band
+  // wächst. So muss beim Schreiben nicht in jedem Bild der ganze Strich neu aufgebaut und gefüllt werden, sondern nur
+  // das Ende (zeichneLiveStrich); ein Band ist deshalb höchstens BAND_MAX Proben lang. Beim Schreiben und danach
+  // entstehen dieselben Teile, das Bild ist also dasselbe (test/strich.js).
   const KNICK_COS = Math.cos(8 * Math.PI / 180);
-  function fuelleStrich(pfad, q, kreis, vieleck) {
-    kreis = kreis || ((x, y, r) => { pfad.moveTo(x + r, y); pfad.arc(x, y, r, 0, Math.PI * 2); });
-    vieleck = vieleck || (pts => { pfad.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) pfad.lineTo(pts[i][0], pts[i][1]); pfad.closePath(); });
-    // doppelte Punkte weglassen (der grössere Radius bleibt)
-    const c = [];
-    for (const p of q) {
-      const v = c[c.length - 1];
-      if (v && Math.abs(p[0] - v[0]) + Math.abs(p[1] - v[1]) < 1e-4) { v[2] = Math.max(v[2], p[2]); continue; }
-      c.push([p[0], p[1], p[2]]);
-    }
-    const n = c.length;
-    if (!n) return;
-    if (n === 1) { if (c[0][2] > 0) kreis(c[0][0], c[0][1], c[0][2]); return; }
-    // Richtung und Länge jedes Stücks
-    const ux = [], uy = [], l = [];
-    for (let i = 0; i + 1 < n; i++) { const dx = c[i + 1][0] - c[i][0], dy = c[i + 1][1] - c[i][1], d = Math.hypot(dx, dy); ux.push(dx / d); uy.push(dy / d); l.push(d); }
-    const bricht = i => {
-      const cos = ux[i - 1] * ux[i] + uy[i - 1] * uy[i];
-      if (cos < KNICK_COS) return true;
-      const w = Math.acos(Math.min(1, cos));
-      return w > 1e-6 && (l[i - 1] + l[i]) / 2 / w < c[i][2] * 1.3;
-    };
-    // Band von Punkt a bis b: die eine Seite vorwärts, die andere rückwärts (läuft so gleich herum wie die Kreise)
+  const BAND_MAX = 28;
+  function StrichBau() {
+    const c = [], ux = [], uy = [], l = [];   // Proben [x, y, r], Richtung und Länge des Stücks hinter jeder Probe
+    const teile = [];                         // fertig: { r: Radius (Kreis), x, y } oder { v: [x0, y0, x1, y1, …] }, mit Kasten
+    let start = 0;
+    const kreis = i => { const q = c[i], r = q[2]; return { r, x: q[0], y: q[1], x1: q[0] - r, y1: q[1] - r, x2: q[0] + r, y2: q[1] + r }; };
+    // Band von Probe a bis b: die eine Seite vorwärts, die andere rückwärts (läuft so gleich herum wie die Kreise)
     const band = (a, b) => {
-      const links = [], rechts = [];
+      const n = b - a + 1, v = new Array(n * 4);
+      let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
       for (let k = a; k <= b; k++) {
         let ex, ey;
         if (k === a) { ex = -uy[k]; ey = ux[k]; }
         else if (k === b) { ex = -uy[k - 1]; ey = ux[k - 1]; }
         else { ex = -(uy[k - 1] + uy[k]); ey = ux[k - 1] + ux[k]; const e = Math.hypot(ex, ey) || 1; ex /= e; ey /= e; }
-        const r = c[k][2];
-        links.push([c[k][0] - ex * r, c[k][1] - ey * r]);
-        rechts.push([c[k][0] + ex * r, c[k][1] + ey * r]);
+        const q = c[k], r = q[2], i = (k - a) * 2, j = (2 * n - 1 - (k - a)) * 2;
+        const lx = q[0] - ex * r, ly = q[1] - ey * r, rx = q[0] + ex * r, ry = q[1] + ey * r;
+        v[i] = lx; v[i + 1] = ly; v[j] = rx; v[j + 1] = ry;
+        if (lx < x1) x1 = lx; if (lx > x2) x2 = lx; if (ly < y1) y1 = ly; if (ly > y2) y2 = ly;
+        if (rx < x1) x1 = rx; if (rx > x2) x2 = rx; if (ry < y1) y1 = ry; if (ry > y2) y2 = ry;
       }
-      vieleck(links.concat(rechts.reverse()));
+      return { v, x1, y1, x2, y2 };
     };
-    if (c[0][2] > 0) kreis(c[0][0], c[0][1], c[0][2]);
-    let start = 0;
-    for (let i = 1; i < n; i++) {
-      if (i === n - 1 || bricht(i)) {
-        band(start, i);
-        if (c[i][2] > 0) kreis(c[i][0], c[i][1], c[i][2]);
-        start = i;
+    const bricht = i => {
+      if (i - start >= BAND_MAX) return true;
+      const cos = ux[i - 1] * ux[i] + uy[i - 1] * uy[i];
+      if (cos < KNICK_COS) return true;
+      const w = Math.acos(Math.min(1, cos));
+      return w > 1e-6 && (l[i - 1] + l[i]) / 2 / w < c[i][2] * 1.3;
+    };
+    return {
+      teile,
+      // Nächste Probe. Liegt sie auf der letzten, bleibt nur der grössere Radius.
+      probe(x, y, r) {
+        const m = c.length, v = m ? c[m - 1] : null;
+        if (v && Math.abs(x - v[0]) + Math.abs(y - v[1]) < 1e-4) { if (r > v[2]) v[2] = r; return; }
+        c.push([x, y, r]);
+        if (!m) return;
+        const dx = x - v[0], dy = y - v[1], d = Math.hypot(dx, dy);
+        ux.push(dx / d); uy.push(dy / d); l.push(d);
+        // Der Anfangskreis steht fest, sobald die zweite Probe da ist; ob an Probe m - 1 gebrochen wird, sobald die
+        // Richtung hinter ihr bekannt ist
+        if (m === 1) { if (c[0][2] > 0) teile.push(kreis(0)); return; }
+        const i = m - 1;
+        if (bricht(i)) {
+          teile.push(band(start, i));
+          if (c[i][2] > 0) teile.push(kreis(i));
+          start = i;
+        }
+      },
+      // Das offene Ende, so wie es jetzt aussähe: das letzte Band und der Kreis am Schluss (nicht gemerkt)
+      schluss() {
+        const n = c.length, raus = [];
+        if (!n) return raus;
+        if (n === 1) { if (c[0][2] > 0) raus.push(kreis(0)); return raus; }
+        raus.push(band(start, n - 1));
+        if (c[n - 1][2] > 0) raus.push(kreis(n - 1));
+        return raus;
       }
-    }
+    };
+  }
+  // Ein Teil in einen Pfad (Path2D oder alles mit moveTo/lineTo/arc/closePath) oder an eigene Zeichner
+  function teilInPfad(pfad, t) {
+    if (t.v) {
+      const v = t.v;
+      pfad.moveTo(v[0], v[1]);
+      for (let i = 2; i < v.length; i += 2) pfad.lineTo(v[i], v[i + 1]);
+      pfad.closePath();
+    } else { pfad.moveTo(t.x + t.r, t.y); pfad.arc(t.x, t.y, t.r, 0, Math.PI * 2); }
+  }
+  function fuelleStrich(pfad, q, kreis, vieleck) {
+    const bau = StrichBau();
+    for (const p of q) bau.probe(p[0], p[1], p[2]);
+    const aus = t => {
+      if (t.v) {
+        if (!vieleck) { teilInPfad(pfad, t); return; }
+        const pts = [];
+        for (let i = 0; i < t.v.length; i += 2) pts.push([t.v[i], t.v[i + 1]]);
+        vieleck(pts);
+      } else if (kreis) kreis(t.x, t.y, t.r);
+      else teilInPfad(pfad, t);
+    };
+    bau.teile.forEach(aus);
+    bau.schluss().forEach(aus);
+  }
+  // Der Strich unter dem Stift, Stück für Stück gebaut. erweitere(bis) nimmt die Abschnitte bis "bis" (ohne) dazu und
+  // gibt den Kasten zurück, in dem sich das Bild geändert hat (Einheiten des Strichs; null: nichts). pfad(k) ist ein
+  // Pfad aus allem, was in einen Kasten ragt (auch ältere Teile, wenn der Strich sich dort kreuzt): in einem Zug
+  // gefüllt, gibt es keine Nähte. Überall gleich breite Striche (Maus, Kugelschreiber, Formen) sind eine Linie mit
+  // runden Enden, alle anderen eine Fläche.
+  function LiveStrich(s) {
+    const p = s.p;
+    let gleich = true, geprueft = 1, seg = 0, bau = StrichBau(), schluss = [], kurven = [], alles = true;
+    const kasten = (k, t) => { if (t.x1 < k.x1) k.x1 = t.x1; if (t.y1 < k.y1) k.y1 = t.y1; if (t.x2 > k.x2) k.x2 = t.x2; if (t.y2 > k.y2) k.y2 = t.y2; };
+    const probe = (x, y, r) => bau.probe(x, y, r);
+    const linienBreite = () => breite(s, p[0][2], s.w === 'marker' ? 0 : p[0][3] || 0);
+    return {
+      p,
+      linie: () => gleich,
+      breite: linienBreite,
+      // Die Ebene wurde geleert: beim nächsten Mal alles malen
+      vonVorn() { alles = true; },
+      erweitere(bis) {
+        // Bleibt der Strich überall gleich breit? (geprüft werden wie beim fertigen Strich alle Punkte)
+        const warGleich = gleich;
+        for (; geprueft < p.length && gleich; geprueft++) if (p[geprueft][2] !== p[0][2] || (p[geprueft][3] || 0) !== (p[0][3] || 0)) gleich = false;
+        const k = { x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity };
+        // Aus der Linie wird eine Fläche: von vorn bauen, und was von der Linie schon gemalt ist, gehört zum Bereich
+        if (warGleich && !gleich) { for (const q of kurven) kasten(k, q); seg = 0; kurven = []; alles = true; }
+        bis = Math.min(bis, p.length - 1);
+        if (gleich) {
+          const r = linienBreite() / 2;
+          // Der letzte Abschnitt bekommt statt des runden Endes eine Verbindung: sein Bereich gehört dazu
+          const ab = Math.max(0, seg - 1);
+          for (; seg < bis; seg++) {
+            const c = crStueck(p, seg);
+            kurven.push({ c, x1: Math.min(c[0], c[2], c[4], c[6]) - r, y1: Math.min(c[1], c[3], c[5], c[7]) - r, x2: Math.max(c[0], c[2], c[4], c[6]) + r, y2: Math.max(c[1], c[3], c[5], c[7]) + r });
+          }
+          for (let i = alles ? 0 : ab; i < kurven.length; i++) kasten(k, kurven[i]);
+        } else {
+          const vorher = bau.teile.length, alt = schluss;
+          if (seg >= bis && !alles) return null;
+          for (; seg < bis; seg++) abschnittProben(s, seg, seg === 0, probe);
+          schluss = bau.schluss();
+          for (const t of alt) kasten(k, t);
+          for (let i = alles ? 0 : vorher; i < bau.teile.length; i++) kasten(k, bau.teile[i]);
+          for (const t of schluss) kasten(k, t);
+        }
+        alles = false;
+        return k.x1 <= k.x2 ? k : null;
+      },
+      // Alles, was in den Kasten ragt, in einen Pfad (Fläche: füllen, Linie: ziehen)
+      pfad(k) {
+        const pf = new Path2D();
+        const drin = t => t.x2 >= k.x1 && t.x1 <= k.x2 && t.y2 >= k.y1 && t.y1 <= k.y2;
+        if (gleich) {
+          let offen = false;
+          for (const q of kurven) {
+            if (!drin(q)) { offen = false; continue; }
+            const c = q.c;
+            if (!offen) { pf.moveTo(c[0], c[1]); offen = true; }
+            pf.bezierCurveTo(c[2], c[3], c[4], c[5], c[6], c[7]);
+          }
+        } else {
+          for (const t of bau.teile) if (drin(t)) teilInPfad(pf, t);
+          for (const t of schluss) if (drin(t)) teilInPfad(pf, t);
+        }
+        return pf;
+      }
+    };
   }
   // Fertige Striche merken sich ihre Pfade: beim Neumalen (Scrollen, Zoomen) werden sie nur noch übergeben, statt jedes
   // Mal Punkt für Punkt neu aufgebaut zu werden (test/leistung.js). Ändert sich der Strich (Verschieben ändert die
@@ -1588,6 +1722,8 @@
     // Wie oft wurde gemalt (für Tests und die Kontrolle, dass beim Schreiben und Verschieben nicht alles neu gemalt wird)
     const zaehl = { bilder: 0, voll: 0, bereich: 0, nurVerschoben: 0, live: 0 };
     L.statistik = () => ({ ...zaehl });
+    // Für Tests: die Ebene über dem Blatt ganz neu malen (Vergleich mit dem schrittweisen Zeichnen des Strichs)
+    L.liveNeu = () => { overlayNeu = true; anfordern(); };
 
     function rendereBasis(behalten) {
       zaehl.voll++;
@@ -1677,6 +1813,9 @@
     }
 
     const letzteAnsicht = { x: 0, y: 0, s: 0 };
+    const VOLL_ABSTAND = 90;
+    let vollZeit = 0, vollDauer = 0, vollTimer = 0, zoomZeit = 0;
+    const zoomtGerade = () => (geste && geste.art === 2) || performance.now() - zoomZeit < 160;
     function frame() {
       geplant = false;
       if (!b || !h) return;
@@ -1687,9 +1826,16 @@
       // Gescrollt (gleicher Zoom): das fertige Bild um die Strecke verschieben und nur den neu sichtbaren Streifen malen,
       // statt der ganzen Fläche. Schon nach einem Viertel der Reserve, damit die Streifen schmal bleiben.
       if (!voll && !schmutz && Math.abs(ansicht.s - basis.s) < 1e-9 && verschiebeBasis()) { /* erledigt */ }
-      else if (!voll && !deckt()) voll = true;
+      else if (!voll && !deckt()) {
+        // Beim Herauszoomen reicht das gemalte Bild bald nicht mehr über die ganze Fläche. Früher wurde dann in JEDEM
+        // Bild alles neu gemalt (eine volle Seite: jedes Bild ein Ruck). Jetzt höchstens alle VOLL_ABSTAND ms, solange
+        // die Finger zoomen; dazwischen wird das vorhandene Bild nur verkleinert, am Rand steht kurz der Hintergrund.
+        const seit = performance.now() - vollZeit, abstand = Math.max(VOLL_ABSTAND, vollDauer * 4);
+        if (zoomtGerade() && basis && seit < abstand) { clearTimeout(vollTimer); vollTimer = setTimeout(anfordern, abstand - seit + 4); }
+        else voll = true;
+      }
       zaehl.bilder++;
-      if (voll) rendereBasis();
+      if (voll) { const t0 = performance.now(); rendereBasis(); vollZeit = performance.now(); vollDauer = vollZeit - t0; }
       else if (schmutz) rendereBereich(schmutz);
       else zaehl.nurVerschoben++;
       inhaltVoll = false; schmutz = null;
@@ -1726,6 +1872,9 @@
           if (istKasten(e) || !e.p || e.p.length < 2) continue;
           if (pfadSpeicher.has(e) && pfadSpeicher.get(e).p === e.p) continue;
           teileVon(e);
+          // ... und den Text des Strichs für das Speichern und den Verlauf: sonst schriebe das erste Speichern nach dem
+          // Öffnen die ganze Seite auf einmal
+          elText(e);
           if (performance.now() - t0 > 4) { planeVorbau(); return; }
         }
       }
@@ -1755,7 +1904,9 @@
       if (!a || a.art !== 'zeichnen' || a.fertig || a.formFertig || a.strich.w === 'marker') return;
       const s = seiteMitId(a.sid);
       if (!s) return;
-      const p = a.strich.p, offen = offenePunkte(a), extra = a.spitze || [];
+      // Nur das Ende des Strichs: ab dem Punkt vor dem ersten Abschnitt, den "live" noch nicht hat (für dessen Richtung)
+      const alle = a.strich.p, ab = Math.max(0, alle.length - 3);
+      const p = ab ? alle.slice(ab) : alle, offen = offenePunkte(a), extra = a.spitze || [];
       const q = offen.length || extra.length ? p.concat(offen, extra) : p;
       if (!q.length) return;
       const ox = s.x + (a.notiz ? a.notiz.x : 0), oy = s.y + (a.notiz ? a.notiz.y : 0);
@@ -1867,29 +2018,38 @@
       const s = seiteMitId(a.sid);
       if (!s) return;
       if (a.farbe == null) a.farbe = strichFarbeLive(s, a);
-      // Jedes Bild den ganzen fertigen Teil in einem Zug, genau wie danach auf dem Blatt: stückweise angesetzt
-      // überlagerten sich an jeder Naht die weichen Kanten, und die Linie sah beim Schreiben anders aus als danach
+      // Nur das Stück, das dazugekommen ist: der Strich wird Stück für Stück gebaut (LiveStrich), gelöscht und neu
+      // gefüllt wird nur der Bereich, in dem sich etwas geändert hat, dort aber alles, was hineinragt, in einem Zug.
+      // So sieht die Linie beim Schreiben genau so aus wie danach auf dem Blatt (stückweise übereinander gemalt
+      // überlagerten sich an jeder Naht die weichen Kanten), und ein langer Strich kostet je Bild nicht mehr als ein kurzer.
+      let lb = a.lb;
+      if (!lb || lb.p !== p) lb = a.lb = LiveStrich(a.strich);
+      if (a.gemalt === 0) lb.vonVorn();
+      const k = lb.erweitere(bis);
+      a.gemalt = bis;
+      if (!k) return;
       const ox = s.x + (a.notiz ? a.notiz.x : 0), oy = s.y + (a.notiz ? a.notiz.y : 0);
-      const k = dpr * ansicht.s, dx = dpr * ansicht.x, dy = dpr * ansicht.y;
-      let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity, wMax = 0;
-      for (let i = 0; i <= bis && i < p.length; i++) {
-        const q = p[i];
-        if (q[0] < x1) x1 = q[0]; if (q[0] > x2) x2 = q[0]; if (q[1] < y1) y1 = q[1]; if (q[1] > y2) y2 = q[1];
-        const w = breite(a.strich, q[2], q[3]); if (w > wMax) wMax = w;
-      }
-      const rr = wMax * k / 2 + 3;
+      const f = dpr * ansicht.s, dx = dpr * ansicht.x + ox * f, dy = dpr * ansicht.y + oy * f;
+      const X1 = Math.max(0, Math.floor(k.x1 * f + dx) - 3), Y1 = Math.max(0, Math.floor(k.y1 * f + dy) - 3);
+      const X2 = Math.min(live.width, Math.ceil(k.x2 * f + dx) + 3), Y2 = Math.min(live.height, Math.ceil(k.y2 * f + dy) + 3);
+      if (X2 <= X1 || Y2 <= Y1) return;
+      lctx.save();
       lctx.setTransform(1, 0, 0, 1, 0, 0);
-      const X1 = Math.max(0, Math.floor((x1 + ox) * k + dx - rr)), Y1 = Math.max(0, Math.floor((y1 + oy) * k + dy - rr));
-      lctx.clearRect(X1, Y1, Math.ceil((x2 + ox) * k + dx + rr) - X1, Math.ceil((y2 + oy) * k + dy + rr) - Y1);
+      lctx.clearRect(X1, Y1, X2 - X1, Y2 - Y1);
+      lctx.beginPath();
+      lctx.rect(X1, Y1, X2 - X1, Y2 - Y1);
+      lctx.clip();
       liveTransform();
       lctx.translate(ox, oy);
       lctx.lineCap = lctx.lineJoin = 'round';
-      // Füllfarbe UND Linienfarbe: Stiftstriche sind Flächen (fill), der Textmarker eine Linie (stroke). Fehlte die
+      // Füllfarbe UND Linienfarbe: Stiftstriche sind Flächen (fill), gleich breite eine Linie (stroke). Fehlte die
       // Füllfarbe, malte die Ebene schwarz, bis der fertige Strich in seiner Farbe auf das Blatt kam.
       lctx.strokeStyle = lctx.fillStyle = a.farbe;
       zaehl.live++;
-      malAbschnitte(lctx, a.strich, 0, bis);
-      a.gemalt = bis;
+      // Alles, was den gelöschten Bereich berührt (in Einheiten des Strichs, mit etwas Rand für die weichen Kanten)
+      const pf = lb.pfad({ x1: (X1 - dx) / f - 1 / f, y1: (Y1 - dy) / f - 1 / f, x2: (X2 - dx) / f + 1 / f, y2: (Y2 - dy) / f + 1 / f });
+      if (lb.linie()) { lctx.lineWidth = lb.breite(); lctx.stroke(pf); } else lctx.fill(pf);
+      lctx.restore();
       ol.leer = false;
     }
 
@@ -2029,19 +2189,18 @@
     /* ----- Verlauf ----- */
 
     function beginne() { tx = { vorher: new Map() }; }
-    function beruehre(sid) { if (tx && !tx.vorher.has(sid)) tx.vorher.set(sid, alsText(inhalt(sid))); }
+    function beruehre(sid) { if (tx && !tx.vorher.has(sid)) tx.vorher.set(sid, schnapp(inhalt(sid))); }
 
     // Änderungen einer Seite kennzeichnen (für den Abgleich zwischen Geräten): jedes geänderte Element bekommt den
-    // Zeitpunkt der Änderung, jedes gelöschte einen Grabstein. alt: Stand vorher, inh: Stand jetzt.
+    // Zeitpunkt der Änderung, jedes gelöschte einen Grabstein. alt: Stand vorher (Schnappschuss), inh: Stand jetzt.
     function kennzeichne(alt, inh) {
       const jetzt = Date.now();
-      const alteJson = new Map();
-      for (const e of alt.e || []) alteJson.set(e.id, alsText(e));
+      const alteJson = texteVon(alt);
       const ids = new Set();
       for (const e of inh.e) {
         ids.add(e.id);
         const a = alteJson.get(e.id);
-        if (a === undefined || a !== alsText(e)) e.m = jetzt;
+        if (a === undefined || a !== elText(e)) e.m = jetzt;
         if (inh.x && inh.x[e.id] !== undefined) delete inh.x[e.id];
       }
       for (const id of alteJson.keys()) if (!ids.has(id)) (inh.x || (inh.x = {}))[id] = jetzt;
@@ -2053,12 +2212,12 @@
       const t = tx;
       tx = null;
       const eintrag = { vorher: new Map(), nachher: new Map() };
-      for (const [sid, j] of t.vorher) {
+      for (const [sid, vor] of t.vorher) {
         const inh = inhalt(sid);
-        if (alsText(inh) !== j) {
-          kennzeichne(JSON.parse(j), inh);
-          eintrag.vorher.set(sid, j);
-          eintrag.nachher.set(sid, alsText(inh));
+        if (!gleicherSchnapp(schnapp(inh), vor)) {
+          kennzeichne(vor, inh);
+          eintrag.vorher.set(sid, vor);
+          eintrag.nachher.set(sid, schnapp(inh));
         }
       }
       if (!eintrag.nachher.size) return;
@@ -2120,10 +2279,10 @@
     L.ungesichert = () => zuSichern.size > 0;
 
     function stelleHer(stand) {
-      for (const [sid, j] of stand) {
+      for (const [sid, sn] of stand) {
         if (!seiteMitId(sid)) continue;
-        const neu = ausText(j);
-        kennzeichne(inhalt(sid), neu);
+        const jetzt = inhalt(sid), neu = ausSchnapp(sn, jetzt);
+        kennzeichne(schnapp(jetzt), neu);
         ink.set(sid, neu);
         speichere(sid);
       }
@@ -3834,6 +3993,7 @@
       if (e.ctrlKey || e.metaKey) {
         messeHost();
         const [x, y] = lokalPunkt(e);
+        zoomZeit = performance.now();
         zoomeUm(x, y, Math.exp(-e.deltaY * f * 0.01));
       } else {
         stoppeAnim();

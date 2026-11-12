@@ -216,10 +216,28 @@
       minis.set(nr, stempel(nr));
     }
     // Nach dem Schreiben: Vorschau der Seite auffrischen, wenn sie zu sehen ist
+    // Erst, wenn der Stift eine Weile ruht: das kleine Bild rendert die PDF-Seite neu, im selben Ablauf wie die
+    // Schreibfläche. Nach jedem Strich sofort liess das Schreiben bei offener Seitenleiste stocken.
+    const frischeAuf = new Set();
+    let frischTimer = 0;
+    function frischeMinis() {
+      frischTimer = 0;
+      const stift = window.Leinwand && Leinwand.stiftZuletzt ? Leinwand.stiftZuletzt() : 0;
+      if (stift && performance.now() - stift < 1500) { frischTimer = setTimeout(frischeMinis, 600); return; }
+      const nummern = [...frischeAuf];
+      frischeAuf.clear();
+      if (weg || !offen || (modus !== 'seiten' && modus !== 'lesezeichen')) return;
+      for (const nr of nummern) {
+        if (!minis.has(nr) || minis.get(nr) === stempel(nr)) continue;
+        const k = liste.querySelector(`.sl-seite[data-nr="${nr}"] canvas`);
+        if (k) { minis.delete(nr); miniAnfordern(nr, k); }
+      }
+    }
     S.inkGeaendert = nr => {
-      if (!offen || (modus !== 'seiten' && modus !== 'lesezeichen') || !minis.has(nr) || minis.get(nr) === stempel(nr)) return;
-      const k = liste.querySelector(`.sl-seite[data-nr="${nr}"] canvas`);
-      if (k) { minis.delete(nr); miniAnfordern(nr, k); }
+      if (!offen || (modus !== 'seiten' && modus !== 'lesezeichen') || !minis.has(nr)) return;
+      frischeAuf.add(nr);
+      clearTimeout(frischTimer);
+      frischTimer = setTimeout(frischeMinis, 1500);
     };
 
     /* ----- Lesezeichen ----- */

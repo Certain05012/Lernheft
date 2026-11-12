@@ -191,7 +191,7 @@
       memfs.writeFileSync(LOKAL_DATEI, JSON.stringify({ 'lokal:migriert-v2': true }));
     }
     const u = LHKnoten.umgebung(memfs);
-    ablage = window.LHAblageFabrik(u.require, u.Buffer).erstelleAblage({ wurzel: L, melde: verteile, format: LHFormat, lokalDatei: LOKAL_DATEI,
+    ablage = window.LHAblageFabrik(u.require, u.Buffer).erstelleAblage({ wurzel: L, melde: verteile, format: LHFormat, lokalDatei: LOKAL_DATEI, packStufe: 2,
       // Solange der Stift schreibt (oder eben noch schrieb), nicht packen und speichern: das liefe im selben Ablauf wie
       // die Schreibfläche, und der Strich stockte
       beschaeftigt: () => { const t = window.Leinwand && Leinwand.stiftZuletzt ? Leinwand.stiftZuletzt() : 0; const r = 500 - (performance.now() - t); return t && r > 0 ? r : 0; } });
@@ -606,7 +606,18 @@
     speicherText: () => (abgleich ? `Alles liegt auf diesem iPad und in ${W().name} im Ordner „${einrichtung.ordner}“.` : 'Alles liegt nur auf diesem iPad.'),
     kv: {
       alle: async () => klon((await start).alle()),
-      setze: aenderungen => { const a = klon(aenderungen); start.then(ab => ab.setze(a)); },
+      // Handschrift (ink:*) nicht noch einmal tief kopieren: daten.js gibt dafür eigene Kopien her, die niemand mehr
+      // verändert, und die Ablage verändert Elemente nie (sie ersetzt nur Listen). Bei einer vollen Seite kostete die
+      // Kopie nach jedem Strich rund 20 ms, im selben Ablauf wie die Schreibfläche.
+      setze: aenderungen => {
+        const a = {};
+        for (const [k, r] of Object.entries(aenderungen || {})) {
+          const v = r && r.v;
+          if (k.startsWith('ink:') && v && Array.isArray(v.e)) a[k] = Object.assign({}, r, { v: v.x ? { e: v.e.slice(), x: Object.assign({}, v.x) } : { e: v.e.slice() } });
+          else a[k] = klon(r);
+        }
+        start.then(ab => ab.setze(a));
+      },
       hole: async keys => klon((await start).hole(klon(keys))),
       vergiss: keys => { const a = klon(keys); start.then(ab => ab.vergiss(a)); },
       aufAenderung: fn => { hoerer.add(fn); }
