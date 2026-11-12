@@ -108,7 +108,7 @@ Daten.bereit.then(function () {
               </div>
               <h3>Stift dieses Geräts</h3>
               <div class="einst-gruppe">
-                ${schalter('federDrehung', stift.federDrehung !== false, 'Feder dreht sich mit (Apple Pencil Pro)', 'Füller: die Feder ist breit und folgt der Drehung des Stifts, wie eine echte Feder. Wirkt nur mit Stiften, die ihre Drehung melden.')}
+                ${schalter('federDrehung', stift.federDrehung !== false, 'Feder dreht sich mit', 'Füller: die Feder ist breit und folgt der Drehung des Stifts, wie eine echte Feder. Wirkt nur, wenn der Stift seine Drehung meldet (z. B. Wacom-Stifte am PC). Safari auf dem iPad gibt die Drehung des Apple Pencil Pro bisher nicht weiter.')}
                 <div class="einst-zeile"><span class="einst-text"><b>Druck, Neigung, Tasten</b><small>Druckkurve, Seitentaste und Prüffeld für den Stift an diesem Gerät.</small></span><button type="button" class="btn-leise klein" data-tu="stiftpanel">Stift einstellen …</button></div>
               </div>
             </section>

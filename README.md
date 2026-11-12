@@ -29,17 +29,22 @@ signiert ist: *Weitere Informationen → Trotzdem ausführen*.
 ## Funktionen
 
 **Schreiben**
+- **Drei Stiftarten**: Füller (Druck gibt die Breite, schnelle Züge werden feiner), Kugelschreiber (gleich breit), Pinselstift (setzt fein an, läuft spitz aus); meldet der Stift seine Drehung, dreht sich die Feder des Füllers mit
 - Druck wie beim Apple Pencil: fliessende Strichbreite, die Druckkurve stellt sich selbst auf den Stift ein (eigene Kurve möglich); Neigung, Glättung (aus/niedrig/mittel/hoch), Stiftbreite in Millimetern
+- **Vorschau beim Schweben**: der Apple Pencil über dem Blatt zeigt, wo und wie breit der Strich ansetzt
 - Werkzeuge: Stift, Marker, Radierer, Lasso, Haftnotiz, Text, Laserpointer (leuchtet nur, solange Stift oder Taste gedrückt sind)
 - **Text**: tippen und schreiben, Grösse (pt) und Farbe in der Werkzeugleiste, antippen bearbeitet, ziehen verschiebt
 - Satte Tinte und eine Linie, die direkt unter der Pencil-Spitze entsteht (vorhergesagte Punkte), auch in der Web-App
 - **Halten**: Stift am Strichende ruhig halten → gerade Linie; bei geschlossenen Strichen Dreieck, Viereck, Rechteck, Vieleck, Kreis oder Ellipse
 - **Überkritzeln** löscht Geschriebenes (ein-/ausschaltbar)
+- **Einkreisen und antippen** wählt aus, ohne zum Lasso zu wechseln
+- **Palette am Stift**: Werkzeuge, Farben und Grössen dort, wo man schreibt (Apple Pencil Pro zusammendrücken, Menü der Seite oder eine eigene Geste)
 
 **Dokumente**
 - **Startseite** im Regal-Stil: Seitenleiste (Dokumente, Favoriten, Skripte, Notizbücher, Whiteboards, Papierkorb), Cover mit Stern, Name und Datum, Suche, „Neu“-Menü, Sortierung
 - **Bibliothek** mit Ordnern, Skripten (PDF), Notizbüchern (A4/A3) und Whiteboards
 - **Seitenleiste für PDFs**: alle Seiten als Bilder, Inhalt (Kapitel aus dem PDF oder erkannte Überschriften), Lesezeichen, Suche im Text (Strg+F)
+- **Zurück nach einem Sprung**: nach dem Sprung zu einem Lesezeichen führt „Zurück zu Seite X“ genau zurück und wieder hin (Aufgaben ↔ Lösungen)
 - **Papierkorb** in der App: wiederherstellen oder endgültig löschen
 - **Whiteboard**: unendliche Fläche, frei zoom- und verschiebbar; als Seiten-Dokument kopieren und umgekehrt
 - **Neue Seite** durch Wischen über das Seitenende
@@ -92,20 +97,22 @@ Lernheft/
       ipad/                 iPad-App (Capacitor) und Web-App (node baue.js web): Abgleich mit OneDrive/Dropbox
       FORMAT.md             Beschreibung des Dateiformats
   docs/                     Anleitungen (iPad)
-  .github/workflows/        Veröffentlichung der Web-App (GitHub Pages)
+  .github/workflows/        Veröffentlichung der Web-App (GitHub Pages) und der Releases (Windows-Paket)
 ```
 
 ## Neues Release veröffentlichen
 
-1. Version in `Programm/Quellcode/app/package.json` erhöhen, committen, nach `main` bringen.
-2. Lernheft schliessen, dann in `Programm/Quellcode/app`:
-   ```bash
-   npm run verteilen     # bauen
-   npm run paket         # erzeugt Veroeffentlichen\Lernheft-<Version>-Windows.zip
-   ```
-3. Tag setzen und pushen: `git tag v<Version>` und `git push origin v<Version>`.
-4. Auf GitHub unter *Releases → Draft a new release* den Tag wählen, Notizen schreiben (Vorlage: `docs/Release-<Version>.md`) und das Zip anhängen
-   (oder mit der GitHub-CLI: `gh release create v<Version> Veroeffentlichen\Lernheft-<Version>-Windows.zip --generate-notes`).
+1. Version in `Programm/Quellcode/app/package.json` (und `ipad/package.json`) erhöhen, Notizen in `docs/Release-<Version>.md` schreiben, committen.
+2. Tag setzen und pushen: `git tag v<Version>` und `git push origin v<Version>`.
+3. GitHub baut daraufhin das Windows-Paket und veröffentlicht das Release mit den Notizen (`.github/workflows/release.yml`).
+
+Von Hand (am eigenen PC, Lernheft vorher schliessen), in `Programm/Quellcode/app`:
+```bash
+npm run verteilen     # bauen
+npm run paket         # erzeugt Veroeffentlichen\Lernheft-<Version>-Windows.zip
+```
+Danach das Zip an ein Release hängen (*Releases → Draft a new release* oder
+`gh release create v<Version> Veroeffentlichen\Lernheft-<Version>-Windows.zip --notes-file docs/Release-<Version>.md`).
 
 ## Datenschutz
 

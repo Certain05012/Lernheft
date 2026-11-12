@@ -27,5 +27,6 @@ const csc = path.join(process.env.WINDIR || 'C:\\Windows', 'Microsoft.NET', 'Fra
 execFileSync(csc, ['/nologo', '/target:winexe', '/win32icon:' + path.join(__dirname, 'icon.ico'), '/out:' + path.join(WURZEL, 'Lernheft.exe'), path.join(__dirname, 'starter.cs')], { stdio: 'inherit' });
 console.log('Starter gebaut:', path.join(WURZEL, 'Lernheft.exe'));
 
-// Verknüpfungen auf dem Desktop und im Startmenü (mit derselben App-Kennung, damit das Anheften an die Taskleiste passt)
-execFileSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'verknuepfungen.ps1'), '-Ziel', path.join(ZIEL, 'Lernheft.exe'), '-Wurzel', WURZEL], { stdio: 'inherit' });
+// Verknüpfungen auf dem Desktop und im Startmenü (mit derselben App-Kennung, damit das Anheften an die Taskleiste passt).
+// Beim Bauen auf GitHub (.github/workflows/release.yml) gibt es keinen Desktop: dort ohne.
+if (!process.env.LERNHEFT_OHNE_VERKNUEPFUNG) execFileSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'verknuepfungen.ps1'), '-Ziel', path.join(ZIEL, 'Lernheft.exe'), '-Wurzel', WURZEL], { stdio: 'inherit' });

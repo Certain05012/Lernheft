@@ -1382,7 +1382,7 @@ label.einst-zeile { cursor: pointer; }
 
 /* Zurück zu der Stelle vor dem Sprung (Lesezeichen, Inhalt, Suche) */
 .sl-zurueck {
-  position: absolute; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 7; transform: translateX(-50%); display: flex; align-items: stretch;
+  position: absolute; left: 50%; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 7; transform: translateX(-50%); display: flex; align-items: stretch;
   max-width: calc(100% - 24px); border-radius: 999px; background: var(--fueller); color: var(--blatt); box-shadow: 0 6px 22px rgba(0, 0, 0, .34); overflow: hidden;
   animation: zurueck-auf .16s ease-out;
 }

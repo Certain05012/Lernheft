@@ -3936,9 +3936,29 @@
     // Tippen bleibt er ein ganz normaler Strich. So muss man zum Verschieben nicht erst zum Lasso wechseln.
     const KREIS_MS = 8000;
     let kreis = null;
-    const umschlossen = (el, poly) => (istKasten(el)
-      ? (g => innen((g.x1 + g.x2) / 2, (g.y1 + g.y2) / 2, poly))(grenzen(el))
-      : el.p.filter(q => innen(q[0], q[1], poly)).length >= Math.max(1, el.p.length / 2));
+    // Was eine Runde umschliesst. Billig gerechnet, das läuft nach jedem Strich: nur Elemente, deren Umriss den Kasten
+    // der Runde berührt; die Runde selbst als Vieleck aus höchstens 64 Ecken; von jedem Strich höchstens 16 Punkte
+    // (mehr als die Hälfte davon muss innen liegen). alle: false = beim ersten Treffer aufhören.
+    function umschlosseneVon(st, sid, alle) {
+      const g = grenzen(st), p = st.p, schritt = Math.max(1, Math.ceil(p.length / 64)), poly = [];
+      for (let i = 0; i < p.length; i += schritt) poly.push(p[i]);
+      const raus = [];
+      for (const el of inhalt(sid).e) {
+        if (el === st) continue;
+        const u = umriss(el);
+        if (u.x2 < g.x1 || u.x1 > g.x2 || u.y2 < g.y1 || u.y1 > g.y2) continue;
+        let drin;
+        if (istKasten(el)) { const k = grenzen(el); drin = innen((k.x1 + k.x2) / 2, (k.y1 + k.y2) / 2, poly); }
+        else {
+          const q = el.p, je = Math.max(1, Math.ceil(q.length / 16));
+          let n = 0, innenN = 0;
+          for (let i = 0; i < q.length; i += je) { n++; if (innen(q[i][0], q[i][1], poly)) innenN++; }
+          drin = innenN >= Math.max(1, n / 2);
+        }
+        if (drin) { raus.push(el); if (!alle) break; }
+      }
+      return raus;
+    }
     // Ist der Strich eine geschlossene Runde um etwas herum? Dann merken (kurz), sonst null
     function kreisKandidat(a) {
       const st = a.strich, p = st.p;
@@ -3953,8 +3973,7 @@
       let nah = Infinity;
       for (let i = 0; i < drittel; i++) nah = Math.min(nah, Math.hypot(p[i][0] - ende[0], p[i][1] - ende[1]));
       if (nah > 0.2 * diag) return null;
-      const inh = inhalt(a.sid);
-      if (!inh.e.some(el => el !== st && umschlossen(el, p))) return null;
+      if (!umschlosseneVon(st, a.sid, false).length) return null;
       return { el: st, sid: a.sid, bis: performance.now() + KREIS_MS };
     }
     function kreisTipp(a) {
@@ -3969,7 +3988,7 @@
       let trifft = false;
       for (let i = 1; i < p.length && !trifft; i++) trifft = abstand(q[0], q[1], p[i - 1], p[i]) <= reichweite;
       if (!trifft) return false;
-      const gewaehlt = inh.e.filter(el => el !== k.el && umschlossen(el, p));
+      const gewaehlt = umschlosseneVon(k.el, k.sid, true);
       kreis = null;
       if (!gewaehlt.length) return false;
       beginne();

@@ -1,0 +1,58 @@
+# Baut das Windows-Paket und veröffentlicht ein Release, sobald ein Tag v<Version> gepusht wird
+# (git tag v3.12.0 && git push origin v3.12.0). Gebaut wird wie am eigenen PC: npm run verteilen, npm run paket.
+# Die Notizen kommen aus docs/Release-<Version>.md. Die Web-App fürs iPad veröffentlicht pages.yml (bei Änderungen auf main).
+name: Release (Windows-Paket)
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Version prüfen (Tag = package.json)
+        shell: bash
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          p="$(node -p "require('./Programm/Quellcode/app/package.json').version")"
+          if [ "$v" != "$p" ]; then echo "Tag $GITHUB_REF_NAME passt nicht zur Version $p in Programm/Quellcode/app/package.json"; exit 1; fi
+          if [ ! -f "docs/Release-$v.md" ]; then echo "docs/Release-$v.md fehlt"; exit 1; fi
+      - name: Tests (iPad-Teile, Formerkennung)
+        shell: bash
+        run: |
+          cd Programm/Quellcode/ipad
+          npm ci --ignore-scripts
+          npm test
+          cd ../app
+          node test/formen.js
+      - name: Windows-App bauen
+        working-directory: Programm/Quellcode/app
+        shell: bash
+        env:
+          LERNHEFT_OHNE_VERKNUEPFUNG: '1'
+        run: |
+          npm ci || npm install
+          npm run verteilen
+          npm run paket
+      - name: Release veröffentlichen
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          zip="Veroeffentlichen/Lernheft-$v-Windows.zip"
+          ls -l "$zip"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$zip" --clobber
+            gh release edit "$GITHUB_REF_NAME" --title "Lernheft $v" --notes-file "docs/Release-$v.md"
+          else
+            gh release create "$GITHUB_REF_NAME" "$zip" --title "Lernheft $v" --notes-file "docs/Release-$v.md" --verify-tag
+          fi
