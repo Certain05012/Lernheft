@@ -7,10 +7,8 @@
 name: Release (Windows-Paket)
 on:
   push:
-    branches: [main]
+    branches: [main, 'claude/laughing-babbage-ft8na3']
     tags: ['v*']
-    paths:
-      - 'Programm/Quellcode/app/package.json'
   workflow_dispatch:
 permissions:
   contents: write
@@ -60,8 +58,16 @@ jobs:
           npm ci || npm install
           npm run verteilen
           npm run paket
+      - name: Probe-Bau (ohne Veröffentlichung)
+        if: steps.version.outputs.bauen == 'true' && github.ref_name == 'claude/laughing-babbage-ft8na3'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lernheft-${{ steps.version.outputs.version }}-Windows
+          path: Veroeffentlichen/*.zip
+          compression-level: 0
+          retention-days: 14
       - name: Release veröffentlichen
-        if: steps.version.outputs.bauen == 'true'
+        if: steps.version.outputs.bauen == 'true' && github.ref_name != 'claude/laughing-babbage-ft8na3'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
