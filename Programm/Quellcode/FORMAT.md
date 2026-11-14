@@ -77,6 +77,12 @@ Striche werden als Kurve durch alle ihre Punkte gezeichnet (Catmull-Rom; an Knic
   Zeichen). Schrift Atkinson Hyperlegible, Zeilenhöhe 1,3 × `gr`. Die Höhe steht nicht in der Datei, sie folgt aus dem Umbruch.
 * Wie bei Bildern: Versionen vor 3.9.0 kennen `k: "t"` nicht und lesen es als leeren Strich.
 
+**Gedreht** (ab 3.13.0): Text und Bilder können das Feld `"dr"` tragen = Drehung in Grad im Uhrzeigersinn (0 bis 360, auf
+Zehntel) um ihre Ecke `x`, `y` (die linke obere Ecke des ungedrehten Kastens; beim Text bleibt so der Anfang der ersten
+Zeile fest, auch wenn Zeilen dazukommen). Fehlt das Feld, ist nichts gedreht. Versionen vor 3.13.0 zeigen solche
+Elemente ungedreht an und lassen das Feld beim Speichern stehen. Striche und Formen haben kein solches Feld: beim Drehen
+werden ihre Punkte gedreht. Haftnotizen werden nicht gedreht.
+
 ## Punkte vereinfachen
 
 Seit 3.10 nur noch für die Stücke, die beim Radieren entstehen (Striche behalten alle Punkte). Die Schreibfläche lässt dort Punkte weg, die auf der Verbindung ihrer Nachbarn liegen (Douglas-Peucker,

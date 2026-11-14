@@ -39,6 +39,9 @@
   const RAND = 16;            // Abstand zum Fensterrand beim Einpassen
   const KARO = 20;            // Raster der Fläche um die Seiten
   const GRIFF = 11;           // Grösse der Skalier-Griffe in Bildschirm-px
+  const DREH_ABSTAND = 34;    // so weit unter dem Auswahlrahmen sitzt der Dreh-Griff (Bildschirm-px)
+  const DREH_RADIUS = 12;     // seine halbe Grösse
+  const DREH_RASTE = [0, 45, 90, 135, 180, -45, -90, -135, -180];   // hier rastet das Drehen am Griff ein (Grad)
   const NEUE_SEITE_H = 110;
   const NOTIZ_KOPF = 26;      // Kopfleiste einer Haftnotiz mit Zuklappen und ⋯
   const NOTIZ_ZU = 36;        // zugeklappt: kleines Quadrat
@@ -138,6 +141,42 @@
       if (window.Daten && Daten.flush) Daten.flush();
     });
   }
+  /* ---------- Gedrehte Kästen (Text, Bilder) ---------- */
+
+  // Text und Bilder können gedreht sein: dr = Grad im Uhrzeigersinn um ihre Ecke oben links (x, y). Um die Ecke und
+  // nicht um die Mitte, damit ein Text beim Weiterschreiben an seinem Platz bleibt (die Mitte wandert mit jeder Zeile).
+  const drehBogen = e => (e.dr ? e.dr * Math.PI / 180 : 0);
+  // Punkt (u, v) im ungedrehten Kasten -> Koordinaten der Seite
+  function kastenPunkt(e, u, v) {
+    const w = drehBogen(e);
+    if (!w) return [e.x + u, e.y + v];
+    const c = Math.cos(w), s = Math.sin(w);
+    return [e.x + u * c - v * s, e.y + u * s + v * c];
+  }
+  // Punkt der Seite -> Koordinaten im ungedrehten Kasten (für Treffer)
+  function imKasten(e, x, y) {
+    const w = drehBogen(e), dx = x - e.x, dy = y - e.y;
+    if (!w) return [dx, dy];
+    const c = Math.cos(w), s = Math.sin(w);
+    return [dx * c + dy * s, -dx * s + dy * c];
+  }
+  // Umschliessendes Rechteck eines Kastens der Grösse b x h, der um seine Ecke gedreht ist
+  function kastenGrenzen(e, b, h) {
+    if (!e.dr) return { x1: e.x, y1: e.y, x2: e.x + b, y2: e.y + h };
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    for (const [u, v] of [[0, 0], [b, 0], [b, h], [0, h]]) {
+      const [x, y] = kastenPunkt(e, u, v);
+      if (x < x1) x1 = x; if (x > x2) x2 = x; if (y < y1) y1 = y; if (y > y2) y2 = y;
+    }
+    return { x1, y1, x2, y2 };
+  }
+  function dreheUmEcke(ctx, e) {
+    if (!e.dr) return;
+    ctx.translate(e.x, e.y);
+    ctx.rotate(drehBogen(e));
+    ctx.translate(-e.x, -e.y);
+  }
+
   /* ---------- Bilder ---------- */
 
   // Ein Bild liegt als data-URL im Element (und damit in der Seitendatei, gleicht sich mit ihr ab). Gemalt wird es aus
@@ -169,6 +208,7 @@
     const c = typeof e.src === 'string' ? bildVon(e.src) : null;
     if (c && c.bereit) {
       ctx.save();
+      dreheUmEcke(ctx, e);
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(c.img, e.x, e.y, e.b, e.h);
@@ -176,6 +216,7 @@
       return;
     }
     ctx.save();
+    dreheUmEcke(ctx, e);
     ctx.fillStyle = 'rgba(128, 138, 160, .18)';
     ctx.fillRect(e.x, e.y, e.b, e.h);
     ctx.strokeStyle = 'rgba(128, 138, 160, .55)';
@@ -387,9 +428,12 @@
     textSpeicher.set(schluessel, r);
     return r;
   }
+  // Breite und Höhe eines Textes ohne Drehung
+  function textKasten(e) { const L = textLayout(e); return { b: L.b, h: Math.max(L.h, (e.gr || TEXT_STANDARD) * TEXT_ZEILE) }; }
   function malText(ctx, e, farbe) {
     const L = textLayout(e), gr = e.gr || TEXT_STANDARD, zh = gr * TEXT_ZEILE;
     ctx.save();
+    dreheUmEcke(ctx, e);
     ctx.font = `${gr}px ${TEXT_SCHRIFT}`;
     ctx.fillStyle = farbe;
     ctx.textBaseline = 'middle';
@@ -942,8 +986,11 @@
 
   // sichtbar: nur Elemente zeichnen, die in diesen Ausschnitt (Koordinaten der Seite) ragen
   // Bilder liegen immer unter Schrift und Haftnotizen: man schreibt auf ihnen
-  function malElemente(ctx, liste, seite, flSeite, flAussen, ausser, bedienung, sichtbar) {
+  // nur: wenn gesetzt, werden nur Elemente gemalt, für die nur(e) wahr ist (z. B. alles ausser der Auswahl, die gerade
+  // verschoben wird); die Farbwelt (Haftnotiz darunter?) richtet sich trotzdem nach der ganzen Liste
+  function malElemente(ctx, liste, seite, flSeite, flAussen, ausser, bedienung, sichtbar, nur) {
     const zuSehen = e => {
+      if (nur && !nur(e)) return false;
       if (!sichtbar) return true;
       const g = umriss(e);
       return !(g.x2 < sichtbar.x1 || g.x1 > sichtbar.x2 || g.y2 < sichtbar.y1 || g.y1 > sichtbar.y2);
@@ -959,8 +1006,8 @@
 
   function grenzen(e) {
     if (istNotiz(e)) { const g = sicht(e); return { x1: e.x, y1: e.y, x2: e.x + g.b, y2: e.y + g.h }; }
-    if (istBild(e)) return { x1: e.x, y1: e.y, x2: e.x + e.b, y2: e.y + e.h };
-    if (istText(e)) { const L = textLayout(e); return { x1: e.x, y1: e.y, x2: e.x + L.b, y2: e.y + Math.max(L.h, (e.gr || TEXT_STANDARD) * TEXT_ZEILE) }; }
+    if (istBild(e)) return kastenGrenzen(e, e.b, e.h);
+    if (istText(e)) { const k = textKasten(e); return kastenGrenzen(e, k.b, k.h); }
     let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity, nMax = 0;
     for (const q of e.p) if (q[3] > nMax) nMax = q[3];
     const rand = breite(e, 1, nMax) / 2;
@@ -1766,7 +1813,7 @@
         ctx.save();
         ctx.translate(s.x, s.y);
         malElemente(ctx, liste, s, flaecheSeite(s), flAussen, editiert ? editiert.n : textEdit ? textEdit.el : null, true,
-          { x1: links - s.x, y1: oben - s.y, x2: rechts - s.x, y2: unten - s.y });
+          { x1: links - s.x, y1: oben - s.y, x2: rechts - s.x, y2: unten - s.y }, auswahlSchwebt() ? ohneAuswahl : null);
         ctx.restore();
       }
     }
@@ -2031,52 +2078,120 @@
     }
 
     /* ----- Laserpointer: leuchtender Punkt mit kurzer Spur, die nach etwa 1,4 s verblasst ----- */
-    // Es wird nichts auf die Seite gezeichnet oder gespeichert: alles liegt nur auf der Ebene "live" und verschwindet von selbst.
-    // Position und Grösse in Bildschirm-px (der Punkt bleibt beim Zoomen gleich gross, wie ein echter Laserpunkt).
-    const laser = { punkte: [], da: false, x: 0, y: 0 };
+    // Es wird nichts auf die Seite gezeichnet oder gespeichert. Position und Grösse in Bildschirm-px (der Punkt bleibt
+    // beim Zoomen gleich gross, wie ein echter Laserpunkt).
+    // Seit 3.13 so gebaut, dass es auch in Safari auf dem iPad flüssig läuft (dort kostet jeder Zeichenbefehl und jeder
+    // Pixel einer grossen Zeichenfläche mehr; mit 120 Bildern pro Sekunde bleiben nur 8 ms je Bild):
+    //   - Der Punkt selbst ist ein eigenes Element (.lw-laser), das nur verschoben wird (transform): das macht die
+    //     Grafikkarte, ohne dass etwas neu gemalt wird, und er folgt dem Stift schon im selben Ereignis.
+    //   - Die Spur hat ihre eigene Ebene (.lw-laserspur) in einfacher Auflösung (ein weicher Schein braucht keine
+    //     doppelte): ein Viertel der Pixel, und die grosse Ebene "live" bleibt unberührt. Es gibt sie erst, wenn der
+    //     Laser benutzt wird, und sie wird wieder freigegeben, wenn man das Werkzeug wechselt.
+    //   - Gemalt wird die Spur in wenigen Zügen (LASER_STUFEN Altersstufen, je ein Pfad) statt Stück für Stück (vorher
+    //     bis 800 einzelne Linien je Bild), aus höchstens LASER_PUNKTE Punkten.
+    //   - Gelöscht wird je Bild nur der Bereich, in dem die Spur lag (laser.rect), nicht die ganze Ebene.
+    const LASER_STUFEN = 12, LASER_PUNKTE = 160, LASER_ABSTAND = 2.5;
+    const laser = { punkte: [], da: false, x: 0, y: 0, rect: null, stil: '', sichtbar: false, cv: null, ctx: null, k: 1, mass: '' };
+    const laserEl = document.createElement('div');
+    laserEl.className = 'lw-laser';
+    laserEl.hidden = true;
+    spitze.after(laserEl);
     const laserFarbe = () => (istHex(einst.laserFarbe) ? einst.laserFarbe : LASER_STANDARD);
     const laserDurchmesser = () => { const v = Number(einst.laserGroesse); return v > 0 ? Math.min(60, v) : 15; };
+    // Die Ebene für die Spur anlegen oder an die Grösse der Fläche anpassen
+    function laserEbene() {
+      const k = Math.min(1, dpr), mass = Math.round(b * k) + 'x' + Math.round(h * k);
+      if (!laser.cv) {
+        laser.cv = document.createElement('canvas');
+        laser.cv.className = 'lw-live lw-laserspur';
+        spitze.after(laser.cv);
+        laser.ctx = laser.cv.getContext('2d');
+        laser.mass = '';
+      }
+      if (mass !== laser.mass) {
+        laser.mass = mass; laser.k = k; laser.rect = null;
+        laser.cv.width = Math.round(b * k); laser.cv.height = Math.round(h * k);
+        laser.cv.style.width = b + 'px'; laser.cv.style.height = h + 'px';
+      }
+      return laser.ctx;
+    }
+    function laserEbeneWeg() { if (laser.cv) { laser.cv.width = laser.cv.height = 0; laser.cv.remove(); laser.cv = laser.ctx = null; laser.rect = null; } }
+    // Aussehen des Punkts: weisser Kern, Farbe, weicher Schein (nur neu gesetzt, wenn sich Farbe oder Grösse ändern)
+    function laserStil() {
+      const d = laserDurchmesser(), f = laserFarbe(), stand = d + f;
+      if (stand === laser.stil) return;
+      laser.stil = stand;
+      const R = d * 1.7, n = parseInt(f.slice(1), 16), rgb = `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
+      Object.assign(laserEl.style, {
+        width: 2 * R + 'px', height: 2 * R + 'px', left: -R + 'px', top: -R + 'px',
+        background: `radial-gradient(circle closest-side, rgba(255,255,255,.95) 0, rgba(255,255,255,.95) 10%, rgb(${rgb}) 13.5%, rgb(${rgb}) 28.5%, rgba(${rgb},.5) 30.5%, rgba(${rgb},.34) 44%, rgba(${rgb},0) 100%)`
+      });
+    }
+    function laserZeige(an, verblassen) {
+      if (an) {
+        laserStil();
+        if (!laser.sichtbar || laserEl.style.opacity !== '1') { laserEl.style.transition = 'none'; laserEl.style.opacity = '1'; laserEl.hidden = false; laser.sichtbar = true; }
+      } else if (verblassen) {
+        if (laser.sichtbar) { laserEl.style.transition = `opacity ${LASER_NACHLEUCHTEN}ms cubic-bezier(.3, 0, .7, .4)`; laserEl.style.opacity = '0'; }
+        laser.sichtbar = false;
+      } else if (!laserEl.hidden) {
+        laserEl.style.transition = 'none'; laserEl.style.opacity = '0'; laserEl.hidden = true;
+        laser.sichtbar = false;
+      }
+    }
     function laserPunkt(ev) {
-      const [x, y] = lokalPunkt(ev), t = performance.now();
-      const letzter = laser.punkte[laser.punkte.length - 1];
+      const [x, y] = lokalPunkt(ev), t = performance.now(), p = laser.punkte;
+      const letzter = p[p.length - 1];
       laser.x = x; laser.y = y; laser.da = true;
-      if (!letzter || Math.hypot(x - letzter.x, y - letzter.y) > 0.5) laser.punkte.push({ x, y, t });
-      if (laser.punkte.length > 400) laser.punkte.splice(0, laser.punkte.length - 400);
+      // Der Punkt folgt sofort (nur ein Transform), die Spur kommt mit dem nächsten Bild
+      laserEl.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+      laserZeige(true);
+      if (!letzter || Math.hypot(x - letzter.x, y - letzter.y) >= LASER_ABSTAND) p.push({ x, y, t });
+      // Sehr viele Punkte (schnelles Kreisen): die ältere Hälfte ausdünnen, sie ist ohnehin schon blass
+      if (p.length > LASER_PUNKTE) { const halb = p.length >> 1; let k = 0; for (let i = 0; i < p.length; i++) if (i >= halb || !(i & 1)) p[k++] = p[i]; p.length = k; }
       anfordern();
     }
-    function laserWeg() { laser.da = false; anfordern(); }
-    function laserLeeren() { laser.punkte.length = 0; laser.da = false; }
-    const laserSichtbar = () => laser.da || laser.punkte.length > 0;
+    function laserWeg() { if (laser.da) { laser.da = false; laserZeige(false, true); } anfordern(); }
+    function laserLeeren() { laser.punkte.length = 0; laser.da = false; laserZeige(false); laserEbeneWeg(); }
+    // Malt die Spur (in jedem Bild, solange es eine gibt) und merkt den Bereich, damit das nächste Bild nur ihn löscht
     function zeichneLaser() {
-      const jetzt = performance.now(), p = laser.punkte;
+      const p = laser.punkte;
+      if (!p.length && !laser.rect) return;
+      const jetzt = performance.now(), c = laserEbene(), k = laser.k;
+      if (laser.rect) { const r = laser.rect; c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1); laser.rect = null; }
       while (p.length && jetzt - p[0].t > LASER_NACHLEUCHTEN) p.shift();
-      if (!laser.da && !p.length) return;
+      if (!p.length) return;
       const farbe = laserFarbe(), d = laserDurchmesser();
-      lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      lctx.lineCap = lctx.lineJoin = 'round';
-      lctx.strokeStyle = farbe;
-      // Spur: je älter, desto dünner und blasser; erst ein breiter weicher Schein, darüber der Kern
-      for (let i = 1; i < p.length; i++) {
-        const alter = Math.min(1, (jetzt - p[i].t) / LASER_NACHLEUCHTEN), f = Math.pow(1 - alter, 1.5);
-        lctx.beginPath(); lctx.moveTo(p[i - 1].x, p[i - 1].y); lctx.lineTo(p[i].x, p[i].y);
-        lctx.globalAlpha = 0.28 * f; lctx.lineWidth = d * (0.5 + 0.7 * (1 - alter)); lctx.stroke();
-        lctx.globalAlpha = 0.85 * f; lctx.lineWidth = Math.max(1, d * (0.2 + 0.35 * (1 - alter))); lctx.stroke();
+      c.setTransform(k, 0, 0, k, 0, 0);
+      // Stumpfe Enden: die Stufen stossen aneinander, ohne sich zu überlappen (runde Enden gäben an jeder Naht einen
+      // dunkleren Fleck, weil sich die durchscheinenden Stücke dort aufaddieren)
+      c.lineCap = 'butt'; c.lineJoin = 'round';
+      c.strokeStyle = farbe;
+      // Bis unter den Punkt: solange der Stift da ist, endet die Spur dort, wo er jetzt ist
+      const n = p.length, ende = laser.da ? { x: laser.x, y: laser.y, t: jetzt } : null, anzahl = n + (ende ? 1 : 0);
+      const pt = i => (i < n ? p[i] : ende);
+      const stufeVon = i => Math.min(LASER_STUFEN - 1, Math.floor((jetzt - pt(i).t) / LASER_NACHLEUCHTEN * LASER_STUFEN));
+      let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+      for (let i = 0; i < anzahl; i++) { const q = pt(i); if (q.x < x1) x1 = q.x; if (q.x > x2) x2 = q.x; if (q.y < y1) y1 = q.y; if (q.y > y2) y2 = q.y; }
+      // Je älter, desto dünner und blasser: die Punkte in Stufen nach Alter, jede Stufe ein Pfad (erst ein breiter
+      // weicher Schein, darüber der Kern). Benachbarte Stufen teilen sich einen Punkt, so reisst die Spur nicht.
+      let i = 0;
+      while (i < anzahl - 1) {
+        const stufe = stufeVon(i);
+        let j = i + 1;
+        while (j < anzahl - 1 && stufeVon(j) === stufe) j++;
+        const alter = Math.min(1, (jetzt - (pt(i).t + pt(j).t) / 2) / LASER_NACHLEUCHTEN), f = Math.pow(1 - alter, 1.5);
+        c.beginPath();
+        c.moveTo(pt(i).x, pt(i).y);
+        for (let m = i + 1; m <= j; m++) c.lineTo(pt(m).x, pt(m).y);
+        c.globalAlpha = 0.28 * f; c.lineWidth = d * (0.5 + 0.7 * (1 - alter)); c.stroke();
+        c.globalAlpha = 0.85 * f; c.lineWidth = Math.max(1, d * (0.2 + 0.35 * (1 - alter))); c.stroke();
+        i = j;
       }
-      // Der Punkt vorn: solange der Stift da ist voll, sonst mit der Spur verblassend
-      const k = laser.da ? { x: laser.x, y: laser.y, f: 1 } : { x: p[p.length - 1].x, y: p[p.length - 1].y, f: Math.pow(1 - Math.min(1, (jetzt - p[p.length - 1].t) / LASER_NACHLEUCHTEN), 1.5) };
-      if (k.f > 0.01) {
-        const g = lctx.createRadialGradient(k.x, k.y, 0, k.x, k.y, d * 1.7);
-        g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.18, farbe); g.addColorStop(0.42, farbe); g.addColorStop(1, 'rgba(255,255,255,0)');
-        lctx.globalAlpha = k.f * 0.45; lctx.fillStyle = g;
-        lctx.beginPath(); lctx.arc(k.x, k.y, d * 1.7, 0, Math.PI * 2); lctx.fill();
-        lctx.globalAlpha = k.f; lctx.fillStyle = farbe;
-        lctx.beginPath(); lctx.arc(k.x, k.y, d / 2, 0, Math.PI * 2); lctx.fill();
-        lctx.fillStyle = 'rgba(255,255,255,.9)';
-        lctx.beginPath(); lctx.arc(k.x, k.y, d * 0.2, 0, Math.PI * 2); lctx.fill();
-      }
-      lctx.globalAlpha = 1;
-      ol.leer = false;
-      if (p.length) anfordern();   // die Spur verblasst Bild für Bild
+      c.globalAlpha = 1;
+      const g = d * 0.6 + 3;
+      laser.rect = { x1: Math.max(0, Math.floor((x1 - g) * k)), y1: Math.max(0, Math.floor((y1 - g) * k)), x2: Math.min(laser.cv.width, Math.ceil((x2 + g) * k)), y2: Math.min(laser.cv.height, Math.ceil((y2 + g) * k)) };
+      anfordern();   // die Spur verblasst Bild für Bild
     }
 
     // Mauszeiger: Punkt in der Stiftfarbe (aufgehellt) und in der Dicke des Strichs; nur wo es einen Zeiger gibt (Maus, Stift
@@ -2147,6 +2262,7 @@
     }
 
     function zeichneOverlay() {
+      zeichneLaser();
       const stand = ol.x !== ansicht.x || ol.y !== ansicht.y || ol.s !== ansicht.s;
       ol.x = ansicht.x; ol.y = ansicht.y; ol.s = ansicht.s;
       if (aktion && aktion.art === 'zeichnen') {
@@ -2158,12 +2274,14 @@
       } else {
         leereSpitze();
         zeichneSchwebe();
-        const etwas = auswahl.size || lassoPunkte || radiererPunkt, laserDa = laserSichtbar();
-        if (!etwas && !laserDa && ol.leer) { overlayNeu = false; return; }
+        const etwas = auswahl.size || lassoPunkte || radiererPunkt;
+        if (!etwas && ol.leer) { overlayNeu = false; return; }
         live.style.opacity = '';
         olLeeren();
-        if (etwas) { liveTransform(); zeichneAuswahl(lctx); ol.leer = false; }
-        if (laserDa) zeichneLaser();
+        if (etwas) {
+          if (auswahlSchwebt()) zeichneSchwebendeAuswahl();
+          liveTransform(); zeichneAuswahl(lctx); ol.leer = false;
+        }
       }
       overlayNeu = false;
     }
@@ -2182,6 +2300,24 @@
       live.style.opacity = '';
     }
 
+    // Wird die Auswahl verschoben, gedreht oder skaliert, schwebt sie: das Blatt wird einmal ohne sie gemalt, und in
+    // jedem Bild kommt nur sie selbst auf die Ebene darüber. Vorher wurde bei jeder Bewegung das ganze Blatt neu gemalt,
+    // auf einer vollen Seite war das (vor allem in Safari auf dem iPad) ein Ruckeln.
+    const auswahlSchwebt = () => !!aktion && (aktion.art === 'verschieben' || aktion.art === 'skalieren' || aktion.art === 'drehen') && auswahl.size > 0;
+    const ohneAuswahl = e => !auswahl.has(e), nurAuswahl = e => auswahl.has(e);
+    function zeichneSchwebendeAuswahl() {
+      const flAussen = flaecheThema();
+      for (const sid of new Set(auswahl.values())) {
+        const s = seiteMitId(sid);
+        if (!s) continue;
+        lctx.save();
+        liveTransform();
+        lctx.translate(s.x, s.y);
+        malElemente(lctx, inhalt(sid).e, s, flaecheSeite(s), flAussen, null, true, null, nurAuswahl);
+        lctx.restore();
+      }
+    }
+
     // Auswahlrahmen, Lasso und Radierkreis, in der Ansicht (Dokument-Koordinaten) auf Ebene c
     function zeichneAuswahl(c) {
       const px = 1 / ansicht.s;
@@ -2189,8 +2325,29 @@
       c.strokeStyle = thema.auswahl;
       c.lineWidth = 1.5 * px;
       c.setLineDash([6 * px, 4 * px]);
-      const r = auswahlRahmen();
-      if (r) {
+      const dreht = aktion && aktion.art === 'drehen' ? aktion : null;
+      const r = dreht ? dreht.rahmen : auswahlRahmen();
+      if (r && dreht) {
+        // Während des Drehens: der Rahmen von vorher dreht sich mit (um den Drehpunkt), daneben steht der Winkel
+        const [mx, my] = dreht.mitte;
+        c.save();
+        c.translate(mx + dreht.vx, my + dreht.vy);
+        c.rotate(dreht.winkel);
+        c.translate(-mx, -my);
+        c.strokeRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+        c.restore();
+        c.setLineDash([]);
+        const grad = Math.round(dreht.winkel * 180 / Math.PI);
+        const text = (grad > 0 ? '+' : '') + grad + '°';
+        c.font = `700 ${13 * px}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+        const tb = c.measureText(text).width + 14 * px, tx = mx + dreht.vx - tb / 2, ty = my + dreht.vy - 12 * px;
+        c.fillStyle = thema.auswahl;
+        rundesRechteck(c, tx, ty, tb, 24 * px, 8 * px);
+        c.fill();
+        c.fillStyle = '#ffffff';
+        c.textBaseline = 'middle';
+        c.fillText(text, tx + 7 * px, ty + 12.5 * px);
+      } else if (r) {
         c.strokeRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
         c.setLineDash([]);
         c.fillStyle = thema.aussen;
@@ -2199,6 +2356,32 @@
           c.beginPath();
           c.arc(x, y, g / 2, 0, Math.PI * 2);
           c.fill();
+          c.stroke();
+        }
+        // Dreh-Griff unter dem Rahmen: ziehen dreht die Auswahl um ihre Mitte
+        const dg = drehGriff(r);
+        if (dg) {
+          const rr = DREH_RADIUS * px;
+          c.beginPath();
+          c.moveTo(dg[0], r.y2);
+          c.lineTo(dg[0], dg[1] - rr);
+          c.stroke();
+          c.beginPath();
+          c.arc(dg[0], dg[1], rr, 0, Math.PI * 2);
+          c.fill();
+          c.stroke();
+          // Bogen mit Pfeilspitze im Griff
+          c.lineWidth = 1.7 * px;
+          c.lineCap = c.lineJoin = 'round';
+          const br = rr * 0.5;
+          c.beginPath();
+          c.arc(dg[0], dg[1], br, Math.PI * 0.15, Math.PI * 1.6);
+          c.stroke();
+          const ex = dg[0] + br * Math.cos(Math.PI * 1.6), ey = dg[1] + br * Math.sin(Math.PI * 1.6);
+          c.beginPath();
+          c.moveTo(ex - 0.2 * rr, ey - 0.34 * rr);
+          c.lineTo(ex + 0.12 * rr, ey + 0.02 * rr);
+          c.lineTo(ex - 0.3 * rr, ey + 0.2 * rr);
           c.stroke();
         }
       }
@@ -2264,9 +2447,21 @@
       const tol = (toleranz || GRIFF + 8) / ansicht.s;
       return ecken(r).findIndex(([x, y]) => Math.abs(x - dx) <= tol && Math.abs(y - dy) <= tol);
     }
-    function inAuswahl(dx, dy) {
-      const r = auswahlRahmen();
-      return r && dx >= r.x1 && dx <= r.x2 && dy >= r.y1 && dy <= r.y2;
+    // rand: so viel (Bildschirm-px) darf der Punkt neben dem Rahmen liegen
+    function inAuswahl(dx, dy, rand) {
+      const r = auswahlRahmen(), t = (rand || 0) / ansicht.s;
+      return r && dx >= r.x1 - t && dx <= r.x2 + t && dy >= r.y1 - t && dy <= r.y2 + t;
+    }
+    // Drehen lässt sich alles ausser Haftnotizen (die bleiben aufrecht und wandern nur mit)
+    const auswahlDrehbar = () => { for (const el of auswahl.keys()) if (!istNotiz(el)) return true; return false; };
+    // Mitte des Dreh-Griffs (Dokument-Koordinaten): unter dem Rahmen, über dem Menü der Auswahl ist oben Platz
+    function drehGriff(r) {
+      if (!r || !auswahlDrehbar()) return null;
+      return [(r.x1 + r.x2) / 2, r.y2 + DREH_ABSTAND / ansicht.s];
+    }
+    function drehGriffBei(dx, dy, toleranz) {
+      const g = drehGriff(auswahlRahmen());
+      return !!g && Math.hypot(dx - g[0], dy - g[1]) <= (toleranz || DREH_RADIUS + 6) / ansicht.s;
     }
     L.auswahlLeeren = () => { if (auswahl.size) { auswahl.clear(); plane(); } };
     L.hatAuswahl = () => auswahl.size > 0;
@@ -2799,7 +2994,9 @@
         const liste = inhalt(s.id).e;
         for (let i = liste.length - 1; i >= 0; i--) {
           const el = liste[i];
-          if (istBild(el) && x >= el.x && x <= el.x + el.b && y >= el.y && y <= el.y + el.h) return { el, sid: s.id };
+          if (!istBild(el)) continue;
+          const [u, v] = imKasten(el, x, y);
+          if (u >= 0 && u <= el.b && v >= 0 && v <= el.h) return { el, sid: s.id };
         }
       }
       return null;
@@ -2818,8 +3015,8 @@
         for (let i = liste.length - 1; i >= 0; i--) {
           const el = liste[i];
           if (!istText(el)) continue;
-          const g = umriss(el);
-          if (x >= g.x1 && x <= g.x2 && y >= g.y1 && y <= g.y2) return { el, sid: s.id };
+          const k = textKasten(el), r = (el.gr || TEXT_STANDARD) * 0.3, [u, v] = imKasten(el, x, y);
+          if (u >= -r && u <= k.b + r && v >= -r && v <= k.h + r) return { el, sid: s.id };
         }
       }
       return null;
@@ -2870,12 +3067,13 @@
       // Schon umgebrochen: genau so breit wie erlaubt (dann bricht auch das Feld dort um), sonst etwas Platz für den Cursor
       const breite = L.umgebrochen ? (el.b || 600) : L.b + gr * 0.6;
       const farbe = textFarbeVon(el, sid);
-      const stand = [x, y, breite * k, L.h * k, gr * k, farbe].join('|');
+      const stand = [x, y, breite * k, L.h * k, gr * k, farbe, el.dr || 0].join('|');
       if (stand === textFeld.dataset.stand) return;
       textFeld.dataset.stand = stand;
       Object.assign(textFeld.style, {
         left: x + 'px', top: y + 'px', width: breite * k + 'px', height: Math.max(gr * TEXT_ZEILE, L.h) * k + 'px',
-        fontSize: gr * k + 'px', color: farbe, caretColor: farbe
+        fontSize: gr * k + 'px', color: farbe, caretColor: farbe,
+        transformOrigin: '0 0', transform: el.dr ? `rotate(${el.dr}deg)` : ''
       });
     }
     function beendeText() {
@@ -3104,6 +3302,7 @@
         ${striche.length ? `<span class="lw-menue-farben">${farben.map(([f, c, n]) => `<button type="button" data-tf="${f}" title="${n}" aria-label="Farbe ${n}" style="--farbe:${c}"></button>`).join('')}</span>` : ''}
         ${notizen.length ? `<span class="lw-menue-farben">${Object.entries(NOTIZFARBEN).map(([f, c]) => `<button type="button" data-nf="${f}" title="${NOTIZNAMEN[f]}" aria-label="Notiz ${NOTIZNAMEN[f]}" style="--farbe:${c}"></button>`).join('')}</span>` : ''}
         ${bilder.length === 1 && auswahl.size === 1 && window.ClipboardItem && navigator.clipboard && navigator.clipboard.write ? '<button type="button" data-m="kopieren" title="Bild in die Zwischenablage kopieren">Kopieren</button>' : ''}
+        ${auswahlDrehbar() ? `<button type="button" class="lw-menue-symbol" data-m="links" title="Nach links drehen (90°). Stufenlos: den runden Griff unter der Auswahl ziehen oder mit zwei Fingern drehen" aria-label="Auswahl nach links drehen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 4v6h6"/><path d="M3.5 15a9 9 0 102.1-9.4L1 10"/></svg></button><button type="button" class="lw-menue-symbol" data-m="rechts" title="Nach rechts drehen (90°)" aria-label="Auswahl nach rechts drehen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M23 4v6h-6"/><path d="M20.5 15a9 9 0 11-2.1-9.4L23 10"/></svg></button>` : ''}
         <button type="button" data-m="dup">Duplizieren</button>
         <button type="button" data-m="weg" class="gefahr">Löschen</button>`;
     }
@@ -3114,6 +3313,8 @@
       if (k.dataset.nf) { L.setzeNotizFarbe(k.dataset.nf); return; }
       if (k.dataset.tf) { L.faerbeAuswahl(k.dataset.tf); return; }
       if (k.dataset.m === 'weg') loescheAuswahl();
+      else if (k.dataset.m === 'links') dreheAuswahlUm(-90);
+      else if (k.dataset.m === 'rechts') dreheAuswahlUm(90);
       else if (k.dataset.m === 'dup') dupliziereAuswahl();
       else if (k.dataset.m === 'kopieren') kopiereBild([...auswahl.keys()].find(istBild));
       else if (k.dataset.m === 'text') { const [[n, sid]] = [...auswahl]; auswahl.clear(); bearbeiteNotiz(n, sid); }
@@ -3130,7 +3331,8 @@
       const [, y2] = zuSchirm(r.x2, r.y2);
       const mb = menue.offsetWidth, mh = menue.offsetHeight;
       menue.style.left = Math.max(4, Math.min(x, b - mb - 4)) + 'px';
-      menue.style.top = (y - mh - 10 >= 4 ? y - mh - 10 : Math.min(h - mh - 4, y2 + 10)) + 'px';
+      // Unter dem Rahmen sitzt der Dreh-Griff: liegt das Menü unten, dann darunter
+      menue.style.top = (y - mh - 10 >= 4 ? y - mh - 10 : Math.min(h - mh - 4, y2 + 10 + (auswahlDrehbar() ? DREH_ABSTAND + DREH_RADIUS : 0))) + 'px';
     }
     function loescheAuswahl() {
       if (!auswahl.size) return;
@@ -3327,7 +3529,104 @@
       for (const [el, sid] of auswahl) { beruehre(sid); original.set(el, klon(el)); }
       aktion = { art: 'skalieren', id: e.pointerId, anker, start: Math.hypot(griff[0] - anker[0], griff[1] - anker[1]) || 1, original, touch: e.pointerType === 'touch' };
       canvas.setPointerCapture(e.pointerId);
+      plane();
     }
+
+    /* ----- Auswahl drehen ----- */
+    // Am runden Griff unter dem Rahmen ziehen (Stift, Maus, Finger) dreht die Auswahl stufenlos um ihre Mitte; zwei Finger
+    // auf der Auswahl drehen und verschieben sie zugleich; das Menü der Auswahl dreht in Schritten von 90°. Striche und
+    // Formen drehen Punkt für Punkt, Text und Bilder bekommen den Winkel "dr", Haftnotizen bleiben aufrecht.
+    const winkelNorm = w => { while (w > Math.PI) w -= 2 * Math.PI; while (w <= -Math.PI) w += 2 * Math.PI; return w; };
+    // Stand vor dem Drehen, ohne die Bilddaten zu kopieren. Die Punktlisten werden beim Drehen nie verändert, nur ersetzt.
+    function drehOriginale() {
+      const m = new Map();
+      for (const el of auswahl.keys()) m.set(el, istKasten(el) ? { x: el.x, y: el.y, dr: el.dr || 0 } : { p: el.p });
+      return m;
+    }
+    // Alles Ausgewählte um den Winkel w (Bogenmass) um a.mitte drehen und um (vx, vy) verschieben, vom Stand a.original aus
+    function wendeDrehungAn(a, w, vx, vy) {
+      const c = Math.cos(w), si = Math.sin(w), grad = w * 180 / Math.PI;
+      for (const [el, sid] of auswahl) {
+        const s = seiteMitId(sid), o = a.original.get(el);
+        if (!s || !o) continue;
+        const mx = a.mitte[0] - s.x, my = a.mitte[1] - s.y;
+        const dreh = (x, y) => [mx + (x - mx) * c - (y - my) * si + vx, my + (x - mx) * si + (y - my) * c + vy];
+        if (istNotiz(el)) {
+          const g = sicht(el), [nx, ny] = dreh(o.x + g.b / 2, o.y + g.h / 2);
+          el.x = nx - g.b / 2; el.y = ny - g.h / 2;
+        } else if (istKasten(el)) {
+          const [nx, ny] = dreh(o.x, o.y);
+          el.x = nx; el.y = ny;
+          const d = ((o.dr + grad) % 360 + 360) % 360;
+          if (d < 0.05 || d > 359.95) delete el.dr; else el.dr = d;
+        } else el.p = o.p.map(q => { const [nx, ny] = dreh(q[0], q[1]); return punktMit(q, nx, ny); });
+      }
+      a.winkel = w; a.vx = vx; a.vy = vy;
+    }
+    function rahmenMitte(r) { return [(r.x1 + r.x2) / 2, (r.y1 + r.y2) / 2]; }
+    function starteDrehen(e, dx, dy) {
+      const r = auswahlRahmen(), mitte = rahmenMitte(r);
+      beginne();
+      for (const sid of new Set(auswahl.values())) beruehre(sid);
+      aktion = { art: 'drehen', id: e.pointerId, mitte, start: Math.atan2(dy - mitte[1], dx - mitte[0]), original: drehOriginale(), rahmen: r, winkel: 0, vx: 0, vy: 0, touch: e.pointerType === 'touch' };
+      canvas.setPointerCapture(e.pointerId);
+      plane();
+    }
+    // Der Griff folgt dem Zeiger; nahe an 0°, 45°, 90° … rastet er ein
+    function dreheZum(dx, dy) {
+      const a = aktion;
+      let w = winkelNorm(Math.atan2(dy - a.mitte[1], dx - a.mitte[0]) - a.start);
+      const grad = w * 180 / Math.PI;
+      for (const g of DREH_RASTE) if (Math.abs(grad - g) < 3) { w = g * Math.PI / 180; break; }
+      wendeDrehungAn(a, w, 0, 0);
+      anfordern();
+    }
+    // Ein zweiter Finger kam auf die Auswahl, die der erste gerade verschiebt: ab jetzt drehen beide sie (und schieben
+    // sie mit), wie ein Blatt Papier auf dem Tisch. Die ersten Grad zählen nicht, damit reines Verschieben gerade bleibt.
+    const FINGER_DREH_AB = 6 * Math.PI / 180;
+    function starteFingerDrehen(e, sx, sy) {
+      const a = aktion, p1 = touchPos.get(a.id);
+      const [ax, ay] = zuDok(p1[0], p1[1]), [bx, by] = zuDok(sx, sy);
+      canvas.setPointerCapture(e.pointerId);
+      aktion = { art: 'drehen', zwei: true, id: a.id, id2: e.pointerId, touch: true, mitte: [(ax + bx) / 2, (ay + by) / 2], start: Math.atan2(by - ay, bx - ax), original: drehOriginale(), rahmen: auswahlRahmen(), winkel: 0, vx: 0, vy: 0 };
+      if (tippen) tippen.fertig = true;   // weder "zwei Finger tippen" noch "zwei Finger halten"
+      langDruckAus();
+      plane();
+    }
+    function dreheMitFingern() {
+      const a = aktion, p1 = touchPos.get(a.id), p2 = touchPos.get(a.id2);
+      if (!p1 || !p2) return;
+      const [ax, ay] = zuDok(p1[0], p1[1]), [bx, by] = zuDok(p2[0], p2[1]);
+      let w = winkelNorm(Math.atan2(by - ay, bx - ax) - a.start);
+      if (!a.frei) { if (Math.abs(w) < FINGER_DREH_AB) w = 0; else { a.frei = true; a.start = winkelNorm(a.start + w); w = 0; } }
+      wendeDrehungAn(a, w, (ax + bx) / 2 - a.mitte[0], (ay + by) / 2 - a.mitte[1]);
+      anfordern();
+    }
+    // Nach dem Drehen oder Verschieben: Zahlen runden wie in der Datei (Zehntel)
+    function rundeAuswahl(mitStrichenDerNotiz) {
+      for (const [el] of auswahl) {
+        if (istText(el)) { el.x = r1(el.x); el.y = r1(el.y); el.b = r1(el.b); el.gr = r1(el.gr); }
+        else if (istKasten(el)) {
+          el.x = r1(el.x); el.y = r1(el.y); el.b = r1(el.b); el.h = r1(el.h);
+          if (mitStrichenDerNotiz && el.e) el.e = rundeStriche(el.e);
+        } else { el.d = Math.round(el.d * 100) / 100; el.p = el.p.map(q => punktMit(q, r1(q[0]), r1(q[1]))); }
+        if (el.dr != null) { el.dr = r1(el.dr); if (!el.dr) delete el.dr; }
+      }
+    }
+    // Um 90° nach links (-90) oder rechts (90), als ein Schritt im Verlauf
+    function dreheAuswahlUm(grad) {
+      const r = auswahlRahmen();
+      if (!r || !auswahlDrehbar()) return;
+      beginne();
+      for (const sid of new Set(auswahl.values())) beruehre(sid);
+      wendeDrehungAn({ mitte: rahmenMitte(r), original: drehOriginale() }, grad * Math.PI / 180, 0, 0);
+      rundeAuswahl(false);
+      neuZuordnen();
+      if (opt.begrenzt) for (const [el, sid] of auswahl) aufsBlatt(el, seiteMitId(sid));
+      beende();
+      plane();
+    }
+    L.dreheAuswahl = dreheAuswahlUm;
 
     // Punkt auf einer Haftnotiz, in Koordinaten der Notiz und auf ihre Fläche unter der Kopfleiste begrenzt
     function notizPunkt(e, s, n, filter) {
@@ -3440,6 +3739,8 @@
         if (aktion) {
           // Schreibt schon ein Finger, macht ein zweiter daraus eine Geste (verschieben, zoomen)
           if (!aktion.touch || finger.size) return;
+          // Zweiter Finger auf der Auswahl, die der erste gerade verschiebt: drehen
+          if (aktion.art === 'verschieben' && auswahlDrehbar() && inAuswahl(dx, dy, 30) && touchPos.has(aktion.id)) { starteFingerDrehen(e, sx, sy); return; }
           const erster = aktion.id;
           brichAbFuerGeste();
           finger.set(erster, touchPos.get(erster) || [sx, sy]);
@@ -3461,6 +3762,7 @@
             if (auswahl.size) {
               const ecke = griffBei(dx, dy, 26);
               if (ecke >= 0) { starteSkalieren(e, ecke); return; }
+              if (drehGriffBei(dx, dy, 26)) { starteDrehen(e, dx, dy); return; }
               if (inAuswahl(dx, dy)) { starteVerschieben(e, dx, dy); return; }
             }
             // Auf dem Feld "Neue Seite": Tippen legt die Seite an, Wischen verschiebt wie überall (und darüber hinaus
@@ -3485,6 +3787,7 @@
         if (tx) beende();
         aktion = null;
         host.classList.remove('schiebt');
+        plane();
       }
       canvas.setPointerCapture(e.pointerId);
 
@@ -3520,6 +3823,7 @@
       if (auswahl.size && wz !== 'radierer') {
         const ecke = griffBei(dx, dy);
         if (ecke >= 0) { starteSkalieren(e, ecke); return; }
+        if (drehGriffBei(dx, dy, touch ? 26 : 0)) { starteDrehen(e, dx, dy); return; }
         if (inAuswahl(dx, dy)) { starteVerschieben(e, dx, dy); return; }
       }
       // Kopfleiste verschiebt die Notiz, die Ecke unten rechts macht sie grösser
@@ -3649,8 +3953,10 @@
       if (p.length < 3) return;
       // Ein Zickzack ist ein Kritzeln und bleibt, wie es ist
       if (kritzelAktiv() && LHFormen.istKritzel(p.map(q => [q[0] * ansicht.s, q[1] * ansicht.s]))) return;
-      const erg = LHFormen.erkenne(p);
+      let erg = LHFormen.erkenne(p);
       if (!erg) return;
+      // Ein Winkel am Ende einer Linie ist ihre Pfeilspitze (Pfeil in zwei Zügen: erst der Schaft, dann die Spitze)
+      if (erg.art === 'winkel') erg = spitzeAnLinie(a, erg) || erg;
       a.original = vereinfache(klon({ ...a.strich, p }));
       // Gleichmässig dick: mittlerer Druck des gezeichneten Strichs
       const druecke = p.map(q => q[2] == null ? 0.5 : q[2]).sort((x, y) => x - y);
@@ -3659,11 +3965,14 @@
       a.formFertig = true;
       a.form = erg.art;
       // Weiter halten und ziehen passt die Form an (passeFormAn): Linie und Pfeil drehen und strecken sich um ihren Anfang,
-      // geschlossene Formen wachsen oder schrumpfen um ihre Mitte, stufenlos
-      const offen = erg.art === 'linie' || erg.art === 'pfeil';
+      // geschlossene Formen wachsen oder schrumpfen um ihre Mitte und drehen sich mit dem Stift nach links oder rechts,
+      // stufenlos. Die ersten Grad zählen bei ihnen nicht (FORM_DREH_AB), damit ein Rechteck gerade bleibt, wenn man es
+      // nur grösser zieht.
+      const offen = erg.art === 'linie' || erg.art === 'pfeil' || erg.art === 'winkel' || erg.art === 'spitze';
       const fp = a.strich.p;
-      a.formBasis = fp.map(q => q.slice());
-      a.formDreht = offen;
+      // Eine Pfeilspitze sitzt fest an ihrer Linie
+      a.formBasis = erg.art === 'spitze' ? null : fp.map(q => q.slice());
+      a.formOffen = offen;
       a.formAnker = offen ? fp[0].slice(0, 2) : [fp.reduce((t, q) => t + q[0], 0) / fp.length, fp.reduce((t, q) => t + q[1], 0) / fp.length];
       a.formStift = a.roh[a.roh.length - 1].slice(0, 2);
       a.formFrei = false;
@@ -3672,7 +3981,33 @@
       anfordern();
       if (navigator.vibrate) { try { navigator.vibrate(12); } catch (e) { /* ohne Vibration */ } }
     }
+    // Sucht auf derselben Seite (oder Haftnotiz) einen Strich, dessen Ende bei der Ecke des Winkels liegt, und macht den
+    // Winkel dort zur sauberen Pfeilspitze (LHFormen.spitzeAn prüft, ob die Schenkel wie Widerhaken nach hinten zeigen).
+    function spitzeAnLinie(a, erg) {
+      const liste = a.notiz ? (a.notiz.e || []) : inhalt(a.sid).e;
+      const [ex, ey] = erg.ecke;
+      const kopf = (Math.hypot(erg.enden[0][0] - ex, erg.enden[0][1] - ey) + Math.hypot(erg.enden[1][0] - ex, erg.enden[1][1] - ey)) / 2;
+      let beste = null, naechste = Math.max(16 / ansicht.s, 0.4 * kopf);
+      for (const st of liste) {
+        if (istKasten(st) || !st.p || st.p.length < 2) continue;
+        const q = st.p, n = q.length;
+        for (const hinten of [true, false]) {
+          const E = hinten ? q[n - 1] : q[0], d = Math.hypot(E[0] - ex, E[1] - ey);
+          if (d > naechste) continue;
+          // Richtung der Linie an diesem Ende: von einem Punkt ein Stück davor (auch bei einem Bogen stimmt sie so)
+          const schritt = hinten ? -1 : 1;
+          let k = hinten ? n - 2 : 1;
+          while (k + schritt >= 0 && k + schritt < n && Math.hypot(q[k][0] - E[0], q[k][1] - E[1]) < 24) k += schritt;
+          const l = Math.hypot(E[0] - q[k][0], E[1] - q[k][1]);
+          if (l < 12) continue;
+          const sp = LHFormen.spitzeAn(erg, [E[0], E[1]], [(E[0] - q[k][0]) / l, (E[1] - q[k][1]) / l]);
+          if (sp) { beste = sp; naechste = d; }
+        }
+      }
+      return beste;
+    }
     const kritzelAktiv = () => einst.kritzelLoeschen !== false;
+    const FORM_DREH_AB = 7 * Math.PI / 180;
     // Die eingerastete Form folgt dem Stift: so, dass der Punkt unter dem Stift beim Einrasten jetzt unter dem Stift liegt
     // (Abstand zum Anker ergibt die Grösse, bei Linie und Pfeil der Winkel die Richtung). Erst ab HALTE_TOL Bewegung,
     // damit das Zittern beim Einrasten nichts verschiebt.
@@ -3687,8 +4022,9 @@
       const vx = sx - ax, vy = sy - ay, wx = pt[0] - ax, wy = pt[1] - ay, l0 = Math.hypot(vx, vy);
       if (l0 < 1e-3) return false;
       const f = Math.max(0.05, Math.hypot(wx, wy) / l0);
-      let cos = 1, sin = 0;
-      if (a.formDreht) { const w = Math.atan2(wy, wx) - Math.atan2(vy, vx); cos = Math.cos(w); sin = Math.sin(w); }
+      let w = winkelNorm(Math.atan2(wy, wx) - Math.atan2(vy, vx));
+      if (!a.formOffen) w = Math.abs(w) <= FORM_DREH_AB ? 0 : w - Math.sign(w) * FORM_DREH_AB;
+      const cos = Math.cos(w), sin = Math.sin(w);
       a.strich.p = b.map(q => {
         const dx = q[0] - ax, dy = q[1] - ay;
         return [r1(ax + f * (dx * cos - dy * sin)), r1(ay + f * (dx * sin + dy * cos)), q[2]];
@@ -3732,8 +4068,9 @@
       }
       // Der Laserpointer leuchtet nur, solange der Stift aufliegt, die Maus- bzw. Touchpad-Taste gedrückt ist oder der
       // Finger auf der Fläche ist (aktion 'laser'); beim Schweben zeigt nur der Mauszeiger, wo er aufleuchten würde
-      if (!aktion || e.pointerId !== aktion.id) return;
+      if (!aktion || (e.pointerId !== aktion.id && e.pointerId !== aktion.id2)) return;
       if (e.pointerType === 'pen') { penZeit = performance.now(); if (diag) tastenTest(e); }
+      if (aktion.art === 'drehen' && aktion.zwei) { dreheMitFingern(); return; }
 
       if (aktion.art === 'schieben') {
         ansicht.x += sx - aktion.x; schiebeY(sy - aktion.y);
@@ -3780,7 +4117,9 @@
           for (const [el] of auswahl) {
             if (istKasten(el)) { el.x += ddx; el.y += ddy; } else for (const q of el.p) { q[0] += ddx; q[1] += ddy; }
           }
-          plane();
+          if (aktion.art === 'notiz') plane(); else anfordern();
+        } else if (aktion.art === 'drehen') {
+          dreheZum(dx, dy);
         } else if (aktion.art === 'skalieren') {
           const { anker, start, original } = aktion;
           const f = Math.max(0.05, Math.min(40, Math.hypot(dx - anker[0], dy - anker[1]) / start));
@@ -3808,7 +4147,7 @@
               el.p = o.p.map(q => punktMit(q, ax + (q[0] - ax) * f, ay + (q[1] - ay) * f));
             }
           }
-          plane();
+          anfordern();
         } else if (aktion.art === 'notizGroesse') {
           const a = aktion, n = a.n, s = seiteMitId(a.sid);
           let nb = Math.max(a.minB, a.b + dx - a.x), nh = Math.max(a.minH, a.h + dy - a.y);
@@ -3890,7 +4229,7 @@
         if (keinerMehr) zugEnde();
         return;
       }
-      if (!aktion || e.pointerId !== aktion.id) return;
+      if (!aktion || (e.pointerId !== aktion.id && e.pointerId !== aktion.id2)) return;
       const a = aktion;
       aktion = null;
       host.classList.remove('schiebt');
@@ -4115,14 +4454,8 @@
         const [[el, sid]] = [...auswahl];
         bearbeiteText(el, sid);
         return;
-      } else if (a.art === 'verschieben' || a.art === 'skalieren') {
-        for (const [el] of auswahl) {
-          if (istText(el)) { el.x = r1(el.x); el.y = r1(el.y); el.b = r1(el.b); el.gr = r1(el.gr); }
-          else if (istKasten(el)) {
-            el.x = r1(el.x); el.y = r1(el.y); el.b = r1(el.b); el.h = r1(el.h);
-            if (a.art === 'skalieren' && el.e) el.e = rundeStriche(el.e);
-          } else { el.d = Math.round(el.d * 100) / 100; el.p = el.p.map(q => punktMit(q, r1(q[0]), r1(q[1]))); }
-        }
+      } else if (a.art === 'verschieben' || a.art === 'skalieren' || a.art === 'drehen') {
+        rundeAuswahl(a.art === 'skalieren');
         neuZuordnen();
         if (opt.begrenzt) for (const [el, sid] of auswahl) aufsBlatt(el, seiteMitId(sid));
         beende();
@@ -4352,6 +4685,7 @@
   Leinwand.seitenFormat = seitenFormat;
   Leinwand.pdfAnsicht = pdfAnsicht;
   Leinwand.textLayout = textLayout;
+  Leinwand.kastenPunkt = kastenPunkt;
   Leinwand.TEXT_SCHRIFT = TEXT_SCHRIFT;
   Leinwand.MM = MM;
   Leinwand.einheit = einheit;

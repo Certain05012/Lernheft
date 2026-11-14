@@ -27,6 +27,33 @@ Daten.bereit.then(function () {
   const SYMBOL_UNDO = '<svg class="menue-symbol" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg>';
   const SYMBOL_REDO = '<svg class="menue-symbol" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg>';
 
+  // Symbole für das Menü ⋯ (Linien wie in der Werkzeugleiste)
+  const SYMBOLE = {
+    seitePlus: '<path d="M6 3h9l4 4v14H6z"/><path d="M12.5 10.5v6M9.5 13.5h6"/>',
+    weg: '<path d="M4 7h16M9.5 7V4h5v3M6.5 7l1 13h9l1-13"/>',
+    bild: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4.5 3.5"/>',
+    ablage: '<rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 5V3.5h6V5M9 11h6M9 15h4"/>',
+    pdf: '<path d="M6 3h9l4 4v14H6z"/><path d="M12.5 10v6M10 13.8l2.5 2.4 2.5-2.4"/>',
+    brett: '<rect x="3" y="4.5" width="18" height="12" rx="1.5"/><path d="M8 20.5l4-4 4 4"/>',
+    seiten: '<path d="M8 3h8l3 3v12H8z"/><path d="M5 7v14h10"/>',
+    fenster: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3.5 9h17"/>',
+    daneben: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M12 5v14"/>',
+    zu: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
+    regler: '<path d="M4 7h9M19 7h1M4 12h2M12 12h8M4 17h11"/><circle cx="16" cy="7" r="2.2"/><circle cx="9" cy="12" r="2.2"/><circle cx="18" cy="17" r="2.2"/>',
+    gesten: '<path d="M9 11V5.5a1.5 1.5 0 013 0V11"/><path d="M12 10a1.5 1.5 0 013 0v1.5"/><path d="M15 11a1.5 1.5 0 013 0v3.5c0 3.4-2.3 6-5.6 6h-.6c-1.9 0-3.2-.9-4.3-2.4L5.4 15a1.5 1.5 0 012.4-1.8L9 14.6"/>',
+    zahnrad: '<circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.6M12 18.4V21M3 12h2.6M18.4 12H21M5.6 5.6l1.9 1.9M16.5 16.5l1.9 1.9M18.4 5.6l-1.9 1.9M7.5 16.5l-1.9 1.9"/>',
+    reset: '<path d="M1 4v6h6"/><path d="M3.5 15a9 9 0 102.1-9.4L1 10"/>',
+    uhr: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+    ordner: '<path d="M3.5 7a2 2 0 012-2h4l2 2.5h7a2 2 0 012 2V17a2 2 0 01-2 2h-13a2 2 0 01-2-2z"/>',
+    lesezeichen: '<path d="M7 3.5h10V21l-5-4-5 4z"/>',
+    liste: '<path d="M8 7h12M8 12h12M8 17h12M4 7h.5M4 12h.5M4 17h.5"/>',
+    zurueck: '<path d="M10 6l-6 6 6 6M4 12h16"/>',
+    tauschen: '<path d="M4 8h14l-3-3M20 16H6l3 3"/>',
+    links: '<rect x="9.5" y="9" width="10" height="12" rx="1.6"/><path d="M15 4.5H9.5a5 5 0 00-5 5V12"/><path d="M2 9.6l2.5 2.6 2.6-2.6"/>',
+    rechts: '<rect x="4.5" y="9" width="10" height="12" rx="1.6"/><path d="M9 4.5h5.5a5 5 0 015 5V12"/><path d="M16.9 9.6l2.6 2.6 2.5-2.6"/>'
+  };
+  const sym = name => `<svg class="menue-symbol" viewBox="0 0 24 24" aria-hidden="true">${SYMBOLE[name] || ''}</svg>`;
+
   // Menü an einer Stelle (Bildschirm-Koordinaten), z. B. wo zwei Finger lagen
   function menueBei(x, y, html, aktion) {
     const anker = document.createElement('div');
@@ -37,10 +64,10 @@ Daten.bereit.then(function () {
     return el;
   }
 
-  function menue(knopf, html, aktion) {
+  function menue(knopf, html, aktion, klasse) {
     document.querySelectorAll('.kontext').forEach(k => k.remove());
     const el = document.createElement('div');
-    el.className = 'kontext';
+    el.className = 'kontext' + (klasse ? ' ' + klasse : '');
     el.setAttribute('role', 'menu');
     el.innerHTML = html;
     document.body.appendChild(el);
@@ -477,63 +504,63 @@ Daten.bereit.then(function () {
       });
     }
 
+    // ⋯ in der Werkzeugleiste: alles, was nicht zum Schreiben gehört, an einem Ort. Ein breites Feld mit Gruppen in
+    // Spalten (statt einer Liste, die länger war als der Bildschirm): Aktionen mit Symbol, Auswahlen (Papier,
+    // Seitenfarbe, Darstellung, Raster) als Reihe von Plättchen, das Gewählte ist hervorgehoben.
     function mehrMenue(knopf) {
       if (!lw) return;
-      const pos = lw.aktuelleSeite();
+      const pos = lw.aktuelleSeite(), n = pos + 1, brett = istBrett(it);
+      const s = sym, akt = (daten, symbol, text, extra) => `<button type="button" ${daten}${extra || ''}>${s(symbol)}<span>${text}</span></button>`;
+      const wahl = (attr, werte, jetzt) => `<div class="mehr-wahl" role="group">${werte.map(([w, name]) => `<button type="button" role="menuitemradio" aria-checked="${jetzt === w}" data-${attr}="${w}">${esc(name)}</button>`).join('')}</div>`;
+      const teil = (titel, inhalt) => `<section class="mehr-teil"><div class="kontext-titel">${titel}</div>${inhalt}</section>`;
+      const drehen = `<div class="mehr-reihe"><span>Drehen</span>${akt('data-dreh="-90"', 'links', 'Links', ` title="Seite ${n} nach links drehen (90°)"`)}${akt('data-dreh="90"', 'rechts', 'Rechts', ` title="Seite ${n} nach rechts drehen (90°)"`)}</div>`;
       const teile = [];
-      if (istBrett(it)) {
-        teile.push(`<div class="kontext-titel">Raster</div>
-          ${Object.entries(RASTER).map(([r, n]) => `<button type="button" role="menuitemradio" aria-checked="${(it.raster || 'punkte') === r}" data-raster="${r}">${n}</button>`).join('')}`);
+      if (brett) {
+        teile.push(teil('Raster', wahl('raster', Object.entries(RASTER), it.raster || 'punkte')));
       } else if (it.art === 'notizbuch') {
-        teile.push(`<div class="kontext-titel">Seiten</div>
-          <button type="button" data-a="danach">Neue Seite nach Seite ${pos + 1}</button>
-          <button type="button" data-a="davor">Neue Seite vor Seite ${pos + 1}</button>
-          <button type="button" data-a="ende">Neue Seite am Ende</button>
-          <button type="button" data-a="loeschen" class="gefahr">Seite ${pos + 1} löschen</button>
-          <div class="kontext-titel">Papier</div>
-          ${Object.entries(Bibliothek.PAPIERE).map(([p, n]) => `<button type="button" role="menuitemradio" aria-checked="${it.papier === p}" data-papier="${p}">${n}</button>`).join('')}`);
+        teile.push(teil(`Seiten · Seite ${n}`,
+          akt('data-a="danach"', 'seitePlus', 'Neue Seite danach') +
+          akt('data-a="davor"', 'seitePlus', 'Neue Seite davor') +
+          akt('data-a="ende"', 'seitePlus', 'Neue Seite am Ende') +
+          drehen +
+          akt('data-a="loeschen"', 'weg', `Seite ${n} löschen`, ' class="gefahr"')));
+        teile.push(teil('Papier', wahl('papier', Object.entries(Bibliothek.PAPIERE), it.papier)));
       } else {
-        const lz = sl && sl.istLesezeichen(pos + 1);
-        teile.push(`<div class="kontext-titel">Lesezeichen</div>
-          <button type="button" data-a="lesezeichen">${lz ? `Lesezeichen von Seite ${pos + 1} entfernen` : `Lesezeichen auf Seite ${pos + 1} setzen`}</button>
-          <button type="button" data-a="alle-lesezeichen">Alle Lesezeichen zeigen</button>
-          ${sl && sl.herkunft() ? `<button type="button" data-a="zurueck">Zurück zu Seite ${sl.herkunft()}</button>` : ''}`);
-        teile.push(`<div class="kontext-titel">Darstellung</div>
-          ${[['original', 'Original'], ['hell', 'Weiss'], ['dunkelgrau', 'Dunkelgrau'], ['dunkel', 'Dunkelblau']].map(([m, n]) => `<button type="button" role="menuitemradio" aria-checked="${(it.modus || 'original') === m}" data-modus="${m}">${n}</button>`).join('')}`);
+        const lz = sl && sl.istLesezeichen(n);
+        teile.push(teil(`Seite ${n}`,
+          akt('data-a="lesezeichen"', 'lesezeichen', lz ? 'Lesezeichen entfernen' : 'Lesezeichen setzen') +
+          akt('data-a="alle-lesezeichen"', 'liste', 'Alle Lesezeichen zeigen') +
+          (sl && sl.herkunft() ? akt('data-a="zurueck"', 'zurueck', `Zurück zu Seite ${sl.herkunft()}`) : '') +
+          drehen));
+        teile.push(teil('Darstellung', wahl('modus', [['original', 'Original'], ['hell', 'Weiss'], ['dunkelgrau', 'Dunkelgrau'], ['dunkel', 'Dunkelblau']], it.modus || 'original')));
       }
-      // Bild einfügen (auch: Finger lange auf die Fläche halten, Rechtsklick, Strg+V, Datei auf die Fläche ziehen)
-      teile.push(`<div class="kontext-titel">Einfügen</div>
-        <button type="button" data-bild="datei">${window.matchMedia && !matchMedia('(any-hover: hover)').matches ? 'Bild aus Fotos oder Dateien …' : 'Bild vom Computer …'}</button>
-        <button type="button" data-bild="ablage">Bild aus der Zwischenablage</button>`);
       // Seitenfarbe für Notizbuch und Whiteboard
-      if (it.art === 'notizbuch') {
-        teile.push(`<div class="kontext-titel">Seitenfarbe</div>
-          ${Object.entries(Bibliothek.SEITENFARBEN).map(([f, n]) => `<button type="button" role="menuitemradio" aria-checked="${(it.seitenfarbe || 'auto') === f}" data-sfarbe="${f}">${n}</button>`).join('')}`);
-      }
-      const mehrere = !istBrett(it) && lw.seiten().length > 1;
-      teile.push(`<div class="kontext-titel">Exportieren</div>
-        ${it.art === 'skript'
-          ? '<button type="button" data-x="notizen-blatt" title="Nur was auf den Seiten des Skripts geschrieben ist">PDF mit Notizen auf dem Skript</button><button type="button" data-x="notizen" title="Auch was neben den Seiten steht: die Seiten werden dafür grösser">PDF mit allen Notizen (auch daneben)</button><button type="button" data-x="original">Original-PDF</button>'
-          : '<button type="button" data-x="hell">PDF (weiss, zum Drucken)</button><button type="button" data-x="dunkel">PDF (dunkelblau)</button>'}
-        ${istBrett(it) ? '<button type="button" data-png="brett">PNG (alles auf dem Whiteboard)</button>'
-          : `<button type="button" data-png="seite">PNG von Seite ${pos + 1}</button>${mehrere ? '<button type="button" data-png="alle">PNG aller Seiten</button>' : ''}`}
-        <div class="kontext-titel">Umwandeln</div>
-        ${istBrett(it) ? '<button type="button" data-u="seiten">Als Seiten-Dokument kopieren …</button>'
-          : '<button type="button" data-u="brett">Als Whiteboard kopieren …</button>'}
-        ${window.lernheftDesktop && window.lernheftDesktop.oeffneOrdner ? '<button type="button" data-a="ordner">Ordner im Explorer öffnen</button>' : ''}
-        ${Zeit.sichtbar() ? '<button type="button" data-a="zeit">Lernzeit ansehen</button>' : ''}`);
-      if (!istBrett(it)) {
-        teile.push(`<div class="kontext-titel">Seite ${pos + 1} drehen</div>
-          <button type="button" data-dreh="-90">${SYMBOL_LINKS} Nach links drehen</button>
-          <button type="button" data-dreh="90">${SYMBOL_RECHTS} Nach rechts drehen</button>`);
-      }
-      teile.push(`<div class="kontext-titel">Werkzeugleiste</div>
-        <button type="button" data-a="anpassen">Werkzeugleiste anpassen …</button>
-        <button type="button" data-a="gesten">Gesten einstellen …</button>
-        <button type="button" data-a="einst">Alle Einstellungen …</button>
-        <button type="button" data-a="leistereset" title="Die Symbole lassen sich in der Leiste mit gedrückter Maus, Stift oder Finger ziehen und umsortieren">Reihenfolge der Symbole zurücksetzen</button>`);
-      teile.push(fensterHtml(id));
-      menue(knopf, teile.join(''), d => {
+      if (it.art === 'notizbuch') teile.push(teil('Seitenfarbe', wahl('sfarbe', Object.entries(Bibliothek.SEITENFARBEN), it.seitenfarbe || 'auto')));
+      // Bild einfügen (auch: Finger lange auf die Fläche halten, Rechtsklick, Strg+V, Datei auf die Fläche ziehen)
+      teile.push(teil('Einfügen',
+        akt('data-bild="datei"', 'bild', window.matchMedia && !matchMedia('(any-hover: hover)').matches ? 'Foto oder Bilddatei …' : 'Bild vom Computer …') +
+        akt('data-bild="ablage"', 'ablage', 'Aus der Zwischenablage')));
+      const mehrere = !brett && lw.seiten().length > 1;
+      teile.push(teil('Exportieren',
+        (it.art === 'skript'
+          ? akt('data-x="notizen-blatt"', 'pdf', 'PDF mit Notizen auf dem Skript', ' title="Nur was auf den Seiten des Skripts geschrieben ist"') +
+            akt('data-x="notizen"', 'pdf', 'PDF mit allen Notizen (auch daneben)', ' title="Auch was neben den Seiten steht: die Seiten werden dafür grösser"') +
+            akt('data-x="original"', 'pdf', 'Original-PDF')
+          : akt('data-x="hell"', 'pdf', 'PDF weiss (zum Drucken)') + akt('data-x="dunkel"', 'pdf', 'PDF dunkelblau')) +
+        (brett ? akt('data-png="brett"', 'bild', 'PNG vom ganzen Whiteboard')
+          : akt('data-png="seite"', 'bild', `PNG von Seite ${n}`) + (mehrere ? akt('data-png="alle"', 'bild', 'PNG aller Seiten') : '')) +
+        (brett ? akt('data-u="seiten"', 'seiten', 'Als Seiten kopieren …') : akt('data-u="brett"', 'brett', 'Als Whiteboard kopieren'))));
+      teile.push(teil('Einstellen',
+        akt('data-a="anpassen"', 'regler', 'Leiste anpassen …') +
+        akt('data-a="gesten"', 'gesten', 'Gesten einstellen …') +
+        akt('data-a="einst"', 'zahnrad', 'Alle Einstellungen …') +
+        akt('data-a="leistereset"', 'reset', 'Symbole zurücksetzen', ' title="Reihenfolge der Symbole in der Leiste zurücksetzen. "Die Symbole lassen sich in der Leiste mit gedrückter Maus, Stift oder Finger ziehen und umsortieren"') +
+        (Zeit.sichtbar() ? akt('data-a="zeit"', 'uhr', 'Lernzeit ansehen') : '') +
+        (window.lernheftDesktop && window.lernheftDesktop.oeffneOrdner ? akt('data-a="ordner"', 'ordner', 'Ordner öffnen') : '')));
+      fensterTeile(id).forEach(([titel, inhalt, zu]) => teile.push(zu
+        ? `<details class="mehr-teil mehr-zu"><summary class="kontext-titel">${titel}</summary>${inhalt}</details>`
+        : teil(titel, inhalt)));
+      menue(knopf, `<div class="mehr-spalten">${teile.join('')}</div>`, d => {
         if (d.dreh) dreheSeite(Number(d.dreh));
         else if (d.a === 'anpassen' && leiste.anpassen) leiste.anpassen();
         else if (d.a === 'gesten' && leiste.oeffneGesten) leiste.oeffneGesten();
@@ -563,7 +590,7 @@ Daten.bereit.then(function () {
         else if (d.a === 'ordner') window.lernheftDesktop.oeffneOrdner(id);
         else if (d.a === 'zeit') Bibliothek.zeigeStatistik(id);
         else fensterAktion(d, id);
-      });
+      }, 'mehr');
     }
 
     // Wer hier tippt oder schreibt, arbeitet in diesem Bereich
@@ -909,28 +936,21 @@ Daten.bereit.then(function () {
   /* ---------- Menüs ---------- */
 
   // Fenster-Teil des ⋯-Menüs: andocken, eigenes Fenster, schliessen
-  function fensterHtml(id) {
+  // Gruppen für das Menü ⋯: [Titel, Inhalt, zugeklappt?]
+  function fensterTeile(id) {
+    const akt = (daten, symbol, text, klasse) => `<button type="button" ${daten}${klasse ? ` class="${klasse}"` : ''}>${sym(symbol)}<span>${text}</span></button>`;
     if (eigenesFenster) {
-      return `<div class="kontext-titel">Fenster</div>
-        <button type="button" data-a="andocken">Wieder andocken (als Tab)</button>
-        <button type="button" data-a="andocken-rechts">Im Hauptfenster daneben andocken</button>
-        <button type="button" data-a="schliessen" class="gefahr">Fenster schliessen</button>`;
+      return [['Fenster', akt('data-a="andocken"', 'fenster', 'Wieder andocken (als Tab)') + akt('data-a="andocken-rechts"', 'daneben', 'Im Hauptfenster daneben andocken') + akt('data-a="schliessen"', 'zu', 'Fenster schliessen', 'gefahr')]];
     }
     const andere = tabs.filter(t => t !== links && t !== rechts);
-    return (rechts
-      ? `<div class="kontext-titel">Nebeneinander</div>
-         <button type="button" data-a="loesen">Nicht mehr nebeneinander</button>
-         <button type="button" data-a="tauschen">Seiten tauschen</button>`
-      : `<div class="kontext-titel">Daneben andocken</div>
-         ${andere.map(t => `<button type="button" data-daneben="${esc(t)}">${esc(name(t))}</button>`).join('')}
-         <button type="button" data-a="waehlen">Anderes Dokument …</button>`) +
-      `<div class="kontext-titel">Fenster</div>
-       <button type="button" data-a="fenster">In neuem Fenster öffnen</button>
-       <button type="button" data-a="schliessen" class="gefahr">Schliessen</button>` + splitMenue();
-  }
-  // Entwickler: Variante der Trennlinie wählen und die Debug-Anzeige (FPS, Layout-Zeit) ein- und ausschalten
-  function splitMenue() {
-    return `<div class="kontext-titel">Trennlinie (Entwickler)</div>${Object.entries(SPLIT_VARIANTEN).map(([k, v]) => `<button type="button" role="menuitemradio" aria-checked="${splitWahl() === k}" data-splitv="${k}" title="${esc(v.info)}">${esc(v.name)}</button>`).join('')}<button type="button" role="menuitemcheckbox" aria-checked="${splitDebugAn()}" data-a="splitdebug">FPS und Layout-Zeit anzeigen</button>`;
+    const teile = [];
+    teile.push(rechts
+      ? ['Nebeneinander', akt('data-a="loesen"', 'fenster', 'Nicht mehr nebeneinander') + akt('data-a="tauschen"', 'tauschen', 'Seiten tauschen')]
+      : ['Daneben andocken', andere.map(t => akt(`data-daneben="${esc(t)}"`, 'daneben', esc(name(t)))).join('') + akt('data-a="waehlen"', 'daneben', 'Anderes Dokument …')]);
+    teile.push(['Fenster', akt('data-a="fenster"', 'fenster', 'In neuem Fenster öffnen') + akt('data-a="schliessen"', 'zu', 'Schliessen', 'gefahr')]);
+    // Entwickler: Variante der Trennlinie wählen und die Debug-Anzeige (FPS, Layout-Zeit) ein- und ausschalten
+    teile.push(['Trennlinie (Entwickler)', `<div class="mehr-wahl">${Object.entries(SPLIT_VARIANTEN).map(([k, v]) => `<button type="button" role="menuitemradio" aria-checked="${splitWahl() === k}" data-splitv="${k}" title="${esc(v.info)}">${esc(v.name)}</button>`).join('')}<button type="button" role="menuitemcheckbox" aria-checked="${splitDebugAn()}" data-a="splitdebug">FPS und Layout-Zeit anzeigen</button></div>`, true]);
+    return teile;
   }
   async function fensterAktion(d, id) {
     if (d.splitv) setzeSplitVariante(d.splitv);

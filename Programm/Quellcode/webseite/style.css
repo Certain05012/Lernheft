@@ -734,12 +734,12 @@ img.dunkelblau { filter: invert(1) hue-rotate(180deg); mix-blend-mode: screen; }
 .dok-leiste .dicke-regler::-webkit-slider-runnable-track { height: 8px; }
 
 /* Zwei Zeilen: oben die Werkzeuge, darunter (mit Trennlinie) Farben und Grössen */
-.dok-leiste:not(.leiste-zu) > :not([data-eig]):not(.eig-knopf) { order: 1; }
+.dok-leiste:not(.leiste-zu) > :not(.eig-zeile):not(.eig-knopf) { order: 1; }
 .dok-leiste:not(.leiste-zu) > .wb-zoom { order: 2; }
 .dok-leiste:not(.leiste-zu) > .leiste-ende { order: 3; }
 .dok-leiste:not(.leiste-zu)::before { content: ""; order: 4; flex: 0 0 100%; height: 1px; margin: 0 -14px; background: var(--linie); opacity: .6; }
-.dok-leiste:not(.leiste-zu) > [data-eig] { order: 5; }
-.dok-leiste:not(.leiste-zu) > .gruppe[data-eig] { border-right: none; }
+.dok-leiste:not(.leiste-zu) > .eig-zeile { order: 5; }
+.dok-leiste .eig-zeile > .gruppe { border-right: none; }
 .dok-leiste:not(.leiste-zu) > .groesse-gruppe { margin-left: auto; }
 .wz[data-el="leiste-zu"] .zu, .wz[data-el="leiste-zu"][aria-pressed="true"] .auf { display: none; }
 .wz[data-el="leiste-zu"][aria-pressed="true"] .zu { display: inline; }
@@ -1394,3 +1394,90 @@ label.einst-zeile { cursor: pointer; }
 .sl-zurueck-geh { padding: 11px 12px 11px 18px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .sl-zurueck-zu { padding: 0 14px 0 10px; border-left: 1px solid color-mix(in srgb, var(--blatt) 35%, transparent) !important; opacity: .85; }
 .sl-zurueck button:hover, .sl-zurueck button:focus-visible { background: color-mix(in srgb, var(--blatt) 16%, transparent); outline: none; }
+
+/* ================= 3.13: untere Zeile der Leiste, Stiftarten, Drehen, Laser, Menü ⋯ ================= */
+/* Farben und Grössen des gewählten Werkzeugs stehen zusammen in einer eigenen Zeile unter den Werkzeugen */
+.eig-zeile { flex: 0 0 100%; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; column-gap: 10px; row-gap: 8px; }
+/* Vollbild: Die schwebende Leiste ist so breit wie ihre obere Zeile (die Werkzeuge) und nicht breiter. Die untere Zeile
+   zählt für die Breite nicht mit (width 0), füllt sie dann aber ganz (min-width 100 %) und richtet sich darin ein:
+   Farben und Regler schrumpfen, die Grössen zeigen nur Punkt und Wert, notfalls bricht sie um. Vorher zog sie die
+   Leiste auf die volle Bildschirmbreite, sobald Stift oder Marker gewählt war. */
+.vollbild .dok-leiste .eig-zeile { flex: 0 0 auto; width: 0; min-width: 100%; column-gap: 6px; row-gap: 4px; }
+.vollbild .dok-leiste:not(.eig-offen) .eig-zeile { display: none; }
+/* Die Zeile bricht von selbst um (sie ist so breit wie die Leiste); der Trenner davor hätte mit seinem negativen Rand
+   die Leiste schmaler gemacht als ihre obere Zeile */
+.vollbild .dok-leiste-slot .dok-leiste::before { display: none !important; }
+.vollbild .dok-leiste .eig-zeile .dicke-wert { display: none; }
+.vollbild .dok-leiste .eig-zeile .preset-name { display: none; }
+.vollbild .dok-leiste .eig-zeile .preset { grid-template-columns: 20px auto; grid-template-rows: 1fr; column-gap: 4px; padding: 0 7px 0 3px; }
+.vollbild .dok-leiste .eig-zeile .preset-punkt { grid-row: 1; }
+.vollbild .dok-leiste .eig-zeile .preset-wert { align-self: center; font-size: 12px; color: inherit; }
+.vollbild .dok-leiste .eig-zeile .groesse-gruppe { flex-wrap: nowrap; padding-right: 0; }
+.vollbild .dok-leiste .eig-zeile .presets { flex: 0 1 auto; }
+.vollbild .dok-leiste .eig-zeile .preset { flex: 0 1 auto; }
+.vollbild .dok-leiste .eig-zeile .dicke-regler { flex: 1 1 84px; min-width: 64px; max-width: 130px; }
+/* Die Farben nehmen, was übrig bleibt (mindestens 30 px je Farbe, --n setzt werkzeuge.js), sonst brächen sie zu früh um */
+.vollbild .dok-leiste .eig-zeile .farbreihe { flex: 1 1 0; min-width: min(100%, calc(var(--n, 7) * 30px)); }
+.vollbild .dok-leiste .eig-zeile .gruppe { padding-right: 0; }
+
+/* Stiftart: eine Strichprobe zeigt, wie die Linie aussieht, darunter der Name */
+.wz.stiftart { width: auto; min-width: 58px; padding: 2px 7px 3px; display: grid; grid-template-rows: 1fr auto; justify-items: center; align-items: center; row-gap: 0; }
+.dok-leiste .wz.stiftart { width: auto; }
+.wz svg.probe, .dok-leiste .wz svg.probe, .lw-palette .wz svg.probe { width: 42px; height: 19px; fill: currentColor; stroke: none; }
+.wz svg.probe .linie { fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.stiftart-name { font-size: 11px; font-weight: 700; line-height: 1.15; letter-spacing: .01em; }
+.vollbild .dok-leiste .wz.stiftart { width: auto; min-width: 50px; flex-basis: auto; padding: 1px 5px 2px; }
+.vollbild .dok-leiste .wz svg.probe { width: 38px; height: 17px; }
+.vollbild .dok-leiste .stiftart-name { font-size: 10.5px; }
+.lw-palette .pal-arten .wz svg.probe { width: 34px; height: 16px; flex: none; }
+
+/* Laserpunkt: ein eigenes Element, das nur verschoben wird (leinwand.js) */
+.lw-laser { position: absolute; z-index: 2; border-radius: 50%; pointer-events: none; opacity: 0; will-change: transform, opacity; contain: strict; }
+.lw-laser[hidden] { display: none; }
+
+/* Menü der Auswahl: Knöpfe zum Drehen */
+.lw-menue .lw-menue-symbol { display: grid; place-items: center; padding: 6px 8px; }
+.lw-menue-symbol svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Menü ⋯ im Dokument: ein Feld mit Gruppen in Spalten statt einer Liste, die länger ist als der Bildschirm.
+   Aussen wird (falls nötig) gescrollt, innen verteilen sich die Gruppen gleichmässig auf die Spalten. */
+/* Safari: 100vh reicht unter die Leisten des Browsers, 100dvh ist die wirklich sichtbare Höhe */
+.kontext { max-height: calc(100dvh - 16px); }
+.dialog { max-height: calc(100dvh - 32px); }
+.menue-liste { max-height: calc(100dvh - 90px); }
+.kontext.mehr { display: block; width: min(800px, calc(100vw - 16px)); padding: 12px 12px 8px; border-radius: 16px; -webkit-overflow-scrolling: touch; }
+.mehr-spalten { columns: 3 210px; column-gap: 18px; column-rule: 1px solid var(--linie); }
+.mehr-teil { display: block; break-inside: avoid; -webkit-column-break-inside: avoid; page-break-inside: avoid; margin: 0 0 10px; min-width: 0; }
+.mehr-teil > .kontext-titel { padding: 2px 8px 5px; }
+.mehr-teil button {
+  display: flex; align-items: center; gap: 9px; width: 100%; min-width: 0; padding: 8px; border: 1px solid transparent; border-radius: 9px; background: none;
+  color: var(--tinte); font: inherit; font-size: 14px; line-height: 1.25; text-align: left; cursor: pointer;
+}
+.mehr-teil button > span { min-width: 0; overflow-wrap: anywhere; }
+.mehr-teil button:hover, .mehr-teil button:focus-visible { background: var(--fueller-hell); outline: none; }
+.mehr-teil button.gefahr { color: var(--rotstift); }
+.mehr-teil button.gefahr:hover, .mehr-teil button.gefahr:focus-visible { background: var(--rot-hell); }
+.kontext.mehr .menue-symbol { flex: none; width: 19px; height: 19px; margin: 0; vertical-align: 0; color: var(--grau); }
+.mehr-teil button:hover .menue-symbol, .mehr-teil button.gefahr .menue-symbol { color: inherit; }
+/* Eine Zeile mit zwei kleinen Knöpfen (Seite drehen: links, rechts) */
+.mehr-reihe { display: flex; align-items: center; gap: 6px; padding: 3px 0 3px 8px; }
+.mehr-reihe > span { flex: 1 1 auto; min-width: 0; font-size: 14px; }
+.mehr-reihe button { flex: none; width: auto; gap: 6px; padding: 6px 10px 6px 8px; border-color: var(--linie); font-size: 13.5px; white-space: nowrap; }
+/* Auswahl: Plättchen, das Gewählte hervorgehoben */
+.mehr-wahl { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 6px 4px; }
+.mehr-wahl button { width: auto; padding: 6px 12px; border-color: var(--linie); border-radius: 999px; font-size: 13.5px; }
+.mehr-wahl button[aria-checked="true"] { border-color: var(--fueller); background: var(--fueller-hell); color: var(--fueller); font-weight: 700; }
+.mehr-wahl button[aria-checked="true"]::before { content: "✓"; margin-right: -3px; font-size: 12px; }
+/* Selten gebraucht: zugeklappt */
+.mehr-zu > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 6px; border-radius: 8px; }
+.mehr-zu > summary::-webkit-details-marker { display: none; }
+.mehr-zu > summary::after { content: "›"; font-size: 15px; line-height: 1; transition: transform .12s ease; }
+.mehr-zu[open] > summary::after { transform: rotate(90deg); }
+.mehr-zu > summary:hover { color: var(--tinte); }
+@media (pointer: coarse) {
+  .mehr-teil button { padding: 11px 9px; font-size: 15px; }
+  .mehr-reihe > span { font-size: 15px; }
+  .mehr-reihe button { padding: 9px 11px 9px 9px; font-size: 14px; }
+  .mehr-wahl button { padding: 9px 14px; font-size: 14.5px; }
+}
+@media (max-width: 520px) { .mehr-spalten { columns: 1; } }

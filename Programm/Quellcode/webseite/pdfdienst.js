@@ -146,8 +146,9 @@
     for (const e of liste) {
       const bild = Leinwand.istBild(e) && bilder && bilder.get(e.src);
       if (!bild) continue;
-      // Ecke unten links und die Richtung der Bildkante auf der Seite (berücksichtigt gedrehte PDF-Seiten)
-      const p0 = punkt(e.x, e.y + e.h), p1 = punkt(e.x + 10, e.y + e.h);
+      // Ecke unten links und die Richtung der Bildkante auf der Seite (berücksichtigt gedrehte PDF-Seiten und ein
+      // gedrehtes Bild: kastenPunkt rechnet Punkte im Bild in Punkte der Seite um)
+      const p0 = punkt(...Leinwand.kastenPunkt(e, 0, e.h)), p1 = punkt(...Leinwand.kastenPunkt(e, 10, e.h));
       const winkel = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]) * 180 / Math.PI;
       page.drawImage(bild, { x: p0[0], y: p0[1], width: e.b * massstab, height: e.h * massstab, rotate: lib.degrees(winkel) });
     }
@@ -157,12 +158,12 @@
         // Zeilen genau wie auf dem Bildschirm umgebrochen (Leinwand.textLayout), in der Schrift des PDFs
         const gr = e.gr || 24, zh = gr * 1.3;
         const farbe = hexZuRgb(lib, Leinwand.farbeVon(e, Leinwand.flaecheFuer(e, seite, liste, flSeite, 'hell')));
-        const p0 = punkt(e.x, e.y), p1 = punkt(e.x + 10, e.y);
+        const p0 = punkt(e.x, e.y), p1 = punkt(...Leinwand.kastenPunkt(e, 10, 0));
         const winkel = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]) * 180 / Math.PI;
         Leinwand.textLayout(e).zeilen.forEach((z, i) => {
           if (!z) return;
-          // Grundlinie: Mitte der Zeile plus etwa ein Drittel der Schriftgrösse
-          const [px, py] = punkt(e.x, e.y + zh * (i + 0.5) + gr * 0.33);
+          // Grundlinie: Mitte der Zeile plus etwa ein Drittel der Schriftgrösse (bei gedrehtem Text entlang seiner Achsen)
+          const [px, py] = punkt(...Leinwand.kastenPunkt(e, 0, zh * (i + 0.5) + gr * 0.33));
           page.drawText(sichererText(font, z), { x: px, y: py, size: gr * massstab, font, color: farbe, rotate: lib.degrees(winkel) });
         });
         continue;

@@ -147,7 +147,8 @@ app.whenReady().then(async () => {
       aus.farbeStandard = Werkzeuge.einstellungen().laserFarbe;
       const hr = host.getBoundingClientRect();
       const ev = (typ, x, y, art, knopf) => cv.dispatchEvent(new PointerEvent(typ, { bubbles: true, cancelable: true, pointerId: 9, pointerType: art, isPrimary: true, clientX: hr.left + x, clientY: hr.top + y, pressure: knopf ? .5 : 0, buttons: knopf ? 1 : 0, button: 0 }));
-      const pixel = () => { const c = live.getContext('2d'), d = c.getImageData(0, 0, live.width, live.height).data; let n = 0, rot = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 20) { n++; if (d[i - 3] > 180 && d[i - 2] < 120) rot++; } return { gefuellt: n, rot }; };
+      // Die Spur liegt seit 3.13 auf einer eigenen Ebene (.lw-laserspur, erst beim Benutzen angelegt), der Punkt ist ein Element
+      const pixel = () => { const spur = host.querySelector('.lw-laserspur') || live; const c = spur.getContext('2d'), d = c.getImageData(0, 0, spur.width, spur.height).data; let n = 0, rot = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 20) { n++; if (d[i - 3] > 180 && d[i - 2] < 120) rot++; } return { gefuellt: n, rot }; };
       // Stift (gedrückt) zeichnet eine Spur
       ev('pointerdown', 300, 300, 'pen', true);
       for (let i = 1; i <= 30; i++) { ev('pointermove', 300 + i * 8, 300 + 40 * Math.sin(i / 4), 'pen', true); await __warte(10); }

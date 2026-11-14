@@ -189,7 +189,20 @@
   const icon = n => `<svg class="sym${BUNT[n] ? ' hat-bunt' : ''}" viewBox="0 0 24 24" aria-hidden="true">${SVG[n]}</svg>${BUNT[n] ? `<svg class="sym-bunt" viewBox="0 0 24 24" aria-hidden="true">${BUNT[n]}</svg>` : ''}`;
   const WERKZEUGE = [['hand', 'Hand: Fläche verschieben (H)'], ['stift', 'Stift (P)'], ['marker', 'Textmarker (M)'], ['radierer', 'Radierer (E)'], ['lasso', 'Lasso: auswählen, verschieben, grösser/kleiner (L)'], ['notiz', 'Haftnotiz (N)'], ['text', 'Text: tippen und schreiben, Grösse und Farbe wählen (T)'], ['laser', 'Laserpointer: leuchtender Punkt mit Spur, nichts wird gezeichnet (R)']];
   const zahl = w => String(w).replace('.', ',');
-  const STIFTART_TITEL = { fueller: 'Füller: Druck gibt die Breite, schnelle Züge werden feiner', kugel: 'Kugelschreiber: überall gleich breit', pinsel: 'Pinselstift: setzt fein an, wird breit und läuft spitz aus' };
+  const STIFTART_TITEL = {
+    fueller: 'Füller: leicht aufgesetzt schreibt er fein, fester gedrückt breiter (wie Tinte)',
+    kugel: 'Kugelschreiber: immer gleich breit, egal wie fest du drückst',
+    pinsel: 'Pinselstift: doppelt so breit, setzt fein an und läuft spitz aus (für Überschriften und Hervorhebungen)'
+  };
+  const STIFTART_KURZ = { fueller: 'Füller', kugel: 'Kuli', pinsel: 'Pinsel' };
+  // Strichprobe je Stiftart: so sieht eine Linie damit aus (Füller: mal fein, mal breit; Kugelschreiber: gleich breit;
+  // Pinselstift: breit mit spitzen Enden). Sagt mehr als ein Bild des Stifts.
+  const PROBE = {
+    fueller: '<path d="M3 13.6C9 3 15 3 22 10c6 6 12 6 19-3.6C34 18.4 27 19 21 12.6 15 6.6 10 6.6 3 13.6z"/>',
+    kugel: '<path class="linie" d="M3.5 13.5C9.5 3.5 15.5 3.5 22 10.5S35 16.5 40.5 6.5"/>',
+    pinsel: '<path d="M2.5 14.4C9 2.4 16.4 1 23.4 8.6c5.4 5.6 11 6 18.1-3.4C36.6 21 26.6 22.6 19.4 14.6 14.4 9 9.8 8.4 2.5 14.4z"/>'
+  };
+  const probe = a => `<svg class="probe" viewBox="0 0 44 20" aria-hidden="true">${PROBE[a] || ''}</svg>`;
   const GESTEN_LISTE = [['zweiFinger', 'Zwei Finger tippen'], ['dreiFinger', 'Drei Finger tippen'], ['zweiFingerLang', 'Zwei Finger halten'], ['pencilDoppel', 'Pencil doppelt tippen (iPad-App)'], ['pencilDruecken', 'Pencil zusammendrücken (iPad-App, Pencil Pro)']];
   // Was in der Leiste stehen kann (zum Ein- und Ausblenden, Werkzeugleiste anpassen)
   const LEISTE_TEILE = [['w:hand', 'Hand'], ['w:stift', 'Stift'], ['w:marker', 'Textmarker'], ['w:radierer', 'Radierer'], ['w:lasso', 'Lasso'], ['w:notiz', 'Haftnotiz'], ['w:text', 'Text'], ['w:laser', 'Laserpointer'],
@@ -218,12 +231,13 @@
         <button class="wz" type="button" data-ord="a:finger" data-aktion="finger" title="Mit dem Finger schreiben: ein Finger schreibt mit dem gewählten Werkzeug, zwei Finger verschieben und zoomen" aria-label="Mit dem Finger schreiben">${icon('finger')}</button>
       </div>
       <button class="wz eig-knopf" type="button" data-aktion="eigenschaften" title="Eigenschaften: Farbe und Grösse" aria-label="Eigenschaften" aria-pressed="false">${icon('eigenschaften')}</button>
+      <div class="eig-zeile">
       <div class="gruppe" role="group" aria-label="Radierer" data-nur="radierer" data-eig>
         <button class="wz wz-text" type="button" data-radiermodus="strich" title="Ganze Striche radieren">Strich</button>
         <button class="wz wz-text" type="button" data-radiermodus="bereich" title="Nur den Bereich unter dem Radierer entfernen (Grösse mit dem Regler)">Bereich</button>
       </div>
       <div class="gruppe stiftarten" role="radiogroup" aria-label="Stiftart" data-nur="stift" data-eig>
-        ${Object.entries(Leinwand.STIFTARTEN).map(([a, n]) => `<button class="wz" type="button" role="radio" data-stiftart="${a}" title="${STIFTART_TITEL[a]}" aria-label="${n}">${icon(a)}</button>`).join('')}
+        ${Object.entries(Leinwand.STIFTARTEN).map(([a, n]) => `<button class="wz stiftart" type="button" role="radio" data-stiftart="${a}" title="${STIFTART_TITEL[a]}" aria-label="${n}">${probe(a)}<span class="stiftart-name">${STIFTART_KURZ[a]}</span></button>`).join('')}
       </div>
       <div class="gruppe farbreihe" role="group" aria-label="Farbe der Haftnotiz" data-nur="notiz" data-eig>
         ${Object.entries(Leinwand.NOTIZFARBEN).map(([f, c]) => `<button class="wz" type="button" data-notizfarbe="${f}" title="Notiz ${Leinwand.NOTIZNAMEN[f]}" aria-label="Notiz ${Leinwand.NOTIZNAMEN[f]}"><span class="notizpunkt" style="--farbe: ${c}"></span></button>`).join('')}
@@ -253,6 +267,7 @@
         </div>
         <input class="dicke-regler" type="range" data-regler aria-label="Grösse">
         <span class="dicke-wert" aria-hidden="true"></span>
+      </div>
       </div>
       <div class="gruppe" role="group" aria-label="Bearbeiten">
         <button class="wz" type="button" data-ord="a:undo" data-aktion="undo" title="Rückgängig (Strg+Z)" aria-label="Rückgängig">${icon('undo')}</button>
@@ -329,6 +344,8 @@
       leiste.querySelector('[data-eigene="stift"]').innerHTML = e.eigeneFarben.map(c => knopf('stift', c)).join('');
       leiste.querySelector('[data-eigene="marker"]').innerHTML = e.eigeneMarker.map(c => knopf('marker', c)).join('');
       leiste.querySelector('[data-eigene="text"]').innerHTML = e.eigeneFarben.map(c => knopf('text', c)).join('');
+      // Wie viele Farben jede Reihe hat (für die Mindestbreite im Vollbild, style.css)
+      leiste.querySelectorAll('.farbreihe').forEach(g => g.style.setProperty('--n', g.querySelectorAll('.wz').length));
     }
 
     function aktualisiere() {
@@ -413,7 +430,11 @@
       else if (k.dataset.laserfarbe) lw.setzeLaserFarbe(k.dataset.laserfarbe);
       else if (k.dataset.textfarbe) lw.setzeTextFarbe(k.dataset.textfarbe);
       else if (k.dataset.radiermodus) lw.setzeRadiermodus(k.dataset.radiermodus);
-      else if (k.dataset.stiftart) lw.setzeStiftArt(k.dataset.stiftart);
+      else if (k.dataset.stiftart) {
+        // Beim Wechsel kurz sagen, was diese Stiftart ausmacht
+        if (k.dataset.stiftart !== e.stiftArt && window.UI && UI.meldung) UI.meldung(STIFTART_TITEL[k.dataset.stiftart]);
+        lw.setzeStiftArt(k.dataset.stiftart);
+      }
       else if (k.dataset.notizfarbe) lw.setzeNotizFarbe(k.dataset.notizfarbe);
       else if (k.dataset.aktion === 'finger') lw.setzeFinger(!e.finger);
       else if (k.dataset.aktion === 'eigenschaften') {
@@ -756,7 +777,7 @@
           <button class="wz" type="button" data-pa="undo" aria-label="Rückgängig" ${lw.kannRueckgaengig() ? '' : 'disabled'}>${icon('undo')}</button>
           <button class="wz" type="button" data-pa="redo" aria-label="Wiederholen" ${lw.kannWiederholen() ? '' : 'disabled'}>${icon('redo')}</button>
         </div>
-        ${w === 'stift' ? `<div class="pal-reihe pal-arten" role="radiogroup" aria-label="Stiftart">${Object.entries(Leinwand.STIFTARTEN).map(([a, n]) => `<button class="wz wz-text" type="button" role="radio" data-part="${a}" aria-checked="${a === stiftart}" aria-pressed="${a === stiftart}">${icon(a)}<span>${n}</span></button>`).join('')}</div>` : ''}
+        ${w === 'stift' ? `<div class="pal-reihe pal-arten" role="radiogroup" aria-label="Stiftart">${Object.entries(Leinwand.STIFTARTEN).map(([a, n]) => `<button class="wz wz-text" type="button" role="radio" data-part="${a}" aria-checked="${a === stiftart}" aria-pressed="${a === stiftart}" title="${STIFTART_TITEL[a]}">${probe(a)}<span>${n}</span></button>`).join('')}</div>` : ''}
         ${mitFarbe ? `<div class="pal-reihe pal-farben" role="group" aria-label="Farbe">${farben.map(([f, c, an]) => `<button class="wz" type="button" data-pf="${f}" aria-pressed="${an}" aria-label="Farbe ${Leinwand.FARBNAMEN[f] || Leinwand.MARKERNAMEN[f] || f}"><span class="farbpunkt${w === 'marker' ? ' marker' : ''}" style="--farbe: ${c}"></span></button>`).join('')}</div>` : ''}
         ${mitGroesse ? `<div class="pal-reihe pal-groessen" role="radiogroup" aria-label="Grösse">${Object.keys(PRESET_NAMEN).map(n => `<button class="preset" type="button" role="radio" data-pg="${n}" aria-checked="${e.preset[art] === n}"><span class="preset-punkt" style="--g: ${Math.max(3, Math.min(22, g.px(e.presets[art][n])))}px; --farbe: ${punktFarbe}" aria-hidden="true"></span><span class="preset-wert">${zahl(e.presets[art][n])} ${masz}</span></button>`).join('')}</div>` : ''}`;
       palette.dataset.art = art;
@@ -841,5 +862,5 @@
     return eintrag;
   }
 
-  window.Werkzeuge = { baue, einstellungen, speichereEinst, GESTEN_LISTE, STIFTART_TITEL, symbol: icon, anpassen: () => { const l = [...leisten][0]; if (l) l.anpassen(); } };
+  window.Werkzeuge = { baue, einstellungen, speichereEinst, GESTEN_LISTE, STIFTART_TITEL, stiftProbe: probe, symbol: icon, anpassen: () => { const l = [...leisten][0]; if (l) l.anpassen(); } };
 })();

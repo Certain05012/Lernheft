@@ -427,44 +427,102 @@
     return pts;
   }
 
-  // Ein Pfeil in einem Zug: der Schaft von A zur Spitze, dort kehrt der Stift um und zeichnet einen Widerhaken (C), geht
-  // zur Spitze zurück und zeichnet den zweiten (D). Gesäubert: gerader Schaft, zwei gleich lange Widerhaken im gleichen Winkel
-  // zur Spitze. null, wenn es kein Pfeil ist.
-  function erkennePfeil(p, l) {
-    const eps = Math.max(2.5, 0.03 * l);
-    const keep = new Set([0, p.length - 1]);
-    dp(p, 0, p.length - 1, eps, keep);
-    const idx = [...keep].sort((a, b) => a - b), v = idx.map(i => p[i]);
-    if (v.length < 4 || v.length > 7) return null;
-    const k = v.length - 4;                       // Spitze; danach kommen genau C, Rückweg und D
-    const A = v[0], T = v[k], C = v[k + 1], T2 = v[k + 2], D = v[k + 3];
-    const Ls = dist(A, T);
+  // Ein Pfeil in einem Zug: der Schaft von A zur Spitze, dann die beiden Widerhaken, egal wie man sie zeichnet: von
+  // der Spitze zurück, wieder zur Spitze und zum zweiten (">"), als geschlossenes Dreieck, oder vom ersten Widerhaken
+  // quer hinüber zum zweiten. Auch andersherum (erst die Spitze, dann der Schaft). Gesäubert: gerader Schaft, zwei gleich
+  // lange Widerhaken im gleichen Winkel zur Spitze. null, wenn es kein Pfeil ist.
+  // Erkannt wird nicht mehr an der Zahl der Ecken (vor 3.13: genau "Spitze, Haken, Spitze, Haken", schon eine rund
+  // gezeichnete Umkehr machte daraus eine Linie), sondern an der Gestalt: Die Spitze ist der Punkt, der am weitesten
+  // vom Anfang liegt; bis dorthin ist der Strich gerade; danach bleibt er nahe bei der Spitze und reicht auf beiden
+  // Seiten des Schafts ein Stück zurück.
+  function pfeilVon(p) {
+    const A = p[0], n = p.length;
+    let iT = 0, Ls = 0;
+    for (let i = 1; i < n; i++) { const d = dist(p[i], A); if (d > Ls) Ls = d; }
     if (Ls < 40) return null;
+    // Das erste Mal an der Spitze (für den zweiten Widerhaken kommt der Stift oft noch einmal dorthin zurück)
+    while (iT < n - 1 && dist(p[iT], A) < Ls - Math.max(2.5, 0.025 * Ls)) iT++;
+    while (iT < n - 1 && dist(p[iT + 1], A) > dist(p[iT], A)) iT++;
+    Ls = dist(p[iT], A);
+    if (iT < 1 || iT > n - 3) return null;
+    const T = p[iT];
     // Der Schaft ist gerade
-    for (let i = 0; i <= idx[k]; i++) if (abstandZurStrecke(p[i], A, T) > Math.max(4, 0.07 * Ls)) return null;
-    const lc = dist(T, C), ld = dist(T2, D), L = (lc + ld) / 2;
-    if (Math.min(lc, ld) < 8 || Math.min(lc, ld) < 0.55 * Math.max(lc, ld) || L > 0.55 * Ls || L < 0.08 * Ls) return null;
-    // Der Stift kommt für den zweiten Widerhaken zur Spitze zurück
-    if (dist(T, T2) > Math.max(8, 0.45 * L)) return null;
-    const tip = [(T[0] + T2[0]) / 2, (T[1] + T2[1]) / 2], la = dist(tip, A);
-    const u = [(tip[0] - A[0]) / la, (tip[1] - A[1]) / la];
-    const wc = [C[0] - tip[0], C[1] - tip[1]], wd = [D[0] - tip[0], D[1] - tip[1]];
+    for (let i = 0; i <= iT; i++) if (abstandZurStrecke(p[i], A, T) > Math.max(4, 0.07 * Ls)) return null;
+    const u = [(T[0] - A[0]) / Ls, (T[1] - A[1]) / Ls];
     const quer = w => u[0] * w[1] - u[1] * w[0], zurueck = w => -(u[0] * w[0] + u[1] * w[1]);
-    // Widerhaken zeigen nach hinten und liegen auf entgegengesetzten Seiten des Schafts, im Winkel von etwa 12 bis 70 Grad
-    if (quer(wc) * quer(wd) >= 0 || zurueck(wc) <= 0 || zurueck(wd) <= 0) return null;
-    const wC = Math.atan2(Math.abs(quer(wc)), zurueck(wc)), wD = Math.atan2(Math.abs(quer(wd)), zurueck(wd));
-    if (Math.min(wC, wD) < grad(12) || Math.max(wC, wD) > grad(70) || Math.abs(wC - wD) > grad(28)) return null;
+    // Der Kopf: was nach der Spitze kommt. Der äusserste Punkt auf jeder Seite des Schafts ist das Ende eines Widerhakens.
+    let C = null, D = null, qC = 0, qD = 0, weit = 0, weg = 0;
+    for (let i = iT + 1; i < n; i++) {
+      const w = [p[i][0] - T[0], p[i][1] - T[1]], q = quer(w);
+      weit = Math.max(weit, Math.hypot(w[0], w[1]));
+      weg += dist(p[i - 1], p[i]);
+      if (q > qC) { qC = q; C = w; }
+      if (q < qD) { qD = q; D = w; }
+    }
+    if (!C || !D) return null;
+    const lc = Math.hypot(C[0], C[1]), ld = Math.hypot(D[0], D[1]), L = (lc + ld) / 2, lMax = Math.max(lc, ld);
+    // Beide Widerhaken sind da, ähnlich lang, deutlich kürzer als der Schaft, und stehen deutlich zur Seite
+    if (Math.min(lc, ld) < 8 || Math.min(lc, ld) < 0.45 * lMax || L > 0.6 * Ls || L < 0.07 * Ls) return null;
+    if (Math.min(qC, -qD) < Math.max(4, 0.03 * Ls)) return null;
+    // Sie zeigen nach hinten, im Winkel von etwa 12 bis 75 Grad zum Schaft
+    if (zurueck(C) <= 0 || zurueck(D) <= 0) return null;
+    const wC = Math.atan2(qC, zurueck(C)), wD = Math.atan2(-qD, zurueck(D));
+    if (Math.min(wC, wD) < grad(12) || Math.max(wC, wD) > grad(75) || Math.abs(wC - wD) > grad(35)) return null;
+    // Der Kopf bleibt bei der Spitze und ist nicht mehr als die beiden Widerhaken (hin und zurück)
+    if (weit > 1.35 * lMax || weg < 0.8 * (lc + ld) || weg > 3.4 * (lc + ld)) return null;
     // Sauber: Widerhaken so lang wie gezeichnet (in Grenzen), Winkel zwischen 22 und 38 Grad
     const theta = klemme((wC + wD) / 2, grad(22), grad(38));
     const kopf = klemme(L, Math.max(10, 0.1 * Ls), Math.min(80, 0.4 * Ls));
-    const widerhaken = w => {
-      // zur Seite von w, im Winkel theta gegen die Rückrichtung
-      const s = quer(w) > 0 ? 1 : -1, b = [-u[0], -u[1]], c = Math.cos(theta), si = Math.sin(theta) * s;
-      return [tip[0] + kopf * (b[0] * c - b[1] * si), tip[1] + kopf * (b[0] * si + b[1] * c)];
-    };
+    const b = [-u[0], -u[1]], c = Math.cos(theta), si = Math.sin(theta);
+    const haken = s => [T[0] + kopf * (b[0] * c - b[1] * si * s), T[1] + kopf * (b[0] * si * s + b[1] * c)];
+    // quer > 0 liegt in Schreibrichtung rechts: das ist die Drehung der Rückrichtung um -theta
+    const hC = haken(-1), hD = haken(1);
     // Schaft von A bis zur Spitze, die Widerhaken in der gezeichneten Reihenfolge
-    const punkte = linienzugPunkte([A, tip, widerhaken(wc), tip, widerhaken(wd)]);
-    return { art: 'pfeil', punkte };
+    let erstC = true;
+    for (let i = iT + 1; i < n; i++) { const q = quer([p[i][0] - T[0], p[i][1] - T[1]]); if (Math.abs(q) > 0.5 * Math.min(qC, -qD)) { erstC = q > 0; break; } }
+    return { art: 'pfeil', punkte: linienzugPunkte(erstC ? [A, T, hC, T, hD] : [A, T, hD, T, hC]) };
+  }
+  function erkennePfeil(p) {
+    return pfeilVon(p) || pfeilVon(p.slice().reverse());
+  }
+
+  // Ein Winkel: zwei gerade Schenkel mit einer Ecke (V, L, Haken, Dach). Gesäubert: beide Schenkel gerade, die Ecke am
+  // Schnittpunkt. null, wenn der Strich mehr oder weniger Ecken hat oder fast gerade ist.
+  function erkenneWinkel(p, l) {
+    const n = p.length, keep = new Set([0, n - 1]);
+    dp(p, 0, n - 1, Math.max(4, 0.05 * l), keep);
+    if (keep.size !== 3) return null;
+    const idx = [...keep].sort((a, b) => a - b), A = p[0], C = p[n - 1];
+    let B = p[idx[1]];
+    const la = dist(A, B), lb = dist(B, C);
+    if (Math.min(la, lb) < Math.max(12, 0.18 * l)) return null;
+    // Genauer: Schnittpunkt der Geraden durch die beiden Schenkel (gezeichnete Ecken sind meist rund)
+    const t1 = p.slice(0, Math.max(2, Math.round(idx[1] * 0.8))), t2 = p.slice(Math.min(n - 2, Math.round(idx[1] + (n - 1 - idx[1]) * 0.2)));
+    const sp = t1.length >= 2 && t2.length >= 2 ? schnitt(gerade(t1), gerade(t2)) : null;
+    if (sp && dist(sp, B) < 0.15 * l) B = sp;
+    const cos = ((A[0] - B[0]) * (C[0] - B[0]) + (A[1] - B[1]) * (C[1] - B[1])) / (dist(A, B) * dist(C, B) || 1);
+    const oeffnung = Math.acos(klemme(cos, -1, 1));
+    if (oeffnung > grad(152) || oeffnung < grad(12)) return null;   // fast gerade oder hin und zurück: eine Linie
+    return { art: 'winkel', ecke: [r1(B[0]), r1(B[1])], enden: [A.slice(0, 2), C.slice(0, 2)], punkte: linienzugPunkte([A, B, C]) };
+  }
+
+  // Pfeilspitze an eine vorhandene Linie: ein Winkel (erkenneWinkel), dessen Ecke am Ende E einer Linie liegt, die dort
+  // in Richtung u (Einheitsvektor, zum Ende hin) läuft. Die Schenkel müssen wie Widerhaken nach hinten zeigen, auf
+  // verschiedenen Seiten der Linie. Gesäubert sitzt die Spitze genau auf E. null, wenn es nicht passt.
+  function spitzeAn(winkel, E, u) {
+    if (!winkel || winkel.art !== 'winkel') return null;
+    const quer = w => u[0] * w[1] - u[1] * w[0], zurueck = w => -(u[0] * w[0] + u[1] * w[1]);
+    const [P, Q] = winkel.enden.map(q => [q[0] - winkel.ecke[0], q[1] - winkel.ecke[1]]);
+    if (quer(P) * quer(Q) >= 0 || zurueck(P) <= 0 || zurueck(Q) <= 0) return null;
+    const wP = Math.atan2(Math.abs(quer(P)), zurueck(P)), wQ = Math.atan2(Math.abs(quer(Q)), zurueck(Q));
+    if (Math.min(wP, wQ) < grad(10) || Math.max(wP, wQ) > grad(80) || Math.abs(wP - wQ) > grad(40)) return null;
+    const lp = Math.hypot(P[0], P[1]), lq = Math.hypot(Q[0], Q[1]);
+    if (Math.min(lp, lq) < 0.4 * Math.max(lp, lq)) return null;
+    const theta = klemme((wP + wQ) / 2, grad(22), grad(38)), kopf = klemme((lp + lq) / 2, 10, 90);
+    const b = [-u[0], -u[1]], c = Math.cos(theta), si = Math.sin(theta);
+    const haken = s => [E[0] + kopf * (b[0] * c - b[1] * si * s), E[1] + kopf * (b[0] * si * s + b[1] * c)];
+    const erst = quer(P) > 0 ? -1 : 1;
+    return { art: 'spitze', punkte: linienzugPunkte([haken(erst), E, haken(-erst)]) };
   }
 
   /* ---------- Erkennen ---------- */
@@ -476,10 +534,10 @@
     if (l < MIN_LAENGE) return null;
     const luecke = dist(p[0], p[p.length - 1]);
 
-    // Offen: ein Pfeil (Schaft mit zwei Widerhaken in einem Zug) oder eine Linie von Anfang bis Ende
+    // Offen: ein Pfeil (Schaft mit zwei Widerhaken in einem Zug), ein Winkel (zwei gerade Schenkel) oder eine Linie
+    // von Anfang bis Ende
     if (luecke > OFFEN_ANTEIL * l) {
-      const pfeil = erkennePfeil(p, l);
-      return pfeil || { art: 'linie', punkte: [p[0].slice(), p[p.length - 1].slice()] };
+      return erkennePfeil(p) || erkenneWinkel(p, l) || { art: 'linie', punkte: [p[0].slice(), p[p.length - 1].slice()] };
     }
 
     // Geschlossen: Kreis, Ellipse, Dreieck oder Viereck
@@ -589,5 +647,5 @@
     return vieleckPunkte([[x, y], [x + b, y], [x + b, y + h], [x, y + h]], 0);
   }
 
-  return { erkenne, istKritzel, laenge, abtasten, rechteckPunkte };
+  return { erkenne, istKritzel, laenge, abtasten, rechteckPunkte, spitzeAn };
 });

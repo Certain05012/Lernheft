@@ -127,7 +127,36 @@ pruefe('Pfeil: Spitze sauber, beide Widerhaken gleich lang', pf, 'pfeil', r => {
   return Math.hypot(spitze[0] - spitze2[0], spitze[1] - spitze2[1]) < 1.5 && Math.abs(l1 - l2) < 1.5 && l1 > 20;
 });
 pruefe('Gerade Linie bleibt Linie', F.erkenne(verrausche(linie([300, 300], [480, 380], 5), 1)), 'linie');
-pruefe('Häkchen bleibt Linie', F.erkenne(verrausche(linie([300, 300], [330, 340], 4).concat(linie([330, 340], [420, 240], 4)), 1)), 'linie');
+// Häkchen: zwei gerade Schenkel (vor 3.13 wurde daraus eine Linie vom Anfang zum Ende)
+pruefe('Häkchen wird ein sauberer Winkel', F.erkenne(verrausche(linie([300, 300], [330, 340], 4).concat(linie([330, 340], [420, 240], 4)), 1)), 'winkel', r => Math.hypot(r.ecke[0] - 330, r.ecke[1] - 340) < 6);
+pruefe('Rechter Winkel (L)', F.erkenne(verrausche(linie([200, 100], [200, 260], 4).concat(linie([200, 260], [330, 260], 4)), 1)), 'winkel', r => Math.hypot(r.ecke[0] - 200, r.ecke[1] - 260) < 5);
+pruefe('Linie mit kleinem Haken am Ende bleibt Linie', F.erkenne(verrausche(linie([300, 300], [480, 300], 4).concat(linie([480, 300], [470, 312], 4)), 0.8)), 'linie');
+pruefe('Leicht gebogene Linie bleibt Linie', F.erkenne(Array.from({ length: 50 }, (_, i) => [300 + i * 4, 300 + 6 * Math.sin(i / 49 * Math.PI)])), 'linie');
+
+// Pfeile, wie man sie von Hand zeichnet: runde Umkehr an den Widerhaken, die Spitze beim Zurückkommen nicht genau
+// getroffen, als geschlossenes Dreieck, quer hinüber, Spitze zuerst
+function pfeilFrei(folge, rund, rausch) {
+  let pts = [];
+  for (let i = 0; i + 1 < folge.length; i++) pts = pts.concat(linie(folge[i], folge[i + 1], 4).slice(i ? 1 : 0));
+  // Ecken abrunden wie eine Hand: gleitender Mittelwert (nicht über die Enden hinaus)
+  const glatt = pts.map((_, i) => { let x = 0, y = 0, c = 0; for (let d = -rund; d <= rund; d++) { const q = pts[Math.max(0, Math.min(pts.length - 1, i + d))]; x += q[0]; y += q[1]; c++; } return [x / c, y / c]; });
+  return verrausche(glatt, rausch);
+}
+const istPfeilNach = (r, x, y) => { // Ende des Schafts = Spitze: dort liegen zwei Punkte ganz nah beieinander
+  const p = r.punkte; for (let i = 1; i < p.length; i++) if (Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]) < 1) return Math.hypot(p[i][0] - x, p[i][1] - y) < 12; return false; };
+pruefe('Pfeil mit runder Umkehr an den Widerhaken', F.erkenne(pfeilFrei([[100, 300], [300, 300], [262, 276], [300, 300], [262, 324]], 2, 0.8)), 'pfeil', r => istPfeilNach(r, 300, 300));
+pruefe('Pfeil: Spitze beim Zurückkommen verfehlt', F.erkenne(pfeilFrei([[100, 300], [300, 300], [262, 274], [292, 304], [258, 326]], 1, 0.8)), 'pfeil', r => istPfeilNach(r, 300, 300));
+pruefe('Pfeil mit Dreieck als Spitze', F.erkenne(pfeilFrei([[100, 300], [300, 300], [262, 276], [262, 324], [300, 300]], 1, 0.8)), 'pfeil', r => istPfeilNach(r, 300, 300));
+pruefe('Pfeil: vom ersten Widerhaken quer zum zweiten', F.erkenne(pfeilFrei([[100, 300], [300, 300], [262, 276], [262, 324]], 1, 0.8)), 'pfeil', r => istPfeilNach(r, 300, 300));
+pruefe('Pfeil: Spitze zuerst, dann der Schaft', F.erkenne(pfeilFrei([[262, 276], [300, 300], [262, 324], [300, 300], [100, 300]], 1, 0.8)), 'pfeil', r => istPfeilNach(r, 300, 300));
+pruefe('Pfeil schräg nach oben, ungleiche Widerhaken', F.erkenne(pfeilFrei([[100, 400], [260, 240], [215, 248], [258, 243], [250, 292]], 1, 0.8)), 'pfeil', r => istPfeilNach(r, 260, 240));
+pruefe('Fahne (nur ein Widerhaken) ist kein Pfeil', F.erkenne(pfeilFrei([[100, 300], [300, 300], [262, 276], [300, 300]], 1, 0.6)), 'linie');
+pruefe('Linie hin und zurück ist kein Pfeil', F.erkenne(pfeilFrei([[100, 300], [300, 300], [240, 301]], 1, 0.6)), 'linie');
+// Pfeilspitze nachträglich an eine Linie: ein Winkel am Ende der Linie
+const dach = F.erkenne(verrausche(linie([262, 276], [300, 300], 4).concat(linie([300, 300], [262, 324], 4)), 0.8));
+pruefe('Spitze (>) allein ist ein Winkel', dach, 'winkel');
+pruefe('Winkel am Linienende wird zur Pfeilspitze', F.spitzeAn(dach, [303, 301], [1, 0]), 'spitze', r => { const p = r.punkte, m = p[Math.floor(p.length / 2)]; return Math.hypot(m[0] - 303, m[1] - 301) < 1.5 && Math.abs(Math.hypot(p[0][0] - 303, p[0][1] - 301) - Math.hypot(p[p.length - 1][0] - 303, p[p.length - 1][1] - 301)) < 1; });
+pruefe('Winkel, der nach vorn zeigt, wird keine Pfeilspitze', F.spitzeAn(dach, [303, 301], [-1, 0]) || { art: 'nein', punkte: [] }, 'nein');
 pruefe('Buchstabe M ist kein Pfeil', F.erkenne(verrausche([[0, 100], [0, 0], [50, 60], [100, 0], [100, 100]].flatMap((q, k, a) => k ? linie(a[k - 1], q, 5).slice(1) : [q]), 1.2)), 'linie');
 pruefe('Zickzack W ist kein Pfeil', F.erkenne(verrausche([[0, 0], [40, 100], [80, 0], [120, 100], [160, 0]].flatMap((q, k, a) => k ? linie(a[k - 1], q, 5).slice(1) : [q]), 1.2)), 'linie');
 
