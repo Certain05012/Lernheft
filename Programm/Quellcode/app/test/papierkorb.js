@@ -46,7 +46,8 @@ app.whenReady().then(async () => {
     await js(`(() => {
       window.__ja = async () => { for (let i = 0; i < 40; i++) { const k = document.querySelector('#dialog[open] button[type="submit"]'); if (k) { k.click(); return true; } await new Promise(ok => setTimeout(ok, 50)); } return false; };
       window.__bild = () => new Promise(ok => requestAnimationFrame(() => requestAnimationFrame(() => {
-        const cv = document.querySelector('.dok-bereich:not([hidden]) .lw-canvas');
+        // Das Blatt liegt seit 3.14 auf Kacheln: basisBild setzt sie zu einem Bild zusammen (ältere Version: eine Zeichenfläche)
+        const lw = Dokument.leinwand(), cv = lw.basisBild ? lw.basisBild() : document.querySelector('.dok-bereich:not([hidden]) .lw-canvas');
         ok(cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data);
       })));
       window.__mal = async (pts, art = 'pen') => {

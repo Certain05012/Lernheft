@@ -400,7 +400,11 @@ img.dunkelblau { filter: invert(1) hue-rotate(180deg); mix-blend-mode: screen; }
 /* ================= Schreibfläche ================= */
 
 .leinwand { position: relative; overflow: hidden; touch-action: none; background: var(--papier); }
-.lw-canvas { position: absolute; top: 0; left: 0; display: block; touch-action: none; cursor: crosshair; -webkit-user-select: none; user-select: none; transform-origin: 0 0; will-change: transform; }
+/* Das Blatt liegt auf Kacheln (.lw-kacheln, leinwand.js): der Behälter wird beim Scrollen und Zoomen nur verschoben.
+   .lw-canvas ist die durchsichtige Fläche darüber, die alle Eingaben bekommt. */
+.lw-kacheln { position: absolute; top: 0; left: 0; width: 0; height: 0; transform-origin: 0 0; will-change: transform; pointer-events: none; }
+.lw-kacheln canvas { position: absolute; top: 0; left: 0; display: block; pointer-events: none; -webkit-user-select: none; user-select: none; }
+.lw-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; -webkit-user-select: none; user-select: none; }
 /* Ebene darüber: Strich unter dem Stift, Auswahl, Lasso, Radierkreis; fängt keine Eingaben ab */
 .lw-live { position: absolute; top: 0; left: 0; display: block; pointer-events: none; -webkit-user-select: none; user-select: none; }
 /* Text schreiben: dieselbe Schrift wie auf der Schreibfläche (leinwand.js TEXT_SCHRIFT, TEXT_ZEILE), durchsichtig darüber */

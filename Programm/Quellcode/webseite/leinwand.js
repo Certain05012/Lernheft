@@ -66,7 +66,7 @@
   let stiftZuletzt = 0;       // performance.now() des letzten Stiftereignisses auf irgendeiner Schreibfläche    // so viele Punkte vor und nach einem Punkt glätten den Druck (die Breite zittert sonst)
   const HALTE_MS = 700;       // Stift so lange ruhig halten: Linie oder Form wird sauber (einstellbar: einst.halteMs, 0,4 bis 1,5 s)
   const haltezeit = einst => { const v = Number(einst.halteMs); return v >= 300 && v <= 3000 ? v : HALTE_MS; };
-  const HALTE_TOL = 4;        // so viel (Bildschirm-px) darf die Hand dabei zittern
+  const HALTE_TOL = 6;        // so viel (Bildschirm-px) darf die Hand dabei zittern (bis 3.13: 4)
 
   // Gesten (einstellbar im Stift-Panel, einst.gesten, nur auf diesem Gerät). Finger: tippen = alle Finger kurz auf und
   // wieder weg, ohne zu wischen; halten = zwei Finger ruhig liegen lassen. Pencil (nur in der iPad-App, Safari meldet sie
@@ -1105,11 +1105,16 @@
     L.on = (art, fn) => { (hoererListe[art] || (hoererListe[art] = [])).push(fn); };
 
     host.classList.add('leinwand');
-    // Zwei Ebenen: "canvas" trägt das Blatt mit allem Geschriebenen und ist ringsum grösser als das Bild. Beim
-    // Verschieben und Zoomen wird es nur per CSS bewegt (Grafikkarte) und erst bei Bedarf neu gemalt. "live" ist
-    // durchsichtig darüber und trägt, was gerade entsteht: den Strich unter dem Stift, Auswahl, Lasso, Radierkreis.
+    // Das Blatt mit allem Geschriebenen liegt auf Kacheln (kachelHost, seit 3.14): viele kleine Zeichenflächen in einem
+    // Gitter, die beim Verschieben und Zoomen nur gemeinsam per CSS bewegt werden (Grafikkarte). Was aus dem Bild
+    // wandert, wird auf der anderen Seite wieder verwendet und im Voraus neu gemalt, eine Kachel nach der anderen
+    // (siehe "Kacheln" unten). "canvas" ist nur noch die durchsichtige Fläche darüber, die alle Eingaben bekommt.
+    // "live" trägt, was gerade entsteht: den Strich unter dem Stift, Auswahl, Lasso, Radierkreis.
+    const kachelHost = document.createElement('div');
+    kachelHost.className = 'lw-kacheln';
     const canvas = document.createElement('canvas');
     canvas.className = 'lw-canvas';
+    canvas.width = canvas.height = 1;
     const live = document.createElement('canvas');
     live.className = 'lw-live';
     // "spitze" liegt über "live" und trägt nur das letzte Stück des Strichs bis genau unter den Stift (dazu die vom
@@ -1142,8 +1147,8 @@
     // Bewegt sich die Ansicht von selbst (Öffnen an der gemerkten Stelle, Tab-Wechsel, Fenstergrösse), bleibt der Schieber unsichtbar
     let schieberStillBis = 0;
     const schieberStill = () => { schieberStillBis = performance.now() + 500; };
-    host.append(canvas, live, spitze, menue, editor, textFeld, hinweis, schieber);
-    const ctx = canvas.getContext('2d');
+    host.append(kachelHost, canvas, live, spitze, menue, editor, textFeld, hinweis, schieber);
+    let ctx = null;                      // Zeichenfläche der Kachel, die gerade gemalt wird (rendereKachel)
     const lctx = live.getContext('2d');
     const sctx = spitze.getContext('2d');
 
@@ -1153,9 +1158,7 @@
     const ansicht = { x: 0, y: 0, s: 1 };
     let b = 0, h = 0, dpr = 1;
     let hostRect = { left: 0, top: 0 };  // Lage der Fläche, nicht bei jedem Punkt neu erfragen (das erzwingt ein Layout)
-    let rand = 0;                        // so viel ist "canvas" links und rechts grösser als das Bild (CSS-px)
-    let randY = 0;                       // ... und oben und unten (mehr: gescrollt wird meist senkrecht)
-    let basis = null;                    // Ansicht, mit der "canvas" zuletzt gemalt wurde
+    let basis = null;                    // Ansicht, auf die sich das Gitter der Kacheln bezieht (Zoom, mit dem sie gemalt sind)
     let inhaltVoll = true;               // das Blatt muss ganz neu gemalt werden
     let schmutz = null;                  // nur dieser Bereich (Dokument-Koordinaten) muss neu gemalt werden
     let overlayNeu = true;
@@ -1163,8 +1166,7 @@
     let schaerfeTimer = 0;
     let gesamtHoehe = 0;
     let aktion = null, lassoPunkte = null, radiererPunkt = null;
-    let transformStand = '';             // zuletzt gesetzte CSS-Verschiebung von canvas
-    let schiebeTest = null;              // für Tests: verschiebeBasis abschalten (false) zum Vergleich
+    let transformStand = '';             // zuletzt gesetzte CSS-Verschiebung der Kacheln
     let bewegtZeit = 0;                  // wann sich die Ansicht zuletzt bewegt hat (Scrollen, Zoomen, Schwung)
     let spitzeRect = null;               // wo die Spitze des Strichs zuletzt gemalt wurde (Pixel von "spitze")
     let textEdit = null, textOffenSeit = 0, textHalten = 0, textFingerTipp = null;   // Text, der gerade geschrieben wird
@@ -1392,29 +1394,14 @@
       b = r.width; h = r.height;
       hostRect = { left: r.left, top: r.top };
       dpr = Math.min(window.devicePixelRatio || 1, 3);
-      // Ringsum Reserve zum Verschieben ohne Neuzeichnen, aber nicht mehr Pixel, als die Grafikkarte sinnvoll trägt
-      // Oben und unten viel Reserve: beim Scrollen mit dem Finger wird so nur etwa alle 1000 px neu gemalt statt alle
-      // 300 px (jedes volle Neumalen ist auf dem iPad ein kleiner Ruck); seitlich reicht weniger
-      rand = Math.round(Math.max(64, Math.min(200, Math.min(b, h) * 0.15)));
-      randY = Math.round(Math.max(160, Math.min(1000, h * 0.9)));
-      // Safari (iPad) malt eine Zeichenfläche über 16,7 Millionen Pixel gar nicht mehr: darunter bleiben, erst mit
-      // weniger Reserve oben und unten, dann seitlich, zuletzt mit weniger Auflösung
-      const pixel = () => (b + 2 * rand) * (h + 2 * randY) * dpr * dpr;
-      while (randY > 160 && pixel() > CANVAS_MAX) randY = Math.max(160, Math.round(randY * 0.9));
-      while (rand > 48 && pixel() > CANVAS_MAX) rand = Math.max(48, Math.round(rand * 0.85));
-      while (dpr > 1 && pixel() > CANVAS_MAX) dpr = Math.max(1, dpr - 0.25);
-      // Alle Ebenen genau auf dem Pixelraster des Bildschirms: der Rand ist eine ganze Zahl von Bildschirmpixeln, und jede
-      // Ebene ist in CSS genau so gross wie ihre Pixel / dpr. Sonst lag "canvas" z. B. bei 150 % um einen halben Pixel
-      // neben "live", und ein Strich sah nach dem Absetzen anders aus als beim Schreiben (test/strich.js).
-      rand = Math.round(rand * dpr) / dpr;
-      randY = Math.round(randY * dpr) / dpr;
+      // Safari (iPad) malt eine Zeichenfläche über 16,7 Millionen Pixel gar nicht mehr: die Ebenen über dem Blatt sind so
+      // gross wie das Bild, auf sehr grossen Bildschirmen deshalb mit weniger Auflösung. Die Kacheln selbst sind klein.
+      while (dpr > 1 && b * h * dpr * dpr > CANVAS_MAX) dpr = Math.max(1, dpr - 0.25);
+      // Alle Ebenen genau auf dem Pixelraster des Bildschirms: jede ist in CSS genau so gross wie ihre Pixel / dpr, und
+      // die Kacheln liegen auf ganzen Bildschirmpixeln. Sonst sah ein Strich nach dem Absetzen anders aus als beim
+      // Schreiben (test/strich.js).
       const lw0 = Math.round(b * dpr), lh0 = Math.round(h * dpr);
-      canvas.width = lw0 + 2 * Math.round(rand * dpr);
-      canvas.height = lh0 + 2 * Math.round(randY * dpr);
-      canvas.style.width = canvas.width / dpr + 'px';
-      canvas.style.height = canvas.height / dpr + 'px';
-      canvas.style.left = -rand + 'px';
-      canvas.style.top = -randY + 'px';
+      richteKachelnEin();
       for (const c of [live, spitze]) {
         c.width = lw0; c.height = lh0;
         c.style.width = lw0 / dpr + 'px';
@@ -1427,7 +1414,7 @@
       for (let i = 0; i < 40; i++) probe.p.push([i, (i % 7) * 0.5, 0.3 + (i % 5) / 10]);
       for (const c of [lctx, sctx]) { c.setTransform(1, 0, 0, 1, -1000, -1000); c.lineCap = c.lineJoin = 'round'; malAbschnitte(c, probe, 0, probe.p.length - 1); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, 4, 4); }
       spitzeRect = null;
-      basis = null; inhaltVoll = true; overlayNeu = true; ol.leer = true;
+      basis = null; inhaltVoll = true; overlayNeu = true; ol.leer = true; transformStand = '';
       if (!vorher && seiten.length) einpassen();
       else if (umschalt.bis > performance.now()) {
         // Gerade ins Vollbild oder wieder heraus: die Fenstergrösse kommt in mehreren Schritten, die Ansicht folgt
@@ -1611,8 +1598,8 @@
 
     /* ----- Zeichnen ----- */
 
-    // "canvas" ist mit der Ansicht "basis" gemalt; seine Pixel beginnen "rand" CSS-px links und "randY" oberhalb des Bildes
-    const basisTransform = () => ctx.setTransform(dpr * basis.s, 0, 0, dpr * basis.s, dpr * (basis.x + rand), dpr * (basis.y + randY));
+    // Die Kacheln sind mit dem Zoom von "basis" gemalt; jede beginnt bei ihrem Platz im Gitter (i, j) mal Kachelgrösse
+    const basisTransform = () => ctx.setTransform(dpr * basis.s, 0, 0, dpr * basis.s, dpr * basis.x - kachelJetzt.i * kachelP, dpr * basis.y - kachelJetzt.j * kachelP);
     const liveTransform = () => lctx.setTransform(dpr * ansicht.s, 0, 0, dpr * ansicht.s, dpr * ansicht.x, dpr * ansicht.y);
 
     function flaecheSeite(s) { return opt.flaeche ? opt.flaeche(s) : flaecheThema(); }
@@ -1633,7 +1620,7 @@
       ctx.restore();
     }
 
-    function zeichneSeite(s, oben, unten) {
+    function zeichneSeite(s, oben, unten, links, rechts) {
       const fl = flaecheSeite(s);
       const H = s.hh;
       ctx.save();
@@ -1643,7 +1630,8 @@
       ctx.fillStyle = 'rgba(0, 0, 0, .28)';
       ctx.fillRect(3 * px, 5 * px, s.b, H);
       let gemalt = false;
-      if (s.art === 'pdf' && opt.hintergrund) gemalt = opt.hintergrund(ctx, s, basis.s * dpr);
+      // Der Ausschnitt (Koordinaten der Seite) sagt dem Besitzer, welchen Teil des PDF-Bildes diese Kachel braucht
+      if (s.art === 'pdf' && opt.hintergrund) gemalt = opt.hintergrund(ctx, s, basis.s * dpr, { x1: links - s.x, y1: oben - s.y, x2: rechts - s.x, y2: unten - s.y });
       if (!gemalt) {
         ctx.fillStyle = s.papierFarbe || PAPIER[fl];
         ctx.fillRect(0, 0, s.b, H);
@@ -1804,7 +1792,7 @@
         ctx.fillRect(links, oben, rechts - links, unten - oben);
       } else zeichneRaster(oben, unten, links, rechts);
       const sichtbar = sichtbareSeiten(oben, unten);
-      for (const s of sichtbar) if (!s.unendlich && s.y < unten && s.y + s.hh > oben) zeichneSeite(s, oben, unten);
+      for (const s of sichtbar) if (!s.unendlich && s.y < unten && s.y + s.hh > oben && s.x < rechts && s.x + s.b + 8 > links) zeichneSeite(s, oben, unten, links, rechts);
       zeichneNeueSeite();
       const flAussen = flaecheThema();
       for (const s of sichtbar) {
@@ -1819,96 +1807,203 @@
     }
 
     // Wie oft wurde gemalt (für Tests und die Kontrolle, dass beim Schreiben und Verschieben nicht alles neu gemalt wird)
-    const zaehl = { bilder: 0, voll: 0, bereich: 0, nurVerschoben: 0, live: 0 };
+    const zaehl = { bilder: 0, voll: 0, bereich: 0, nurVerschoben: 0, live: 0, kacheln: 0 };
     L.statistik = () => ({ ...zaehl });
     // Für Tests: die Ebene über dem Blatt ganz neu malen (Vergleich mit dem schrittweisen Zeichnen des Strichs)
     L.liveNeu = () => { overlayNeu = true; anfordern(); };
 
-    function rendereBasis(behalten) {
-      zaehl.voll++;
-      if (!behalten || !basis) basis = { x: ansicht.x, y: ansicht.y, s: ansicht.s };
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      basisTransform();
-      zeichneInhalt({ x1: (-rand - basis.x) / basis.s, y1: (-randY - basis.y) / basis.s, x2: (b + rand - basis.x) / basis.s, y2: (h + randY - basis.y) / basis.s });
+    /* ----- Kacheln ----- */
+    // Früher lag das Blatt auf EINER grossen Zeichenfläche (bis 16 Millionen Pixel). Beim Scrollen wurde sie alle paar
+    // hundert Pixel auf sich selbst kopiert und der frei gewordene Streifen in einem Zug neu gemalt: in Safari auf dem
+    // iPad jedes Mal ein Ruck (64 MB kopieren, dazu der Streifen, alles in einem Bild). Jetzt liegt es auf Kacheln von
+    // KACHEL x KACHEL CSS-px in einem Gitter, das mit dem Zoom von "basis" fest im Dokument verankert ist:
+    //   - Scrollen verschiebt nur den Behälter (ein Transform, Grafikkarte); gemalt wird dabei nichts Sichtbares.
+    //   - Eine Kachel, die aus dem Bereich um das Bild wandert, bekommt einen neuen Platz auf der anderen Seite
+    //     (ordneKacheln, mehr Reserve in Scrollrichtung) und wird dort neu gemalt, bevor sie ins Bild kommt: höchstens
+    //     KACHELN_JE_BILD je Bild, die nächste zuerst (rendereKacheln). So verteilt sich die Arbeit auf viele Bilder.
+    //   - Kopiert wird nichts mehr. Ändert sich der Inhalt (plane), werden die sichtbaren Kacheln sofort neu gemalt, die
+    //     übrigen danach nach und nach; nach dem Zoomen ebenso (vorher: alle 16 Millionen Pixel auf einmal).
+    // Jede Kachel ist KACHEL_UEBER Pixel grösser als ihr Platz und überlappt die nächste: sonst zeigt Safari beim Zoomen
+    // (Behälter skaliert) feine Fugen zwischen den Ebenen. Der Hintergrund ist überall deckend, die doppelten Pixel
+    // sind gleich.
+    const KACHEL = 512, KACHEL_UEBER = 2, KACHELN_JE_BILD = 2, KACHEL_RESERVE = 3;
+    let kacheln = [], kachelP = 0, kachelMax = 0, kachelJetzt = null, kachelBereich = '', kachelTimer = 0;
+    let laufY = 0, laufMerk = 0;         // Scrollrichtung (1 = nach unten) für die Reserve, mit etwas Trägheit
+    // Grösse der Kacheln und wie viele es höchstens gibt: genug, um das Bild in jeder Lage zu bedecken, plus die
+    // Reserve-Zeilen zum Vorausmalen. Angelegt werden sie erst, wenn sie gebraucht werden (neueKachel): liegt das Gitter
+    // bündig am Bildrand (nach jedem Neuaufbau), reichen weniger.
+    function richteKachelnEin() {
+      const P = Math.round(KACHEL * dpr);
+      if (P !== kachelP) { for (const t of kacheln) { t.cv.width = t.cv.height = 0; t.cv.remove(); } kacheln = []; kachelP = P; }
+      kachelMax = (Math.ceil(b * dpr / P) + 1) * (Math.ceil(h * dpr / P) + 1 + KACHEL_RESERVE);
+      for (const t of kacheln) { t.belegt = false; t.schmutzig = true; t.cv.style.visibility = 'hidden'; }
+      kachelBereich = '';
     }
-
-    // Nur einen Bereich neu malen (Dokument-Koordinaten): löschen, Hintergrund und alles, was hineinragt.
-    // Der Bereich wird auf ganze Pixel der Zeichenfläche gerundet: läge seine Kante mitten in einem Pixel, würde dieser
-    // nur zum Teil gelöscht und zum Teil neu gemalt, bliebe halb durchsichtig, und um das Neugemalte stünde ein feiner
-    // Rahmen (z. B. um ein Strichstück, das beim Radieren übrig bleibt).
-    function rendereBereich(r) {
-      if (Math.abs(ansicht.s - basis.s) > 1e-9) { rendereBasis(); return; }
-      zaehl.bereich++;
-      const k = dpr * basis.s, ox = dpr * (basis.x + rand), oy = dpr * (basis.y + randY);
-      const X1 = Math.max(0, Math.floor(r.x1 * k + ox) - 2), Y1 = Math.max(0, Math.floor(r.y1 * k + oy) - 2);
-      const X2 = Math.min(canvas.width, Math.ceil(r.x2 * k + ox) + 2), Y2 = Math.min(canvas.height, Math.ceil(r.y2 * k + oy) + 2);
-      if (X2 <= X1 || Y2 <= Y1) return;
-      ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.beginPath();
-      ctx.rect(X1, Y1, X2 - X1, Y2 - Y1);
-      ctx.clip();
-      ctx.clearRect(X1, Y1, X2 - X1, Y2 - Y1);
-      basisTransform();
-      zeichneInhalt({ x1: (X1 - ox) / k, y1: (Y1 - oy) / k, x2: (X2 - ox) / k, y2: (Y2 - oy) / k });
-      ctx.restore();
+    function neueKachel() {
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = kachelP + KACHEL_UEBER;
+      cv.style.width = cv.style.height = (kachelP + KACHEL_UEBER) / dpr + 'px';
+      cv.style.visibility = 'hidden';
+      kachelHost.appendChild(cv);
+      const t = { cv, ctx: cv.getContext('2d'), i: 0, j: 0, belegt: false, schmutzig: true };
+      kacheln.push(t);
+      return t;
     }
-
-    // Verschiebt das Bild auf "canvas" um ganze Bildschirmpixel zur aktuellen Ansicht und malt nur die frei gewordenen Streifen
-    // neu (rendereBereich). false: nichts zu tun oder zu weit (dann malt frame alles neu).
-    function verschiebeBasis() {
-      if (schiebeTest === false) return false;
-      const dxD = Math.round((ansicht.x - basis.x) * dpr), dyD = Math.round((ansicht.y - basis.y) * dpr);
-      const randXD = Math.round(rand * dpr), randYD = Math.round(randY * dpr);
-      if (Math.abs(dxD) < randXD * 0.5 && Math.abs(dyD) < randYD * 0.25) return false;
-      if (Math.abs(dxD) >= canvas.width * 0.6 || Math.abs(dyD) >= canvas.height * 0.6) return false;
-      ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.globalCompositeOperation = 'copy';
-      ctx.drawImage(canvas, dxD, dyD);
-      ctx.restore();
-      basis = { x: basis.x + dxD / dpr, y: basis.y + dyD / dpr, s: basis.s };
-      // frei gewordene Streifen in Dokument-Koordinaten
-      const k = dpr * basis.s, ox = dpr * (basis.x + rand), oy = dpr * (basis.y + randY);
-      const doc = (X, Y) => [(X - ox) / k, (Y - oy) / k];
-      const streifen = [];
-      if (dyD > 0) streifen.push([0, 0, canvas.width, dyD]); else if (dyD < 0) streifen.push([0, canvas.height + dyD, canvas.width, canvas.height]);
-      if (dxD > 0) streifen.push([0, 0, dxD, canvas.height]); else if (dxD < 0) streifen.push([canvas.width + dxD, 0, canvas.width, canvas.height]);
-      for (const [X1, Y1, X2, Y2] of streifen) {
-        const [x1, y1] = doc(X1, Y1), [x2, y2] = doc(X2, Y2);
-        rendereBereich({ x1, y1, x2, y2 });
+    function gibKachelnFrei() {
+      for (const t of kacheln) { t.cv.width = t.cv.height = 0; t.cv.remove(); }
+      kacheln = []; kachelP = 0; kachelBereich = ''; basis = null; inhaltVoll = true;
+    }
+    // Wohin das Bild gerade schaut, im Raum der Kacheln (Bildschirmpixel beim Zoom von "basis")
+    function fenster() {
+      const k = ansicht.s / basis.s, x1 = (basis.x * k - ansicht.x) / k * dpr, y1 = (basis.y * k - ansicht.y) / k * dpr;
+      return { x1, y1, x2: x1 + b / k * dpr, y2: y1 + h / k * dpr };
+    }
+    const kachelSichtbar = (t, f) => t.i * kachelP < f.x2 + 2 && t.i * kachelP + t.cv.width > f.x1 - 2 && t.j * kachelP < f.y2 + 2 && t.j * kachelP + t.cv.height > f.y1 - 2;
+    const setzeKachel = t => { t.cv.style.transform = `translate(${t.i * kachelP / dpr}px, ${t.j * kachelP / dpr}px)`; };
+    // Jeder Kachel ihren Platz geben: das Bild, dazu Reserve (vor allem in Scrollrichtung). Kacheln, die schon richtig
+    // liegen, bleiben; die übrigen wandern auf die freien Plätze und müssen neu gemalt werden. false: der Vorrat reicht
+    // nicht einmal für das Bild (weit herausgezoomt), dann wird mit neuem Zoom ganz neu gemalt.
+    function ordneKacheln() {
+      const P = kachelP;
+      let f = fenster();
+      // Sehr weit gescrollt: das Gitter um ganze Kacheln zurücksetzen, damit die Zahlen klein bleiben (nichts wird neu gemalt)
+      if (Math.abs(f.x1) > 2e5 || Math.abs(f.y1) > 2e5) {
+        const di = Math.floor(f.x1 / P), dj = Math.floor(f.y1 / P);
+        basis = { x: basis.x - di * P / dpr, y: basis.y - dj * P / dpr, s: basis.s };
+        for (const t of kacheln) { t.i -= di; t.j -= dj; if (t.belegt) setzeKachel(t); }
+        kachelBereich = ''; transformStand = '';
+        f = fenster();
       }
-      zaehl.geschoben = (zaehl.geschoben || 0) + 1;
+      let i1 = Math.floor(f.x1 / P), i2 = Math.floor((f.x2 - 0.01) / P), j1 = Math.floor(f.y1 / P), j2 = Math.floor((f.y2 - 0.01) / P);
+      const spalten = i2 - i1 + 1;
+      if (spalten * (j2 - j1 + 1) > kachelMax) return false;
+      // Reserve: Zeilen darüber und darunter (gescrollt wird meist senkrecht), zwei von dreien in Scrollrichtung.
+      // Nur beim Zoom der Basis: während die Finger zoomen, wäre alles Vorausgemalte gleich wieder überholt.
+      if (Math.abs(ansicht.s - basis.s) < 1e-9) {
+        for (let n = 0; n < KACHEL_RESERVE && spalten * (j2 - j1 + 2) <= kachelMax; n++) {
+          const vorn = laufY === 0 ? n % 2 === 0 : n % 3 !== 2;
+          if (vorn === (laufY >= 0)) j2++; else j1--;
+        }
+      }
+      const bereich = i1 + ',' + i2 + ',' + j1 + ',' + j2;
+      if (bereich === kachelBereich) return true;
+      kachelBereich = bereich;
+      const da = new Set(), frei = [];
+      for (const t of kacheln) {
+        const key = t.i + ',' + t.j;
+        if (t.belegt && t.i >= i1 && t.i <= i2 && t.j >= j1 && t.j <= j2 && !da.has(key)) da.add(key);
+        else { t.belegt = false; frei.push(t); }
+      }
+      for (let j = j1; j <= j2; j++) for (let i = i1; i <= i2; i++) {
+        if (da.has(i + ',' + j)) continue;
+        const t = frei.pop() || neueKachel();
+        t.i = i; t.j = j; t.belegt = true; t.schmutzig = true;
+        // Bis sie gemalt ist, zeigt sie nichts (sonst stünde kurz der alte Inhalt von woanders da)
+        t.cv.style.visibility = 'hidden';
+        setzeKachel(t);
+      }
+      // Was übrig ist, zeigt nichts; mehr als eine Zeile Vorrat wird wieder freigegeben
+      for (const t of frei) t.cv.style.visibility = 'hidden';
+      while (frei.length > spalten) { const t = frei.pop(); t.cv.width = t.cv.height = 0; t.cv.remove(); kacheln.splice(kacheln.indexOf(t), 1); }
       return true;
     }
-    L.schiebeTest = an => { schiebeTest = an; };
-    // Für Tests: alles neu malen, aber genau an der Stelle, an der das Bild gerade liegt (Vergleich mit verschiebeBasis)
-    L.neuAnDerStelle = () => { if (basis) rendereBasis(true); };
+    // Eine Kachel malen: ganz, oder nur den Ausschnitt X1..Y2 (ihre Pixel). Der Ausschnitt liegt auf ganzen Pixeln:
+    // läge seine Kante mitten in einem Pixel, würde dieser nur zum Teil gelöscht und neu gemalt und bliebe als feiner
+    // Rahmen um das Neugemalte stehen (z. B. um ein Strichstück, das beim Radieren übrig bleibt).
+    function rendereKachel(t, X1, Y1, X2, Y2) {
+      const ganz = X1 == null;
+      if (ganz) { X1 = 0; Y1 = 0; X2 = t.cv.width; Y2 = t.cv.height; }
+      ctx = t.ctx; kachelJetzt = t;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      if (!ganz) { ctx.beginPath(); ctx.rect(X1, Y1, X2 - X1, Y2 - Y1); ctx.clip(); }
+      ctx.clearRect(X1, Y1, X2 - X1, Y2 - Y1);
+      basisTransform();
+      const k = dpr * basis.s, ox = dpr * basis.x - t.i * kachelP, oy = dpr * basis.y - t.j * kachelP;
+      zeichneInhalt({ x1: (X1 - ox) / k, y1: (Y1 - oy) / k, x2: (X2 - ox) / k, y2: (Y2 - oy) / k });
+      ctx.restore();
+      if (ganz) { t.schmutzig = false; t.cv.style.visibility = ''; zaehl.kacheln++; }
+    }
+    // Alles neu: die Kacheln gelten als ungemalt (gemalt werden sie in rendereKacheln). Mit anderem Zoom bekommt das
+    // Gitter eine neue Basis, sonst bleibt jede Kachel an ihrem Platz.
+    function rendereBasis() {
+      zaehl.voll++;
+      if (!basis || Math.abs(ansicht.s - basis.s) > 1e-9) {
+        basis = { x: ansicht.x, y: ansicht.y, s: ansicht.s };
+        for (const t of kacheln) t.belegt = false;
+        kachelBereich = ''; transformStand = '';
+      }
+      for (const t of kacheln) t.schmutzig = true;
+    }
+    // Nur einen Bereich neu malen (Dokument-Koordinaten): in jeder Kachel, die er berührt. Kacheln ausserhalb des
+    // Bildes werden nur vorgemerkt und kommen mit den übrigen an die Reihe.
+    function rendereBereich(r) {
+      zaehl.bereich++;
+      const k = dpr * basis.s, U1 = r.x1 * k + dpr * basis.x, V1 = r.y1 * k + dpr * basis.y, U2 = r.x2 * k + dpr * basis.x, V2 = r.y2 * k + dpr * basis.y;
+      const f = fenster();
+      for (const t of kacheln) {
+        if (!t.belegt || t.schmutzig) continue;
+        const X1 = Math.max(0, Math.floor(U1 - t.i * kachelP) - 2), Y1 = Math.max(0, Math.floor(V1 - t.j * kachelP) - 2);
+        const X2 = Math.min(t.cv.width, Math.ceil(U2 - t.i * kachelP) + 2), Y2 = Math.min(t.cv.height, Math.ceil(V2 - t.j * kachelP) + 2);
+        if (X2 <= X1 || Y2 <= Y1) continue;
+        if (kachelSichtbar(t, f)) rendereKachel(t, X1, Y1, X2, Y2); else t.schmutzig = true;
+      }
+    }
+    // Ungemalte Kacheln malen: was im Bild liegt sofort, alles andere nach und nach (KACHELN_JE_BILD je Bild, die
+    // nächste zuerst, hinter der Scrollrichtung zuletzt). Solange der Stift schreibt, wartet das Vorausmalen.
+    function rendereKacheln() {
+      const f = fenster();
+      let hinten = null;
+      for (const t of kacheln) {
+        if (!t.belegt || !t.schmutzig) continue;
+        if (kachelSichtbar(t, f)) rendereKachel(t); else (hinten || (hinten = [])).push(t);
+      }
+      if (!hinten) return;
+      const beschaeftigt = !!aktion && aktion.art !== 'schieben';
+      if (beschaeftigt) { clearTimeout(kachelTimer); kachelTimer = setTimeout(anfordern, 140); return; }
+      const my = (f.y1 + f.y2) / 2, mx = (f.x1 + f.x2) / 2, P = kachelP;
+      const weit = t => { const dy = (t.j + 0.5) * P - my, dx = (t.i + 0.5) * P - mx; return Math.abs(dy) * (dy * laufY < 0 ? 2 : 1) + Math.abs(dx) * 0.5; };
+      hinten.sort((a, c) => weit(a) - weit(c));
+      const n = Math.min(KACHELN_JE_BILD, hinten.length);
+      for (let i = 0; i < n; i++) rendereKachel(hinten[i]);
+      if (hinten.length > n) anfordern();
+    }
+    // Für Tests: alles sofort neu malen, genau an der Stelle, an der es liegt
+    L.neuAnDerStelle = () => { if (basis) for (const t of kacheln) if (t.belegt) rendereKachel(t); };
+    L.schiebeTest = () => {};
+    // Für Tests: das Bild aller Kacheln im Ausschnitt des Bildschirms als eine Zeichenfläche (Bildschirmpixel)
+    L.basisBild = () => {
+      const cv = document.createElement('canvas'), c = cv.getContext('2d');
+      cv.width = Math.round(b * dpr); cv.height = Math.round(h * dpr);
+      if (!basis) return cv;
+      const f = fenster(), x0 = Math.round(f.x1), y0 = Math.round(f.y1);
+      for (const t of kacheln) if (t.belegt && !t.schmutzig) c.drawImage(t.cv, t.i * kachelP - x0, t.j * kachelP - y0);
+      return cv;
+    };
+    L.kacheln = () => { const f = basis ? fenster() : null; return { anzahl: kacheln.length, hoechstens: kachelMax, pixel: kachelP, belegt: kacheln.filter(t => t.belegt).length, offen: kacheln.filter(t => t.belegt && t.schmutzig).length, sichtbarOffen: f ? kacheln.filter(t => t.belegt && t.schmutzig && kachelSichtbar(t, f)).length : 0, mb: Math.round(kacheln.length * (kachelP + KACHEL_UEBER) * (kachelP + KACHEL_UEBER) * 4 / 1e6) }; };
 
-    // Wie "canvas" (CSS) verschoben und skaliert werden muss, damit es zur aktuellen Ansicht passt
-    function abweichung() {
-      const k = ansicht.s / basis.s;
-      return { k, tx: ansicht.x - basis.x * k - rand * k + rand, ty: ansicht.y - basis.y * k - randY * k + randY };
-    }
-    function deckt() {
-      const a = abweichung();
-      const links = -rand + a.tx, oben = -randY + a.ty;
-      return links <= 0.5 && oben <= 0.5 && links + (b + 2 * rand) * a.k >= b - 0.5 && oben + (h + 2 * randY) * a.k >= h - 0.5;
-    }
+    // Wie der Behälter der Kacheln (CSS) verschoben und skaliert werden muss, damit er zur aktuellen Ansicht passt
     function wendeTransformAn() {
-      const a = abweichung();
-      const tx = a.k === 1 ? Math.round(a.tx * dpr) / dpr : a.tx, ty = a.k === 1 ? Math.round(a.ty * dpr) / dpr : a.ty;
-      const t = a.k === 1 ? `translate(${tx}px, ${ty}px)` : `translate(${tx}px, ${ty}px) scale(${a.k})`;
-      if (t !== transformStand) { canvas.style.transform = t; transformStand = t; }
-      return a;
+      const k = ansicht.s / basis.s;
+      let tx = ansicht.x - basis.x * k, ty = ansicht.y - basis.y * k;
+      if (k === 1) { tx = Math.round(tx * dpr) / dpr; ty = Math.round(ty * dpr) / dpr; }
+      const t = k === 1 ? `translate(${tx}px, ${ty}px)` : `translate(${tx}px, ${ty}px) scale(${k})`;
+      if (t !== transformStand) { kachelHost.style.transform = t; transformStand = t; }
+      return { k, tx, ty };
     }
-    // Ist "canvas" gegenüber der Ansicht verschoben oder skaliert, kommt kurz nach der Bewegung ein scharfes Neuzeichnen
+    // Die Ansicht auf ganze Bildschirmpixel gegenüber den Kacheln legen (höchstens ein halber Pixel, unsichtbar): dann
+    // liegt der Strich unter dem Stift genau dort, wo er danach auf dem Blatt steht. In Ruhe und bevor der Stift aufsetzt.
+    function rasteAnsicht() {
+      if (!basis || Math.abs(ansicht.s - basis.s) > 1e-9) return;
+      ansicht.x = basis.x + Math.round((ansicht.x - basis.x) * dpr) / dpr;
+      ansicht.y = basis.y + Math.round((ansicht.y - basis.y) * dpr) / dpr;
+    }
+    // Sind die Kacheln gegenüber der Ansicht skaliert (gezoomt), kommt kurz nach der Bewegung ein scharfes Neuzeichnen
     function pruefeSchaerfe(a) {
       clearTimeout(schaerfeTimer);
-      if (Math.abs(a.k - 1) < 0.002 && Math.abs(a.tx) < rand * 0.4 && Math.abs(a.ty) < randY * 0.4) return;
+      if (Math.abs(a.k - 1) < 0.002) return;
       const los = () => { if (aktion) { schaerfeTimer = setTimeout(los, 250); return; } plane(); };
-      schaerfeTimer = setTimeout(los, Math.abs(a.k - 1) < 0.002 ? 220 : 130);
+      schaerfeTimer = setTimeout(los, 130);
     }
 
     const letzteAnsicht = { x: 0, y: 0, s: 0 };
@@ -1917,27 +2012,35 @@
     const zoomtGerade = () => (geste && geste.art === 2) || performance.now() - zoomZeit < 160;
     function frame() {
       geplant = false;
-      if (!b || !h) return;
+      if (!b || !h || !aktiv) return;
       host.classList.toggle('mit-hand', einst.werkzeug === 'hand');
       aktualisiereCursor();
       begrenze();
       let voll = inhaltVoll || !basis;
-      // Gescrollt (gleicher Zoom): das fertige Bild um die Strecke verschieben und nur den neu sichtbaren Streifen malen,
-      // statt der ganzen Fläche. Schon nach einem Viertel der Reserve, damit die Streifen schmal bleiben.
-      if (!voll && !schmutz && Math.abs(ansicht.s - basis.s) < 1e-9 && verschiebeBasis()) { /* erledigt */ }
-      else if (!voll && !deckt()) {
-        // Beim Herauszoomen reicht das gemalte Bild bald nicht mehr über die ganze Fläche. Früher wurde dann in JEDEM
-        // Bild alles neu gemalt (eine volle Seite: jedes Bild ein Ruck). Jetzt höchstens alle VOLL_ABSTAND ms, solange
-        // die Finger zoomen; dazwischen wird das vorhandene Bild nur verkleinert, am Rand steht kurz der Hintergrund.
+      if (!kachelP) richteKachelnEin();
+      // In Ruhe liegt die Ansicht auf ganzen Bildschirmpixeln (siehe rasteAnsicht)
+      if (!voll && !finger.size && !geste && !animBild && !(aktion && aktion.art === 'schieben')) rasteAnsicht();
+      // Scrollrichtung für die Reserve der Kacheln (erst nach einem Stück in die neue Richtung)
+      if (letzteAnsicht.s) {
+        laufMerk += letzteAnsicht.y - ansicht.y;
+        if (Math.abs(laufMerk) > 48) { laufY = laufMerk > 0 ? 1 : -1; laufMerk = 0; }
+      }
+      // Plätze der Kacheln zur Ansicht. Beim Herauszoomen reicht der Vorrat bald nicht mehr für das ganze Bild: dann wird
+      // mit dem neuen Zoom neu gemalt, aber höchstens alle VOLL_ABSTAND ms, solange die Finger zoomen; dazwischen wird das
+      // vorhandene Bild nur verkleinert, am Rand steht kurz der Hintergrund.
+      if (!voll && !ordneKacheln()) {
         const seit = performance.now() - vollZeit, abstand = Math.max(VOLL_ABSTAND, vollDauer * 4);
-        if (zoomtGerade() && basis && seit < abstand) { clearTimeout(vollTimer); vollTimer = setTimeout(anfordern, abstand - seit + 4); }
+        if (zoomtGerade() && seit < abstand) { clearTimeout(vollTimer); vollTimer = setTimeout(anfordern, abstand - seit + 4); }
         else voll = true;
       }
       zaehl.bilder++;
-      if (voll) { const t0 = performance.now(); rendereBasis(); vollZeit = performance.now(); vollDauer = vollZeit - t0; }
+      const t0 = performance.now();
+      if (voll) { rendereBasis(); ordneKacheln(); }
       else if (schmutz) rendereBereich(schmutz);
       else zaehl.nurVerschoben++;
       inhaltVoll = false; schmutz = null;
+      rendereKacheln();
+      if (voll) { vollZeit = performance.now(); vollDauer = vollZeit - t0; }
       // Ansicht verschoben oder gezoomt: z. B. für die Seitenanzeige, die nur beim Scrollen erscheint
       if (ansicht.x !== letzteAnsicht.x || ansicht.y !== letzteAnsicht.y || ansicht.s !== letzteAnsicht.s) {
         const erstes = letzteAnsicht.s === 0;
@@ -2291,11 +2394,20 @@
       if (inhaltVoll || !basis) { plane(); return; }   // das Blatt wird ohnehin neu gemalt, die Ebene darüber danach geleert
       const s = seiteMitId(a.sid);
       if (!s) { plane(); return; }
-      ctx.save();
-      basisTransform();
-      ctx.translate(s.x + (a.notiz ? a.notiz.x : 0), s.y + (a.notiz ? a.notiz.y : 0));
-      malStrich(ctx, a.strich, a.farbe != null ? a.farbe : strichFarbeLive(s, a));
-      ctx.restore();
+      // In jede (schon gemalte) Kachel, die der Strich berührt
+      const ox = s.x + (a.notiz ? a.notiz.x : 0), oy = s.y + (a.notiz ? a.notiz.y : 0), g = grenzen(a.strich);
+      const k = dpr * basis.s, U1 = (g.x1 + ox) * k + dpr * basis.x - 4, V1 = (g.y1 + oy) * k + dpr * basis.y - 4, U2 = (g.x2 + ox) * k + dpr * basis.x + 4, V2 = (g.y2 + oy) * k + dpr * basis.y + 4;
+      const farbe = a.farbe != null ? a.farbe : strichFarbeLive(s, a);
+      for (const t of kacheln) {
+        if (!t.belegt || t.schmutzig) continue;
+        if (t.i * kachelP > U2 || t.i * kachelP + t.cv.width < U1 || t.j * kachelP > V2 || t.j * kachelP + t.cv.height < V1) continue;
+        ctx = t.ctx; kachelJetzt = t;
+        ctx.save();
+        basisTransform();
+        ctx.translate(ox, oy);
+        malStrich(ctx, a.strich, farbe);
+        ctx.restore();
+      }
       olLeeren();
       live.style.opacity = '';
     }
@@ -2328,7 +2440,7 @@
       const dreht = aktion && aktion.art === 'drehen' ? aktion : null;
       const r = dreht ? dreht.rahmen : auswahlRahmen();
       if (r && dreht) {
-        // Während des Drehens: der Rahmen von vorher dreht sich mit (um den Drehpunkt), daneben steht der Winkel
+        // Während des Drehens: der Rahmen von vorher dreht sich mit (um den Drehpunkt)
         const [mx, my] = dreht.mitte;
         c.save();
         c.translate(mx + dreht.vx, my + dreht.vy);
@@ -2336,17 +2448,6 @@
         c.translate(-mx, -my);
         c.strokeRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
         c.restore();
-        c.setLineDash([]);
-        const grad = Math.round(dreht.winkel * 180 / Math.PI);
-        const text = (grad > 0 ? '+' : '') + grad + '°';
-        c.font = `700 ${13 * px}px system-ui, -apple-system, "Segoe UI", sans-serif`;
-        const tb = c.measureText(text).width + 14 * px, tx = mx + dreht.vx - tb / 2, ty = my + dreht.vy - 12 * px;
-        c.fillStyle = thema.auswahl;
-        rundesRechteck(c, tx, ty, tb, 24 * px, 8 * px);
-        c.fill();
-        c.fillStyle = '#ffffff';
-        c.textBaseline = 'middle';
-        c.fillText(text, tx + 7 * px, ty + 12.5 * px);
       } else if (r) {
         c.strokeRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
         c.setLineDash([]);
@@ -3691,7 +3792,7 @@
     canvas.addEventListener('pointerdown', e => {
       if (!aktiv) return;
       stoppeAnim();
-      if (!aktion && !finger.size) zug.erledigt = false;
+      if (!aktion && !finger.size) { zug.erledigt = false; rasteAnsicht(); }
       messeHost();
       hinweis.classList.add('weg');
       schliesseNotizMenue();
@@ -4569,8 +4670,7 @@
       if (an) { eingefroren = true; frostBreite = b; return; }
       if (!eingefroren) return;
       eingefroren = false;
-      canvas.style.scale = live.style.scale = canvas.style.translate = live.style.translate = '';
-      canvas.style.transformOrigin = live.style.transformOrigin = '';
+      kachelHost.style.translate = live.style.translate = '';
       if (zentrieren && b) { const r = host.getBoundingClientRect(); if (r.width) ansicht.x += (r.width - b) / 2; }
       const t0 = performance.now();
       groesse();
@@ -4582,7 +4682,7 @@
     L.vorschauBreite = w => {
       if (!eingefroren || !frostBreite) return;
       const dx = Math.round(((w - frostBreite) / 2) * dpr) / dpr;
-      canvas.style.translate = live.style.translate = dx + 'px 0';
+      kachelHost.style.translate = live.style.translate = dx + 'px 0';
     };
     L.eingefroren = () => eingefroren;
     alleLeinwaende.add(L);
@@ -4597,6 +4697,9 @@
         if (textEdit) L.beendeText();
         schliesseNotizMenue(); langDruckAus(); laserLeeren(); schwebeWeg(); kreis = null; auswahl.clear(); aktion = null; lassoPunkte = null; finger.clear(); touchPos.clear(); geste = null; zug.px = 0; zug.erledigt = false; knopfTipp = null; stoppeAnim();
         sichernJetzt();
+        // Im Hintergrund (anderer Tab) braucht das Blatt keinen Bildspeicher: die Kacheln kommen beim Zeigen wieder (groesse)
+        gibKachelnFrei();
+        return;
       }
       plane();
     };
@@ -4622,6 +4725,10 @@
       document.removeEventListener('visibilitychange', sichernWennVerborgen);
       if (beobachter) beobachter.disconnect();
       alleLeinwaende.delete(L);
+      clearTimeout(kachelTimer);
+      gibKachelnFrei();
+      laserEbeneWeg();
+      for (const c of [live, spitze]) c.width = c.height = 0;
       host.classList.remove('leinwand');
       host.innerHTML = '';
     };

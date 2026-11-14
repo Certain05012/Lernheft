@@ -163,6 +163,19 @@ pruefe('Zickzack W ist kein Pfeil', F.erkenne(verrausche([[0, 0], [40, 100], [80
 // Nichts erkennbar
 const herz = [];
 for (let i = 0; i <= 80; i++) { const t = 2 * Math.PI * i / 80; herz.push([160 * Math.pow(Math.sin(t), 3), -(130 * Math.cos(t) - 50 * Math.cos(2 * t) - 20 * Math.cos(3 * t) - 10 * Math.cos(4 * t))]); }
+// Nachsichtig (3.14): wacklig, schief und nicht ganz geschlossen gezeichnete Formen werden trotzdem erkannt
+pruefe('Wackliger Kreis (Rauschen 3,5 bei Radius 70)', F.erkenne(verrausche(ellipse(300, 300, 70, 70, 0, 80, 2), 3.5)), 'kreis');
+pruefe('Eiriger Kreis (Achsen 1 : 1,14) wird ein Kreis', F.erkenne(verrausche(ellipse(300, 300, 80, 70, 0.3, 80, 2), 1)), 'kreis');
+{ // Kreis, der ein Stück offen bleibt (Lücke rund ein Fünftel des Umfangs)
+  const offen = []; for (let i = 0; i <= 60; i++) { const w = i / 60 * Math.PI * 2 * 0.8; offen.push([300 + 80 * Math.cos(w), 300 + 80 * Math.sin(w)]); }
+  pruefe('Kreis, zu vier Fünfteln gezeichnet', F.erkenne(verrausche(offen, 0.8)), 'kreis');
+  const halb = offen.slice(0, 40);
+  pruefe('Halbkreis bleibt offen (Linie)', F.erkenne(verrausche(halb, 0.8)), 'linie');
+}
+pruefe('Schiefes Rechteck (Ecken bis 18 Grad daneben) wird ein Rechteck', F.erkenne(verrausche(vieleck([[200, 200], [420, 214], [404, 352], [190, 330]], 6, 2, true), 1)), 'rechteck');
+pruefe('Wackliges Rechteck (Rauschen 3)', F.erkenne(verrausche(vieleck([[200, 200], [400, 200], [400, 320], [200, 320]], 6, 2, true), 3)), 'rechteck');
+pruefe('Rechteck, letzte Seite nur halb gezeichnet', F.erkenne(verrausche(vieleck([[200, 200], [400, 200], [400, 320], [200, 320]], 6, 2, false).slice(0, -10), 0.8)), 'rechteck');
+pruefe('Dreieck, wacklig', F.erkenne(verrausche(vieleck([[300, 150], [420, 340], [180, 340]], 6, 2, true), 3)), 'dreieck');
 pruefe('Herz (nicht in der Liste)', F.erkenne(verrausche(herz, 0.5)), null);
 const stern = [];
 for (let i = 0; i < 10; i++) { const w = Math.PI * i / 5 - Math.PI / 2, r = i % 2 ? 40 : 100; stern.push([200 + r * Math.cos(w), 200 + r * Math.sin(w)]); }

@@ -171,14 +171,23 @@ Daten.bereit.then(function () {
     const stufe = massstab => Math.pow(2, Math.ceil(Math.log2(Math.max(0.25, massstab)) * 2) / 2);
     const maxMassstab = s => Math.sqrt(12e6 / (s.b * s.h));
 
-    function hintergrund(ctx, s, massstab) {
+    // aus: der Ausschnitt der Seite, der gerade gemalt wird (eine Kachel der Schreibfläche)
+    function hintergrund(ctx, s, massstab, aus) {
       const e = cache.get(s.nr);
       const ziel = stufe(massstab), dreh = Leinwand.drehungVon(it, 'p' + s.nr);
       if (!e || e.modus !== it.modus || e.dreh !== dreh || e.massstab < ziel * 0.99 && e.massstab < maxMassstab(s)) anfordern(s, ziel);
       // Ein Bild in der alten Drehung wäre verzerrt: dann lieber kurz das leere Blatt
       if (!e || e.dreh !== dreh) return false;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(e.canvas, 0, 0, s.b, s.h);
+      // Nur der Teil des Bildes, den der Ausschnitt braucht (mit etwas Rand, damit an den Kanten nichts fehlt). Verkleinert
+      // wird höchstens auf gut die Hälfte (stufe): dafür reicht die mittlere Güte, die in Safari viel schneller ist als die
+      // hohe; nur bei starkem Verkleinern (grobes Bild, weit herausgezoomt) die hohe.
+      const B = e.canvas.width, H = e.canvas.height, fx = B / s.b, fy = H / s.h;
+      ctx.imageSmoothingQuality = fx > massstab * 2.2 ? 'high' : 'medium';
+      if (aus) {
+        const sx = Math.max(0, Math.floor(aus.x1 * fx) - 2), sy = Math.max(0, Math.floor(aus.y1 * fy) - 2);
+        const sx2 = Math.min(B, Math.ceil(aus.x2 * fx) + 2), sy2 = Math.min(H, Math.ceil(aus.y2 * fy) + 2);
+        if (sx2 > sx && sy2 > sy) ctx.drawImage(e.canvas, sx, sy, sx2 - sx, sy2 - sy, sx / fx, sy / fy, (sx2 - sx) / fx, (sy2 - sy) / fy);
+      } else ctx.drawImage(e.canvas, 0, 0, s.b, s.h);
       if (sl) sl.male(ctx, s);   // Suchtreffer und Lesezeichen-Bändchen
       return true;
     }
@@ -223,7 +232,15 @@ Daten.bereit.then(function () {
           const cx = c.getContext('2d', modus === 'original' ? undefined : { willReadFrequently: true });
           cx.fillStyle = '#fff';
           cx.fillRect(0, 0, c.width, c.height);
-          await seite.render({ canvasContext: cx, viewport: vp }).promise;
+          const aufgabe = seite.render({ canvasContext: cx, viewport: vp });
+          // pdf.js malt auf demselben Thread in Häppchen von bis zu 15 ms. Ein scharfes Bild, das schon begonnen ist,
+          // hält zwischen zwei Häppchen an, solange gescrollt oder gezoomt wird, und macht weiter, wenn die Fläche ruht
+          // (vorher lief es durch und nahm dem Scrollen die Bilder weg). Grobe Bilder laufen durch, sie sind klein.
+          if (!w.vorab) aufgabe.onContinue = weiter => {
+            const los = () => { if (t === token && lw && lw.inBewegung && lw.inBewegung()) setTimeout(los, 70); else weiter(); };
+            los();
+          };
+          await aufgabe.promise;
           if (t !== token || !sichtbar) { c.width = 0; continue; }
           const hell = PdfDienst.helligkeit(c);
           hellWerte.set(w.nr, hell);

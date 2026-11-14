@@ -16,9 +16,11 @@
   const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
   const MIN_LAENGE = 14;            // kürzere Striche sind ein Punkt oder ein Tippen
-  const OFFEN_ANTEIL = 0.22;        // Abstand Anfang-Ende bis zu diesem Anteil der Länge: geschlossene Form
-  const ECKEN_TOLERANZ = 0.085;     // mittlere Abweichung (Anteil des Radius), bis zu der eine Form noch passt
-  const ACHSEN_RASTER = grad(4);    // fast waagrecht oder senkrecht: genau waagrecht oder senkrecht
+  // Seit 3.14 nachsichtiger (vorher 0,22 / 0,085 / 4°): eine Form darf ein gutes Viertel offen bleiben, wackliger
+  // gezeichnet und schiefer sein und wird trotzdem erkannt. Herz, Stern und Wolke bleiben, was sie sind (test/formen.js).
+  const OFFEN_ANTEIL = 0.26;        // Abstand Anfang-Ende bis zu diesem Anteil der Länge: geschlossene Form
+  const ECKEN_TOLERANZ = 0.11;      // mittlere Abweichung (Anteil des Radius), bis zu der eine Form noch passt
+  const ACHSEN_RASTER = grad(6);    // fast waagrecht oder senkrecht: genau waagrecht oder senkrecht
 
   function laenge(p) {
     let l = 0;
@@ -278,7 +280,7 @@
   function gleichseitig(v) {
     const s = [dist(v[0], v[1]), dist(v[1], v[2]), dist(v[2], v[0])];
     const mit = (s[0] + s[1] + s[2]) / 3;
-    if ((Math.max(...s) - Math.min(...s)) / mit > 0.14) return null;
+    if ((Math.max(...s) - Math.min(...s)) / mit > 0.2) return null;
     const cx = (v[0][0] + v[1][0] + v[2][0]) / 3, cy = (v[0][1] + v[1][1] + v[2][1]) / 3;
     const R = v.reduce((m, q) => m + dist(q, [cx, cy]), 0) / 3;
     // Drehsinn der gezeichneten Reihenfolge
@@ -307,7 +309,7 @@
     const [u0, u1] = mitte(u), [t0, t1] = mitte(t);
     let b = u1 - u0, h = t1 - t0;
     const cu = (u0 + u1) / 2, ct = (t0 + t1) / 2;
-    if (Math.abs(b - h) / Math.max(b, h) < 0.12) b = h = (b + h) / 2;
+    if (Math.abs(b - h) / Math.max(b, h) < 0.15) b = h = (b + h) / 2;
     const ecke = (du, dt) => [(cu + du * b / 2) * co - (ct + dt * h / 2) * si, (cu + du * b / 2) * si + (ct + dt * h / 2) * co];
     // gleiche Reihenfolge wie gezeichnet: die nächstliegende Ecke zuerst
     const neu = [ecke(-1, -1), ecke(1, -1), ecke(1, 1), ecke(-1, 1)];
@@ -319,15 +321,15 @@
     return { ecken: flV * flN < 0 ? [ausV[0], ausV[3], ausV[2], ausV[1]] : ausV, quadrat: b === h };
   }
 
-  // Rechte Winkel (bis 15 Grad daneben) und gegenüberliegende Seiten ähnlich lang: sonst ist es ein allgemeines Viereck
+  // Rechte Winkel (bis 22 Grad daneben) und gegenüberliegende Seiten ähnlich lang: sonst ist es ein allgemeines Viereck
   function sindRechteWinkel(v) {
     for (let i = 0; i < 4; i++) {
       const a = v[(i + 3) % 4], b = v[i], c = v[(i + 1) % 4];
       const w = drehung(a, b, c);
-      if (Math.abs(w - Math.PI / 2) > grad(15)) return false;
+      if (Math.abs(w - Math.PI / 2) > grad(22)) return false;
     }
     const s = [dist(v[0], v[1]), dist(v[1], v[2]), dist(v[2], v[3]), dist(v[3], v[0])];
-    return Math.min(s[0], s[2]) / Math.max(s[0], s[2]) > 0.75 && Math.min(s[1], s[3]) / Math.max(s[1], s[3]) > 0.75;
+    return Math.min(s[0], s[2]) / Math.max(s[0], s[2]) > 0.66 && Math.min(s[1], s[3]) / Math.max(s[1], s[3]) > 0.66;
   }
 
   /* ---------- Vielecke mit fünf bis acht Ecken ---------- */
@@ -595,7 +597,7 @@
     }
 
     // Ellipse oder Kreis
-    const kreis = Math.max(e.a, e.b) / Math.min(e.a, e.b) <= 1.12;
+    const kreis = Math.max(e.a, e.b) / Math.min(e.a, e.b) <= 1.17;
     const el = kreis
       ? { cx: e.cx, cy: e.cy, a: (e.a + e.b) / 2, b: (e.a + e.b) / 2, w: 0 }
       : { cx: e.cx, cy: e.cy, a: e.a, b: e.b, w: rasterWinkel(e.w) };
