@@ -113,10 +113,10 @@ app.whenReady().then(async () => {
       l.querySelector('[data-werkzeug="notiz"]').click(); await __warte(150); aus.notiz = messe('notiz');
       l.querySelector('[data-werkzeug="laser"]').click(); await __warte(150); aus.laser = messe('laser');
       l.querySelector('[data-werkzeug="stift"]').click(); await __warte(150);
-      // viele eigene Farben
-      const e = Werkzeuge.einstellungen(); e.eigeneFarben = ['#112233','#223344','#334455','#445566','#556677','#667788','#778899','#8899aa','#99aabb','#aabbcc']; Werkzeuge.speichereEinst(); await __warte(200);
+      // volle Farbreihe (höchstens fünf Farben)
+      const e = Werkzeuge.einstellungen(), farbenVorher = e.stiftFarben.slice(); e.stiftFarben = ['tinte', 'rot', 'blau', 'gruen', '#112233']; Werkzeuge.speichereEinst(); await __warte(200);
       aus.stiftVielFarben = messe('viel');
-      e.eigeneFarben = []; Werkzeuge.speichereEinst(); await __warte(100);
+      e.stiftFarben = farbenVorher; Werkzeuge.speichereEinst(); await __warte(100);
       return aus;
     })()`);
     await foto('07-farbreihe-stift');

@@ -55,6 +55,11 @@ fehlt das Feld, gibt es keine). Beim Zusammenführen gilt wie bei allen Eigensch
 * Code pro Punkt = `Druck (0…32) * 8 + Neigung (0…7)`. Sind alle Codes gleich, steht nur `c` (der Code),
   sonst `r` = `[c0, dc1, dc2, …]` (Differenzen).
 * Druck = Code >> 3 geteilt durch 32, Neigung = (Code & 7) geteilt durch 7 (0 = aufrecht, 1 = flach).
+* `l` (seit 3.15, nur wenn gesetzt): Strichart, `"g"` gestrichelt oder `"p"` gepunktet; fehlt es, ist der Strich durchgezogen.
+  So ein Strich ist eine überall gleich breite Linie durch seine Punkte (Breite wie bei Druck 0,5, also `d`), gemalt mit runden
+  Enden und dem Muster `[3 w, 3 w]` (gestrichelt) bzw. `[0,01 w, 2,4 w]` (gepunktet), w = Breite; das Muster läuft vom ersten
+  Punkt an durch. Im Speicher heisst das Feld ebenfalls `l`. Versionen vor 3.15 zeichnen solche Striche durchgezogen und
+  schreiben das Feld nicht mit: wer dort die Seite ändert, macht sie wieder durchgezogen.
 
 **Haftnotiz** `{ "k": "n", "i": Id, "x", "y", "b", "h", "f", "t": Text, "gr", "erstellt", "zu", "m", "e": [Striche auf der Notiz] }`
 

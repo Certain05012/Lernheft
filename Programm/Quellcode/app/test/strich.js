@@ -66,7 +66,7 @@ app.whenReady().then(async () => {
         const lw = Dokument.leinwand();
         if (${OHNE_VEREINFACHEN}) LHFormat.vereinfacheStrich = st => st;
         lw.setzeWerkzeug('stift'); lw.setzeFarbe('tinte');
-        lw.einst.glaettung = ${JSON.stringify(glaettung)}; lw.einst.halteForm = false; lw.einst.kritzelLoeschen = false;
+        lw.einst.stifte = { fueller: { schaerfe: 0, druck: 50, stabil: ({ aus: 0, niedrig: 27, mittel: 47, hoch: 75 })[${JSON.stringify(glaettung)}] } }; lw.einst.halteForm = false; lw.einst.kritzelLoeschen = false;
         const pts = ${JSON.stringify(pts)};
         __start(pts);
         await __weiter(pts.slice(1, 100));
@@ -123,7 +123,7 @@ app.whenReady().then(async () => {
       r.zittern.push(await js(`(async () => {
         await __neu();
         const lw = Dokument.leinwand();
-        lw.setzeWerkzeug('stift'); lw.einst.glaettung = ${JSON.stringify(glaettung)}; lw.einst.halteForm = false; lw.einst.kritzelLoeschen = false;
+        lw.setzeWerkzeug('stift'); lw.einst.stifte = { fueller: { schaerfe: 0, druck: 50, stabil: ({ aus: 0, niedrig: 27, mittel: 47, hoch: 75 })[${JSON.stringify(glaettung)}] } }; lw.einst.halteForm = false; lw.einst.kritzelLoeschen = false;
         const pts = ${JSON.stringify(pts)};
         __start(pts); await __weiter(pts.slice(1)); await __ende(pts[pts.length - 1]); lw.sichern();
         const sid = lw.seiten()[0].id, id = location.hash.split('/').pop();

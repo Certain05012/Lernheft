@@ -193,8 +193,12 @@
     const u = LHKnoten.umgebung(memfs);
     ablage = window.LHAblageFabrik(u.require, u.Buffer).erstelleAblage({ wurzel: L, melde: verteile, format: LHFormat, lokalDatei: LOKAL_DATEI, packStufe: 2,
       // Solange der Stift schreibt (oder eben noch schrieb), nicht packen und speichern: das liefe im selben Ablauf wie
-      // die Schreibfläche, und der Strich stockte
-      beschaeftigt: () => { const t = window.Leinwand && Leinwand.stiftZuletzt ? Leinwand.stiftZuletzt() : 0; const r = 500 - (performance.now() - t); return t && r > 0 ? r : 0; } });
+      // die Schreibfläche, und der Strich stockte (gemessen in WebKit: eine volle Seite packen und schreiben blockiert
+      // 20 bis 40 ms, das sind zwei bis drei Bilder). Seit 3.15 erst nach 1,2 s Ruhe des Stifts (vorher 0,5 s, das fiel
+      // in die kurzen Pausen zwischen zwei Wörtern) und beim durchgehenden Schreiben spätestens nach 12 s (vorher 4 s).
+      // Beim Verlassen der App wird sofort gesichert (sichereAlles bei visibilitychange/pagehide).
+      wartenMax: 12000,
+      beschaeftigt: () => { const t = window.Leinwand && Leinwand.stiftZuletzt ? Leinwand.stiftZuletzt() : 0; const r = 1200 - (performance.now() - t); return t && r > 0 ? r : 0; } });
     if (abgleich) abgleich.starte(K.abgleichAlleMs || 30000);
     if (Ordner) {
       ordnerSicherung = LHSicherung.erstelle({

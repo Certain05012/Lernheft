@@ -170,7 +170,7 @@
   // Unbekanntes) wird wie bisher jedes Mal geschrieben. Die Kopien werden nie verändert (wer sie über get bekommt,
   // liest nur), so dürfen aufeinanderfolgende Fassungen einer Seite sie teilen.
   const elementSpeicher = new WeakMap();
-  const STRICH_FELDER = { id: 1, w: 1, f: 1, d: 1, m: 1, p: 1 };
+  const STRICH_FELDER = { id: 1, w: 1, f: 1, d: 1, m: 1, p: 1, l: 1 };
   function strichKennzeichen(el) {
     if (!el || el.typ || !Array.isArray(el.p)) return null;
     for (const k in el) if (!STRICH_FELDER[k]) return null;
@@ -181,7 +181,7 @@
       if (q.length > 4) return null;
       sx += q[0] * g; sy += q[1] * g; sd += (q[2] == null ? -1 : q[2]) * g + (q.length > 3 ? (q[3] + 1) * g * 7 : 0);
     }
-    return el.id + '|' + el.w + '|' + el.f + '|' + el.d + '|' + el.m + '|' + p.length + '|' + sx + '|' + sy + '|' + sd;
+    return el.id + '|' + el.w + '|' + el.f + '|' + el.d + '|' + el.m + '|' + el.l + '|' + p.length + '|' + sx + '|' + sy + '|' + sd;
   }
   function elementFassung(el) {
     const sig = strichKennzeichen(el);

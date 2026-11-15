@@ -18,6 +18,7 @@ const AUS = ausgabe('kacheln');
     cv.setPointerCapture = () => {}; cv.releasePointerCapture = () => {}; cv.hasPointerCapture = () => true;
     const host = cv.parentElement, hr = host.getBoundingClientRect();
     window.__host = host;
+    window.__streng = !/AppleWebKit/.test(navigator.userAgent) || /Chrome/.test(navigator.userAgent);
     window.__ev = (typ, x, y, extra) => cv.dispatchEvent(new PointerEvent(typ, Object.assign({ pointerId: 9, pointerType: 'pen', isPrimary: true, clientX: hr.left + x, clientY: hr.top + y, pressure: typ === 'pointerup' ? 0 : 0.4, buttons: typ === 'pointerup' ? 0 : 1, button: 0, bubbles: true, cancelable: true }, extra || {})));
     window.__bild = () => new Promise(f => requestAnimationFrame(() => requestAnimationFrame(f)));
     window.__warte = ms => new Promise(f => setTimeout(f, ms));
@@ -36,9 +37,18 @@ const AUS = ausgabe('kacheln');
       const a = lw.basisBild(), A = a.getContext('2d').getImageData(0, 0, a.width, a.height).data;
       lw.neuAnDerStelle(); await __bild();
       const b = lw.basisBild(), B = b.getContext('2d').getImageData(0, 0, b.width, b.height).data;
-      let anders = 0, tinte = 0, leer = 0;
-      for (let i = 0; i < A.length; i += 4) { if (A[i] !== B[i] || A[i + 1] !== B[i + 1] || A[i + 2] !== B[i + 2] || A[i + 3] !== B[i + 3]) anders++; if (B[i] < 90 && B[i + 3] > 200) tinte++; if (B[i + 3] < 255) leer++; }
-      return { anders, tinte, leer, pixel: A.length / 4 };
+      // anders: irgendein Unterschied; deutlich: mehr als 30 von 765. Chromium malt zweimal dasselbe auf den Pixel
+      // gleich (__streng). WebKitGTK glättet Kanten in vier Stufen und je nach Zustand der Zeichenfläche leicht anders
+      // (frisch angelegt gegen schon benutzt, in einem Zug gegen nachträglich darüber): eine Handvoll einzelner
+      // Kantenpixel unter drei Millionen weicht um eine Stufe ab, zweimal neu gemalt ist auch dort gleich. Dort gilt:
+      // höchstens 40 solche Pixel.
+      let anders = 0, deutlich = 0, groesster = 0, tinte = 0, leer = 0;
+      for (let i = 0; i < A.length; i += 4) {
+        const d = Math.abs(A[i] - B[i]) + Math.abs(A[i + 1] - B[i + 1]) + Math.abs(A[i + 2] - B[i + 2]) + Math.abs(A[i + 3] - B[i + 3]);
+        if (d) { anders++; if (d > 30) deutlich++; if (d > groesster) groesster = d; }
+        if (B[i] < 90 && B[i + 3] > 200) tinte++; if (B[i + 3] < 255) leer++;
+      }
+      return { anders: window.__streng ? anders : (deutlich > 40 ? deutlich : 0), alle: anders, deutlich, groesster, tinte, leer, pixel: A.length / 4 };
     };
   });
 

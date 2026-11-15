@@ -149,12 +149,12 @@ app.whenReady().then(async () => {
       einst.halteForm = false;
       const jitter = p => { let s = 0, n = 0; for (let i = 1; i < p.length - 1; i++) { const dx = p[i][0] - (p[i - 1][0] + p[i + 1][0]) / 2, dy = p[i][1] - (p[i - 1][1] + p[i + 1][1]) / 2; s += dx * dx + dy * dy; n++; } return Math.sqrt(s / n); };
       for (const stufe of ['aus', 'niedrig', 'mittel', 'hoch']) {
-        einst.glaettung = stufe; lw.leeren();
+        einst.stifte = { fueller: { schaerfe: 0, druck: 50, stabil: ({ aus: 0, niedrig: 27, mittel: 47, hoch: 75 })[stufe] } }; lw.leeren();
         const pts = []; for (let i = 0; i <= 200; i++) { const t = 2 * Math.PI * i / 200 * .8; pts.push([500 + 60 * Math.cos(t) + (Math.random() - .5) * 2.4, 250 + 60 * Math.sin(t) + (Math.random() - .5) * 2.4]); }
         await __mal(pts, 20, 5);
         aus[stufe] = +jitter(__letzte().p).toFixed(2);
       }
-      einst.glaettung = 'mittel'; einst.halteForm = true; lw.leeren();
+      einst.stifte = {}; einst.halteForm = true; lw.leeren();
       return aus;
     })()`);
 

@@ -44,6 +44,8 @@
     }
     const o = { i: s.id, w: s.w === 'marker' ? 1 : 0, f: s.f, d: rund2(s.d) };
     if (s.m) o.m = s.m;
+    // Strichart (ab 3.15): 'g' gestrichelt, 'p' gepunktet; fehlt bei durchgezogenen Strichen
+    if (s.l === 'g' || s.l === 'p') o.l = s.l;
     o.q = q;
     if (codes.every(c => c === codes[0])) o.c = codes.length ? codes[0] : 0;
     else o.r = codes.map((c, i) => (i ? c - codes[i - 1] : c));
@@ -62,6 +64,7 @@
     }
     const s = { id: o.i || kurzId(), w: o.w === 1 ? 'marker' : 'stift', f: o.f, d: o.d, p };
     if (o.m) s.m = o.m;
+    if (o.l === 'g' || o.l === 'p') s.l = o.l;
     return s;
   }
 
@@ -140,10 +143,32 @@
   }
 
   // Seite im Speicher { e: [...], x: {...} } -> Text (JSON) für die Datei
+  // Jeder Strich merkt sich seinen fertigen Text (seit 3.15): beim Speichern einer Seite wird nur noch kodiert, was neu
+  // oder geändert ist. Das zählt dort, wo die Ablage im selben Ablauf läuft wie die Schreibfläche (iPad, Web-App) und
+  // dieselben Strich-Objekte immer wieder bekommt: eine volle Seite kostete sonst bei jedem Speichern 5 bis 8 ms. Ob ein
+  // Strich noch derselbe ist, zeigt ein Kennzeichen aus allen seinen Werten (Punkte gewichtet aufsummiert).
+  const strichTexte = typeof WeakMap === 'function' ? new WeakMap() : null;
+  function strichTextFuerDatei(s) {
+    const p = s.p || [];
+    let sx = 0, sy = 0, sd = 0;
+    for (let i = 0; i < p.length; i++) { const q = p[i], g = i + 1; sx += q[0] * g; sy += q[1] * g; sd += (q[2] == null ? -1 : q[2]) * g + (q[3] || 0) * g * 7; }
+    const sig = s.id + '|' + s.w + '|' + s.f + '|' + s.d + '|' + s.m + '|' + s.l + '|' + p.length + '|' + sx + '|' + sy + '|' + sd;
+    let z = strichTexte.get(s);
+    if (!z || z.sig !== sig) { z = { sig, text: JSON.stringify(kodiereStrich(s)) }; strichTexte.set(s, z); }
+    return z.text;
+  }
   function kodiereSeite(id, inhalt, jetzt) {
-    const o = { lh: VERSION, art: 'seite', id, t: jetzt || Date.now(), e: (inhalt.e || []).map(kodiereElement) };
-    if (inhalt.x && Object.keys(inhalt.x).length) o.x = inhalt.x;
-    return JSON.stringify(o);
+    const liste = inhalt.e || [];
+    const kopf = { lh: VERSION, art: 'seite', id, t: jetzt || Date.now() };
+    // Genau der Text, den JSON.stringify für { ...kopf, e: [...], x? } liefert
+    let text = JSON.stringify(kopf).slice(0, -1) + ',"e":[';
+    for (let i = 0; i < liste.length; i++) {
+      const e = liste[i];
+      text += (i ? ',' : '') + (strichTexte && e && !e.typ && !e.k && Array.isArray(e.p) ? strichTextFuerDatei(e) : JSON.stringify(kodiereElement(e)));
+    }
+    text += ']';
+    if (inhalt.x && Object.keys(inhalt.x).length) text += ',"x":' + JSON.stringify(inhalt.x);
+    return text + '}';
   }
   // Text oder Objekt aus der Datei -> Seite im Speicher
   function dekodiereSeite(eingabe) {

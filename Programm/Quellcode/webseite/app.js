@@ -71,7 +71,6 @@ Daten.bereit.then(function () {
     ['speicher', 'Speicher', '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>'],
     ['erweitert', 'Erweitert', '<path d="M4 7h10M18 7h2M4 12h3M11 12h9M4 17h12M20 17h0"/><circle cx="16" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="18" cy="17" r="2"/>']
   ];
-  const GLAETTUNG_NAMEN = [['aus', 'Aus'], ['niedrig', 'Niedrig'], ['mittel', 'Mittel'], ['hoch', 'Hoch']];
   async function zeigeEinstellungen(reiter) {
     const stift = Werkzeuge.einstellungen();
     const start = EINST_REITER.some(r => r[0] === reiter) ? reiter : Daten.get('lokal:einst-reiter', 'schreiben');
@@ -95,7 +94,7 @@ Daten.bereit.then(function () {
               <h3>Stift</h3>
               <div class="einst-gruppe">
                 ${wahl('stiftArt', Object.entries(Leinwand.STIFTARTEN), stiftArt, 'Stiftart', '<span data-info="stiftArt">' + esc(Werkzeuge.STIFTART_TITEL[stiftArt]) + '</span>', stiftSymbole)}
-                ${wahl('glaettung', GLAETTUNG_NAMEN, stift.glaettung, 'Glättung', 'Nimmt das Zittern aus der Linie. Höher ist ruhiger, die Linie folgt dem Stift dann etwas später.')}
+                <label class="einst-zeile"><span class="einst-text"><b>Strich-Stabilisierung</b><small>Nimmt das Zittern aus der Linie (für die gewählte Stiftart). Höher ist ruhiger, die Linie folgt dem Stift dann etwas später. Schärfe der Spitze und Druckempfindlichkeit stehen am Stift-Knopf der Werkzeugleiste.</small></span><span class="einst-regler"><input type="range" name="stabil" min="0" max="100" step="1" value="${Leinwand.stiftWerte(stift, stiftArt).stabil}"><output name="stabilAnzeige"></output></span></label>
                 ${schalter('schwebeVorschau', stift.schwebeVorschau !== false, 'Vorschau beim Schweben', 'Hält man den Apple Pencil knapp über das Blatt, zeigt ein Punkt, wo und wie breit der Strich ansetzt.')}
                 ${schalter('finger', !!stift.finger, 'Mit dem Finger schreiben', 'Ein Finger schreibt, zwei Finger verschieben und zoomen. Aus: Finger verschieben, nur der Stift schreibt.')}
               </div>
@@ -129,7 +128,7 @@ Daten.bereit.then(function () {
               </div>
               <h3>Werkzeugleiste</h3>
               <div class="einst-gruppe">
-                ${schalter('farbig', Daten.get('lokal:leiste-farbig', true) !== false, 'Farbige Symbole', 'Gestaltete Werkzeuge statt einfacher Linien.')}
+                ${schalter('farbig', Daten.get('lokal:leiste-farbig', true) !== false, 'Farbige Symbole', 'Das gewählte Werkzeug erscheint farbig gestaltet, alle anderen als ruhige Linien.')}
                 <div class="einst-zeile"><span class="einst-text"><b>Symbole auswählen</b><small>Was du nicht brauchst, ausblenden. Die Reihenfolge änderst du direkt in der Leiste durch Ziehen.</small></span><button type="button" class="btn-leise klein" data-tu="leiste">Anpassen …</button></div>
               </div>
               <h3>Anzeige</h3>
@@ -149,6 +148,10 @@ Daten.bereit.then(function () {
               <div class="einst-gruppe">
                 <label class="einst-zeile"><span class="einst-text"><b>Trennlinie ziehen</b><small>Wie das Bild beim Ziehen der Trennlinie folgt.</small></span><select name="splitv">${Dokument.splitVarianten().map(([k, n]) => `<option value="${k}" ${Dokument.splitVariante() === k ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
                 ${schalter('splitdebug', Dokument.splitDebug(), 'Bildrate beim Ziehen anzeigen', 'Für die Fehlersuche: FPS und Layout-Zeit.')}
+              </div>
+              <h3>Flüssigkeit</h3>
+              <div class="einst-gruppe">
+                <div class="einst-zeile"><span class="einst-text"><b>Flüssigkeit messen</b><small>Zeichnet 20 Sekunden lang auf, wie flüssig Scrollen und Schreiben auf diesem Gerät laufen (Bilder je Sekunde, Ruckler, was den Ablauf blockiert). Öffne zuerst ein Dokument, starte, und scrolle und schreibe dann ganz normal. Am Ende steht ein kurzer Text zum Kopieren.</small></span><button type="button" class="btn-leise klein" data-tu="messen">Messen …</button></div>
               </div>
               <p class="einst-hinweis">${esc(window.LHVersion ? 'Lernheft ' + window.LHVersion : 'Lernheft')}</p>
             </section>
@@ -172,13 +175,22 @@ Daten.bereit.then(function () {
         };
         halte();
         nenne('halteMs').addEventListener('input', halte);
+        const stabil = () => { nenne('stabilAnzeige').textContent = Math.round(nenne('stabil').value) + ' %'; };
+        stabil();
+        nenne('stabil').addEventListener('input', stabil);
         // Jede Änderung gilt sofort
         d.addEventListener('change', ev => {
           const k = ev.target, n = k.name;
           if (!n) return;
           if (n === 'geste') stift.gesten = Object.assign({}, stift.gesten || {}, { [k.dataset.geste]: k.value });
-          else if (n === 'stiftArt') { stift.stiftArt = k.value; d.querySelector('[data-info="stiftArt"]').textContent = Werkzeuge.STIFTART_TITEL[k.value] || ''; }
-          else if (n === 'glaettung') stift.glaettung = k.value;
+          else if (n === 'stiftArt') {
+            stift.stiftArt = k.value; d.querySelector('[data-info="stiftArt"]').textContent = Werkzeuge.STIFTART_TITEL[k.value] || '';
+            nenne('stabil').value = Leinwand.stiftWerte(stift, k.value).stabil; stabil();
+          }
+          else if (n === 'stabil') {
+            const art = Leinwand.STIFTARTEN[stift.stiftArt] ? stift.stiftArt : 'fueller';
+            stift.stifte = Object.assign({}, stift.stifte, { [art]: Object.assign({}, Leinwand.stiftWerte(stift, art), { stabil: Math.round(Number(k.value)) }) });
+          }
           else if (n === 'halteMs') stift.halteMs = Number(k.value) || 700;
           else if (['schwebeVorschau', 'finger', 'halteForm', 'kritzelLoeschen', 'kreisAuswahl', 'federDrehung'].includes(n)) stift[n] = k.checked;
           else if (n === 'zeit') { Daten.set('lokal:lernzeit', k.checked); wendeZeitAn(); return; }
@@ -210,6 +222,7 @@ Daten.bereit.then(function () {
           if (tu === 'speicherort') zeigeSpeicherort();
           else if (tu === 'leiste') { if (Dokument.aktiv()) Werkzeuge.anpassen(); else UI.meldung('Öffne ein Dokument: dort lässt sich die Werkzeugleiste anpassen (Menü ⋯).'); }
           else if (tu === 'stiftpanel') { if (!Dokument.stiftPanel()) UI.meldung('Öffne ein Dokument: das Stift-Panel gehört zur Werkzeugleiste.'); }
+          else if (tu === 'messen') { if (!Dokument.aktiv()) UI.meldung('Öffne zuerst ein Dokument, dann Einstellungen › Erweitert › Messen.'); else if (window.Messung) Messung.zeige(20); }
         });
       }
     });

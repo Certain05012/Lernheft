@@ -67,7 +67,7 @@ const fs = require('fs');
       await __neu();
       const lw = Dokument.leinwand();
       lw.setzeWerkzeug('stift'); lw.setzeFarbe('tinte'); lw.waehleGroesse('gross');
-      lw.einst.glaettung = glaettung; lw.einst.halteForm = false; lw.einst.kritzelLoeschen = false; lw.einst.stiftArt = 'fueller';
+      lw.einst.stifte = { fueller: { schaerfe: 0, druck: 50, stabil: ({ aus: 0, niedrig: 27, mittel: 47, hoch: 75 })[glaettung] } }; lw.einst.halteForm = false; lw.einst.kritzelLoeschen = false; lw.einst.stiftArt = 'fueller';
       __start(pts);
       await __weiter(pts.slice(1, 800));
       await new Promise(ok => requestAnimationFrame(() => requestAnimationFrame(ok)));

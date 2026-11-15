@@ -2,9 +2,9 @@
 // Service Worker für die Web-App (iPad, Safari, "Zum Home-Bildschirm"): hält die Oberfläche offline bereit.
 // Strategie: erst das Netz (damit Updates sofort ankommen), ohne Netz die gemerkte Kopie. Die PDF-Werkzeuge und
 // Schriften von fremden Servern werden beim ersten Mal mitgemerkt.
-const VERSION = 'lernheft-web-2';
+const VERSION = 'lernheft-web-3';
 const KERN = ['./', 'index.html', 'style.css', 'ui.js', 'daten.js', 'zeit.js', 'format.js', 'formen.js', 'leinwand.js', 'werkzeuge.js', 'pdfdienst.js',
-  'seitenleiste.js', 'umwandeln.js', 'bibliothek.js', 'dokument.js', 'geraet.js', 'app.js', 'icon.svg', 'icon-512.png', 'manifest.webmanifest'];
+  'seitenleiste.js', 'umwandeln.js', 'bibliothek.js', 'dokument.js', 'geraet.js', 'messung.js', 'app.js', 'icon.svg', 'icon-512.png', 'manifest.webmanifest'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => Promise.all(KERN.map(u => c.add(u).catch(() => null)))).then(() => self.skipWaiting()));

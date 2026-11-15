@@ -152,13 +152,15 @@ app.whenReady().then(async () => {
     r.groessen = {};
     r.groessen.start = await js(`JSON.parse(JSON.stringify(Werkzeuge.einstellungen().presets))`);
     await js(`${leiste}.querySelector('[data-preset="klein"]').click()`);
-    r.groessen.nachKlein = await js(`({ dicke: Werkzeuge.einstellungen().dicke, aktiv: Werkzeuge.einstellungen().preset.stift, regler: ${leiste}.querySelector('[data-regler]').value })`);
-    await js(`(() => { const inp = ${leiste}.querySelector('[data-regler]'); inp.value = 12; inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true })); })()`);
-    r.groessen.nachRegler = await js(`({ dicke: Werkzeuge.einstellungen().dicke, presets: Werkzeuge.einstellungen().presets.stift, reglerMin: ${leiste}.querySelector('[data-regler]').min, reglerMax: ${leiste}.querySelector('[data-regler]').max })`);
-    await js(`${leiste}.querySelector('[data-preset="gross"]').click()`);
-    r.groessen.nachGross = await js(`({ dicke: Werkzeuge.einstellungen().dicke, regler: ${leiste}.querySelector('[data-regler]').value })`);
+    // seit 3.15: die gewählte Grösse nochmal antippen öffnet ihr Fenster mit dem Regler
     await js(`${leiste}.querySelector('[data-preset="klein"]').click()`);
-    r.groessen.zurueckKlein = await js(`({ dicke: Werkzeuge.einstellungen().dicke, regler: ${leiste}.querySelector('[data-regler]').value })`);
+    r.groessen.nachKlein = await js(`({ dicke: Werkzeuge.einstellungen().dicke, aktiv: Werkzeuge.einstellungen().preset.stift, regler: document.querySelector('.wz-pop [data-regler]').value })`);
+    await js(`(() => { const inp = document.querySelector('.wz-pop [data-regler]'); inp.value = 12; inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    r.groessen.nachRegler = await js(`({ dicke: Werkzeuge.einstellungen().dicke, presets: Werkzeuge.einstellungen().presets.stift, reglerMin: document.querySelector('.wz-pop [data-regler]').min, reglerMax: document.querySelector('.wz-pop [data-regler]').max })`);
+    await js(`${leiste}.querySelector('[data-preset="gross"]').click()`);
+    r.groessen.nachGross = await js(`({ dicke: Werkzeuge.einstellungen().dicke, regler: document.querySelector('.wz-pop [data-regler]').value })`);
+    await js(`${leiste}.querySelector('[data-preset="klein"]').click()`);
+    r.groessen.zurueckKlein = await js(`({ dicke: Werkzeuge.einstellungen().dicke, regler: document.querySelector('.wz-pop [data-regler]').value })`);
     await js(`Dokument.leinwand().setzeWerkzeug('marker'); ${leiste}.querySelector('[data-preset="mittel"]').click()`);
     r.groessen.marker = await js(`({ dicke: Werkzeuge.einstellungen().markerDicke, presets: Werkzeuge.einstellungen().presets.marker })`);
     await js(`Dokument.leinwand().setzeWerkzeug('stift')`);
@@ -179,7 +181,7 @@ app.whenReady().then(async () => {
     // 8. Gemeinsame Einstellungen von einem anderen Gerät
     fs.writeFileSync(einst, JSON.stringify({ lernheft: 2, art: 'einstellungen', eintraege: { 'einst:stift': { v: { ...r.einstellungenDatei, presets: { ...r.einstellungenDatei.presets, stift: { klein: 2.5, mittel: 4, gross: 9 } }, preset: { stift: 'gross', marker: 'mittel', radierer: 'mittel' } }, m: Date.now() + 5000 } } }));
     await warte(3500);
-    r.einstellungVonAussen = await js(`({ dicke: Werkzeuge.einstellungen().dicke, klein: Werkzeuge.einstellungen().presets.stift.klein, regler: ${leiste}.querySelector('[data-regler]').value })`);
+    r.einstellungVonAussen = await js(`({ dicke: Werkzeuge.einstellungen().dicke, klein: Werkzeuge.einstellungen().presets.stift.klein, regler: document.querySelector('.wz-pop [data-regler]').value })`);
 
     // 9. Seite von aussen geändert, während hier ungesicherte Arbeit liegt: beides bleibt
     await js(`Dokument.leinwand().setzeWerkzeug('stift')`);

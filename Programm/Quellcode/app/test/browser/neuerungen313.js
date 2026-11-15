@@ -291,19 +291,21 @@ const AUS = ausgabe('neuerungen313');
   ok('vollbild: untere Zeile bleibt in der Leiste', ['stift', 'marker', 'radierer', 'text', 'laser', 'notiz'].every(w => leiste[w + 'Zeile'][2]), leiste);
   await page.evaluate(async () => { document.querySelector('[data-el="vollbild"]').click(); await __warte(1100); });
 
-  /* ===== 9. Stiftarten mit Strichprobe und Erklärung ===== */
+  /* ===== 9. Stiftarten: ein Knopf, Fenster mit Symbol, Name und den Reglern der Stiftart (seit 3.15) ===== */
   const arten = await page.evaluate(async () => {
     const l = document.querySelector('.dok-leiste');
     l.querySelector('[data-werkzeug="stift"]').click(); await __warte(100);
-    const k = [...l.querySelectorAll('[data-stiftart]')];
-    l.querySelector('[data-stiftart="fueller"]').click(); await __warte(80);
-    l.querySelector('[data-stiftart="pinsel"]').click(); await __warte(150);
-    const m = document.querySelector('.meldung, [role="status"]');
-    return { n: k.length, proben: k.every(x => !!x.querySelector('svg.probe')), namen: k.map(x => x.querySelector('.stiftart-name').textContent), art: Dokument.leinwand().einst.stiftArt, meldung: document.body.innerText.includes('Pinselstift: doppelt so breit') };
+    l.querySelector('[data-pop="stift"]').click(); await __warte(150);
+    const pop = document.querySelector('.wz-pop');
+    const k = [...pop.querySelectorAll('[data-stiftart]')];
+    k[0].click(); await __warte(80);
+    const reglerF = [...pop.querySelectorAll('[data-stiftwert]')].map(x => x.dataset.stiftwert);
+    pop.querySelector('[data-stiftart="pinsel"]').click(); await __warte(150);
+    return { n: k.length, symbole: k.every(x => !!x.querySelector('svg')), namen: k.map(x => x.textContent.trim()), art: Dokument.leinwand().einst.stiftArt, titel: pop.querySelector('.pop-titel').textContent, reglerF, reglerP: [...pop.querySelectorAll('[data-stiftwert]')].map(x => x.dataset.stiftwert) };
   });
-  ok('stiftarten: Strichprobe, Name und Erklaerung beim Wechsel', arten.n === 3 && arten.proben && arten.namen.join() === 'Füller,Kuli,Pinsel' && arten.art === 'pinsel' && arten.meldung, arten);
-  await page.screenshot({ path: path.join(AUS, 'leiste-stiftarten.png'), clip: { x: 0, y: 0, width: 1194, height: 200 } });
-  await page.evaluate(() => Dokument.leinwand().setzeStiftArt('fueller'));
+  ok('stiftarten: Fenster mit Symbol, Name und Reglern', arten.n === 3 && arten.symbole && arten.namen.join() === 'Füllfederhalter,Kugelschreiber,Pinselstift' && arten.art === 'pinsel' && arten.titel === 'Pinselstift' && arten.reglerF.join() === 'schaerfe,druck,stabil' && arten.reglerP.join() === 'druck,stabil', arten);
+  await page.screenshot({ path: path.join(AUS, 'leiste-stiftarten.png'), clip: { x: 0, y: 0, width: 1194, height: 640 } });
+  await page.evaluate(async () => { document.querySelector('.dok-leiste [data-pop="stift"]').click(); await __warte(80); Dokument.leinwand().setzeStiftArt('fueller'); });
 
   /* ===== 10. Menü ⋯ ===== */
   await page.click('[data-el="mehr"]');

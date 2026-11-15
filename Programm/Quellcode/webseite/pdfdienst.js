@@ -210,6 +210,14 @@
         page.drawSvgPath(pfad(pts.length === 1 ? [pts[0], [pts[0][0] + 0.1, pts[0][1]]] : pts), { x: 0, y: 0, borderColor: farbe, borderWidth: Leinwand.breite(e, 0.5) * massstab, borderOpacity: 0.35, borderLineCap: liniekappe });
         continue;
       }
+      // Gestrichelt oder gepunktet (ab 3.15): eine Linie durch dieselbe Kurve wie auf dem Bildschirm, mit ihrem Muster
+      if (Leinwand.STRICHARTEN[e.l] && e.p.length > 1) {
+        const w = Leinwand.musterBreite(e), Q = (x, y) => { const [a, b] = punkt(x, y); return a.toFixed(2) + ' ' + (-b).toFixed(2); };
+        const kurve = Leinwand.strichKurve(e);
+        const d = 'M' + Q(kurve[0][0], kurve[0][1]) + kurve.map(c => ' C' + Q(c[2], c[3]) + ' ' + Q(c[4], c[5]) + ' ' + Q(c[6], c[7])).join('');
+        page.drawSvgPath(d, { x: 0, y: 0, borderColor: farbe, borderWidth: w * massstab, borderLineCap: liniekappe, borderDashArray: Leinwand.strichMuster(e.l, w).map(v => v * massstab), borderDashPhase: 0 });
+        continue;
+      }
       // Wie auf dem Bildschirm eine gefüllte Fläche (Bänder und Kreise, Leinwand.strichFlaeche) in einem Pfad. Alles wird
       // in Einheiten der Seite gebaut und erst dann umgerechnet, so laufen alle Teile gleich herum und die Füllung vereint sie.
       const teile = [];

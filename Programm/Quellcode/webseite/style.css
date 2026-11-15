@@ -407,6 +407,8 @@ img.dunkelblau { filter: invert(1) hue-rotate(180deg); mix-blend-mode: screen; }
 .lw-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; -webkit-user-select: none; user-select: none; }
 /* Ebene darüber: Strich unter dem Stift, Auswahl, Lasso, Radierkreis; fängt keine Eingaben ab */
 .lw-live { position: absolute; top: 0; left: 0; display: block; pointer-events: none; -webkit-user-select: none; user-select: none; }
+/* Die Spitze des Strichs: eine kleine Fläche, die dem Stift folgt (leinwand.js spitzeNach) */
+.lw-spitze { will-change: transform; }
 /* Text schreiben: dieselbe Schrift wie auf der Schreibfläche (leinwand.js TEXT_SCHRIFT, TEXT_ZEILE), durchsichtig darüber */
 .lw-text-editor { position: absolute; z-index: 6; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; resize: none; overflow: hidden;
   font-family: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-weight: 400; line-height: 1.3; letter-spacing: normal;
@@ -726,16 +728,9 @@ img.dunkelblau { filter: invert(1) hue-rotate(180deg); mix-blend-mode: screen; }
 .dok-leiste .wz svg { width: 24px; height: 24px; stroke-width: 1.9; }
 .dok-leiste .farbpunkt, .dok-leiste .notizpunkt { width: 26px; height: 26px; }
 .dok-leiste .farbpunkt.marker { width: 28px; height: 18px; }
-.dok-leiste .preset { min-width: 86px; height: 44px; grid-template-columns: 30px auto; grid-template-rows: 1fr 1fr; padding: 0 10px 0 4px; }
-.dok-leiste .preset-name { display: block; font-size: 13px; }
-.dok-leiste .preset-wert { font-size: 12px; }
-.dok-leiste .dicke-regler { width: 150px; height: 36px; }
-.dok-leiste .dicke-wert { min-width: 52px; font-size: 14px; color: var(--tinte); font-weight: 700; }
 .dok-leiste .wb-zoom { min-width: 68px; height: 44px; font-size: 15px; font-weight: 700; }
 .dok-leiste .leiste-ende { gap: 6px; }
 .dok-leiste .nur-zeit { padding: 6px 12px; font-size: 14px; }
-.dok-leiste .dicke-regler::-webkit-slider-thumb { width: 24px; height: 24px; margin-top: -9px; }
-.dok-leiste .dicke-regler::-webkit-slider-runnable-track { height: 8px; }
 
 /* Zwei Zeilen: oben die Werkzeuge, darunter (mit Trennlinie) Farben und Grössen */
 .dok-leiste:not(.leiste-zu) > :not(.eig-zeile):not(.eig-knopf) { order: 1; }
@@ -827,15 +822,9 @@ body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .vollbild .dok-leiste .wz svg { width: 22px; height: 22px; }
 .vollbild .dok-leiste .farbreihe { gap: 4px; }
 .vollbild .dok-leiste .farbreihe .farbpunkt, .vollbild .dok-leiste .farbreihe .notizpunkt { width: min(24px, 70%); }
-.vollbild .dok-leiste .preset { height: 40px; min-width: 0; padding: 0 8px 0 2px; grid-template-columns: 24px auto; }
-.vollbild .dok-leiste .preset-name { font-size: 12px; }
-.vollbild .dok-leiste .preset-wert { font-size: 11px; }
-.vollbild .dok-leiste .dicke-regler { height: 30px; max-width: 160px; }
-.vollbild .dok-leiste .dicke-wert { min-width: 46px; font-size: 13px; }
 .vollbild .dok-leiste.eig-offen > [data-eig] { margin-top: 0; }
 @media (pointer: coarse) {
   .vollbild .dok-leiste .wz, .vollbild .dok-leiste .farbreihe .wz { width: 44px; height: 44px; flex-basis: 44px; }
-  .vollbild .dok-leiste .preset { height: 44px; }
 }
 /* Symbole ziehen */
 .dok-leiste [data-ord] { touch-action: none; }
@@ -859,10 +848,6 @@ body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .farbpunkt.laser { box-shadow: 0 0 9px var(--farbe), inset 0 0 0 1px rgba(0, 0, 0, .25); }
 /* Grössen: wenn der Platz knapp wird, schrumpfen die drei Knöpfe und der Regler und brechen notfalls um, statt zu scrollen */
 .dok-leiste .groesse-gruppe { flex: 0 1 auto; flex-wrap: wrap; justify-content: center; row-gap: 4px; max-width: 100%; min-width: 0; }
-.dok-leiste .presets { flex: 1 1 auto; min-width: 0; }
-.dok-leiste .preset { flex: 1 1 0; min-width: 0; }
-.dok-leiste .dicke-regler { flex: 1 1 110px; width: auto; min-width: 90px; max-width: 200px; }
-@media (max-width: 560px) { .dok-leiste .preset { padding: 0 6px 0 2px; grid-template-columns: 22px auto; } .dok-leiste .preset-wert { font-size: 11px; } }
 
 /* ================= Bibliothek: klare Kontraste, nichts geht auf dem Hintergrund unter =================
    Hell: getönter Hintergrund (kühles Hellgrau-Blau) mit weissen Karten, die einen Rand und Schatten haben. Dunkel: Karten heben
@@ -895,7 +880,6 @@ body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
   .dok-leiste .wz { width: 48px; height: 48px; }
   .dok-leiste .wz.wz-text { width: auto; }
   .dok-leiste .farbreihe .wz { width: 48px; height: 48px; flex-basis: 48px; }
-  .dok-leiste .preset { height: 48px; }
   .dok-leiste .wb-zoom { height: 48px; min-width: 72px; }
   .kontext > button { padding: 13px 14px; font-size: 15px; }
   .kontext-farben button { width: 34px; height: 34px; }
@@ -1263,24 +1247,12 @@ body { padding-inline: 0; }
   --s-text: #22c55e; --s-laser: #ff4d4d; --s-finger: #38bdf8; --s-verlauf: #9aa8c0; --s-tasten: #c084fc; --s-drehen: #14b8a6; }
 :root[data-theme="light"] .werkzeugleiste.farbig { --s-hand: #5b6b85; --s-stift: #1f5fe0; --s-marker: #c48a00; --s-radierer: #e0356a; --s-lasso: #7c4ddb;
   --s-notiz: #d97706; --s-text: #15803d; --s-laser: #dc2626; --s-finger: #0284c7; --s-verlauf: #66748c; --s-tasten: #9333ea; --s-drehen: #0f766e; }
-.werkzeugleiste.farbig [data-werkzeug="hand"] svg { color: var(--s-hand); }
-.werkzeugleiste.farbig [data-werkzeug="stift"] svg { color: var(--s-stift); }
-.werkzeugleiste.farbig [data-werkzeug="marker"] svg { color: var(--s-marker); }
-.werkzeugleiste.farbig [data-werkzeug="radierer"] svg { color: var(--s-radierer); }
-.werkzeugleiste.farbig [data-werkzeug="lasso"] svg { color: var(--s-lasso); }
-.werkzeugleiste.farbig [data-werkzeug="notiz"] svg { color: var(--s-notiz); }
-.werkzeugleiste.farbig [data-werkzeug="text"] svg { color: var(--s-text); }
-.werkzeugleiste.farbig [data-werkzeug="laser"] svg { color: var(--s-laser); }
-.werkzeugleiste.farbig [data-aktion="finger"] svg { color: var(--s-finger); }
-.werkzeugleiste.farbig [data-aktion="undo"] svg, .werkzeugleiste.farbig [data-aktion="redo"] svg { color: var(--s-verlauf); }
-.werkzeugleiste.farbig [data-aktion="tasten"] svg { color: var(--s-tasten); }
-.werkzeugleiste.farbig [data-aktion="links"] svg, .werkzeugleiste.farbig [data-aktion="rechts"] svg { color: var(--s-drehen); }
 .werkzeugleiste.farbig .wz:disabled svg { opacity: .45; }
 /* Gestaltete Symbole (werkzeuge.js BUNT): nur mit "Farbige Symbole", sonst die Linien-Symbole. Flächen und Konturen
    kommen aus den Variablen, damit sie auf hellen und dunklen Leisten passen; die Stiftspitze zeigt die gewählte Farbe. */
 .wz svg.sym-bunt { display: none; fill: none; stroke: none; }
-.werkzeugleiste.farbig .wz svg.sym-bunt { display: block; }
-.werkzeugleiste.farbig .wz svg.hat-bunt { display: none; }
+.werkzeugleiste.farbig .wz[aria-pressed="true"] svg.sym-bunt { display: block; }
+.werkzeugleiste.farbig .wz[aria-pressed="true"] svg.hat-bunt { display: none; }
 .werkzeugleiste, .leiste-wahl { --wz-tinte: #1b2232; --wz-marker: #f7d94c; --b-haut: #e8c3a4; --b-kontur: #cbd5e1; --b-schaft: #7f90b0; --b-metall: #d6dde8;
   --b-holz: #e7c48f; --b-papier: #eef2f8; --b-kachel: #263a63; --b-textfarbe: #a9c8ff; --b-pfeil: #b4c0d6; }
 :root[data-theme="light"] .werkzeugleiste, :root[data-theme="light"] .leiste-wahl { --b-haut: #f4d3b8; --b-kontur: #475569; --b-schaft: #34405a; --b-metall: #b9c3d2;
@@ -1355,8 +1327,6 @@ label.einst-zeile { cursor: pointer; }
 .panel-kopf { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 
 /* Stiftart in der Leiste (Füller, Kugelschreiber, Pinselstift) */
-.gruppe.stiftarten { gap: 2px; }
-.gruppe.stiftarten[hidden] { display: none; }
 
 /* Palette am Stift */
 .lw-palette {
@@ -1411,29 +1381,11 @@ label.einst-zeile { cursor: pointer; }
 /* Die Zeile bricht von selbst um (sie ist so breit wie die Leiste); der Trenner davor hätte mit seinem negativen Rand
    die Leiste schmaler gemacht als ihre obere Zeile */
 .vollbild .dok-leiste-slot .dok-leiste::before { display: none !important; }
-.vollbild .dok-leiste .eig-zeile .dicke-wert { display: none; }
-.vollbild .dok-leiste .eig-zeile .preset-name { display: none; }
-.vollbild .dok-leiste .eig-zeile .preset { grid-template-columns: 20px auto; grid-template-rows: 1fr; column-gap: 4px; padding: 0 7px 0 3px; }
-.vollbild .dok-leiste .eig-zeile .preset-punkt { grid-row: 1; }
-.vollbild .dok-leiste .eig-zeile .preset-wert { align-self: center; font-size: 12px; color: inherit; }
 .vollbild .dok-leiste .eig-zeile .groesse-gruppe { flex-wrap: nowrap; padding-right: 0; }
-.vollbild .dok-leiste .eig-zeile .presets { flex: 0 1 auto; }
-.vollbild .dok-leiste .eig-zeile .preset { flex: 0 1 auto; }
-.vollbild .dok-leiste .eig-zeile .dicke-regler { flex: 1 1 84px; min-width: 64px; max-width: 130px; }
 /* Die Farben nehmen, was übrig bleibt (mindestens 30 px je Farbe, --n setzt werkzeuge.js), sonst brächen sie zu früh um */
 .vollbild .dok-leiste .eig-zeile .farbreihe { flex: 1 1 0; min-width: min(100%, calc(var(--n, 7) * 30px)); }
 .vollbild .dok-leiste .eig-zeile .gruppe { padding-right: 0; }
 
-/* Stiftart: eine Strichprobe zeigt, wie die Linie aussieht, darunter der Name */
-.wz.stiftart { width: auto; min-width: 58px; padding: 2px 7px 3px; display: grid; grid-template-rows: 1fr auto; justify-items: center; align-items: center; row-gap: 0; }
-.dok-leiste .wz.stiftart { width: auto; }
-.wz svg.probe, .dok-leiste .wz svg.probe, .lw-palette .wz svg.probe { width: 42px; height: 19px; fill: currentColor; stroke: none; }
-.wz svg.probe .linie { fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
-.stiftart-name { font-size: 11px; font-weight: 700; line-height: 1.15; letter-spacing: .01em; }
-.vollbild .dok-leiste .wz.stiftart { width: auto; min-width: 50px; flex-basis: auto; padding: 1px 5px 2px; }
-.vollbild .dok-leiste .wz svg.probe { width: 38px; height: 17px; }
-.vollbild .dok-leiste .stiftart-name { font-size: 10.5px; }
-.lw-palette .pal-arten .wz svg.probe { width: 34px; height: 16px; flex: none; }
 
 /* Laserpunkt: ein eigenes Element, das nur verschoben wird (leinwand.js) */
 .lw-laser { position: absolute; z-index: 2; border-radius: 50%; pointer-events: none; opacity: 0; will-change: transform, opacity; contain: strict; }
@@ -1485,3 +1437,129 @@ label.einst-zeile { cursor: pointer; }
   .mehr-wahl button { padding: 9px 14px; font-size: 14.5px; }
 }
 @media (max-width: 520px) { .mehr-spalten { columns: 1; } }
+
+/* Messung (messung.js): Hinweis während der Aufzeichnung und das Ergebnis */
+.messung-hinweis { position: fixed; z-index: 90; left: 50%; top: calc(8px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); padding: 7px 14px; border-radius: 999px; background: var(--fueller); color: var(--blatt); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; box-shadow: 0 4px 16px rgba(0, 0, 0, .3); pointer-events: none; white-space: nowrap; }
+.messung-text { margin: 0; padding: 12px 14px; max-width: min(680px, calc(100vw - 80px)); max-height: 50vh; overflow: auto; border: 1px solid var(--linie); border-radius: 10px; background: var(--papier); color: var(--tinte); font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
+
+/* ================= 3.15: Stiftleiste (ein Stift-Knopf, drei Stärken, wenige Farben) und ihre Fenster ================= */
+/* Werkzeuge kleiner; das gewählte hat einen Rahmen und erscheint farbig gestaltet, alle anderen sind ruhige Linien */
+.dok-leiste .wz { width: 40px; height: 40px; border-radius: 10px; }
+.dok-leiste .wz svg { width: 22px; height: 22px; stroke-width: 1.8; }
+.dok-leiste .wb-zoom { height: 40px; }
+.dok-leiste:not(.leiste-zu) > .leiste-ende { height: 40px; }
+@media (pointer: coarse) {
+  .dok-leiste .wz { width: 44px; height: 44px; }
+  .dok-leiste .wz.wz-text { width: auto; }
+  .dok-leiste .wb-zoom { height: 44px; }
+  .dok-leiste:not(.leiste-zu) > .leiste-ende { height: 44px; }
+}
+.werkzeugleiste .wz[data-werkzeug][aria-pressed="true"] { border-color: var(--fueller); background: var(--fueller-hell); box-shadow: 0 0 0 1px var(--fueller) inset; }
+
+/* Untere Zeile: Stift-Knopf | drei Stärken | Farben, alles in einer Höhe */
+.werkzeugleiste .eig-zeile { column-gap: 6px; row-gap: 6px; --zh: 36px; }
+@media (pointer: coarse) { .werkzeugleiste .eig-zeile { --zh: 40px; } }
+.werkzeugleiste .eig-zeile .wz { width: var(--zh); height: var(--zh); flex: 0 0 var(--zh); border-radius: 10px; }
+.werkzeugleiste .eig-zeile .wz.wz-text { width: auto; flex: 0 0 auto; }
+.werkzeugleiste .eig-zeile .gruppe { gap: 4px; padding-right: 0; border-right: none; }
+.werkzeugleiste .eig-zeile .gruppe:not([hidden]) + .gruppe:not([hidden]) { padding-left: 10px; border-left: 1px solid var(--linie); }
+.werkzeugleiste .eig-zeile .gruppe[hidden] { display: none; }
+/* Der eine Stift-Knopf: Symbol der Stiftart und ein Winkel (öffnet das Fenster) */
+.werkzeugleiste .eig-zeile .wz.stift-knopf { width: auto; flex: 0 0 auto; display: flex; align-items: center; gap: 1px; padding: 0 5px 0 8px; border-color: var(--fueller); background: var(--fueller-hell); color: var(--fueller); }
+.stift-symbol { display: grid; place-items: center; }
+.werkzeugleiste .eig-zeile .stift-knopf .stift-symbol svg { width: 22px; height: 22px; }
+.wz svg.winkel, .werkzeugleiste .eig-zeile .wz svg.winkel, .dok-leiste .farbreihe .wz svg.winkel { width: 12px; height: 12px; stroke-width: 1.6; flex: none; }
+.stift-knopf[aria-expanded="true"] svg.winkel { transform: rotate(180deg); }
+/* Drei Stärken: eine Linie in der Stärke (gestrichelt oder gepunktet, wenn so eingestellt), Radierer und Laser ein Kreis, Text ein A */
+.werkzeugleiste .eig-zeile .presets { gap: 4px; }
+.werkzeugleiste .eig-zeile .preset { width: 42px; min-width: 0; height: var(--zh); flex: 0 0 42px; display: grid; place-items: center; grid-template: none; padding: 0; border-radius: 10px; color: var(--tinte); }
+.werkzeugleiste .eig-zeile .preset[aria-checked="true"] { border-color: var(--fueller); background: var(--fueller-hell); }
+.werkzeugleiste .eig-zeile .preset-wert { display: none; }
+.preset-linie { display: block; width: 24px; height: var(--g, 3px); border-radius: 999px; background: currentColor; }
+.preset-linie[data-l="g"] { border-radius: 0; background: repeating-linear-gradient(90deg, currentColor 0 7px, transparent 7px 12px); }
+.preset-linie[data-l="p"] { border-radius: 0; background: radial-gradient(circle closest-side, currentColor 94%, transparent) 0 0 / calc(var(--g, 3px) * 2.2) 100% repeat-x; }
+.preset-a { display: none; font-weight: 800; line-height: 1; font-family: var(--f-text); }
+.eig-zeile .preset-punkt { display: none; grid-row: auto; }
+.presets[data-art="marker"] .preset-linie { border-radius: 2px; background: var(--farbe, currentColor); opacity: .85; }
+.presets[data-art="radierer"] .preset-linie, .presets[data-art="laser"] .preset-linie, .presets[data-art="text"] .preset-linie { display: none; }
+.presets[data-art="radierer"] .preset-punkt, .presets[data-art="laser"] .preset-punkt { display: block; }
+.presets[data-art="laser"] .preset-punkt { background: var(--farbe); box-shadow: 0 0 6px var(--farbe); }
+.presets[data-art="text"] .preset-a { display: block; }
+/* Farben: runde Punkte, die gewählte mit Ring und Winkel (nochmal antippen: ändern oder entfernen), dahinter "+" */
+.dok-leiste .farbreihe { gap: 4px; }
+.dok-leiste .farbreihe .wz { flex: 0 1 var(--zh, 40px); width: var(--zh, 40px); height: var(--zh, 40px); }
+.dok-leiste .farbreihe .farbpunkt, .dok-leiste .farbreihe .notizpunkt { width: min(24px, 70%); }
+.dok-leiste .farbreihe .farbpunkt.marker { width: min(28px, 80%); aspect-ratio: 28 / 18; }
+.farbpunkt { display: grid; place-items: center; }
+.farbpunkt svg.winkel { display: none; color: var(--kontrast, #fff); stroke-width: 1.9; }
+.wz.farbe { border-radius: 50%; }
+.werkzeugleiste .eig-zeile .wz.farbe { border-radius: 50%; }
+.wz.farbe[aria-pressed="true"] { border-color: var(--fueller); background: color-mix(in srgb, var(--tinte) 12%, transparent); }
+.wz.farbe[aria-pressed="true"] svg.winkel { display: block; }
+.wz.farbe-neu { color: var(--grau); }
+.wz.farbe-neu:hover { color: var(--fueller); }
+.neu-kreis { width: 24px; height: 24px; display: grid; place-items: center; border: 1.5px dashed currentColor; border-radius: 50%; }
+.wz .neu-kreis svg, .dok-leiste .farbreihe .wz .neu-kreis svg, .werkzeugleiste .eig-zeile .neu-kreis svg { width: 13px; height: 13px; stroke-width: 2.2; }
+/* Vollbild: dieselbe schlanke Zeile (sie zählt für die Breite der schwebenden Leiste nicht mit, siehe 3.13) */
+.vollbild .dok-leiste .eig-zeile .wz, .vollbild .dok-leiste .farbreihe .wz { width: var(--zh); height: var(--zh); flex-basis: var(--zh); }
+.vollbild .dok-leiste .eig-zeile .wz.stift-knopf, .vollbild .dok-leiste .eig-zeile .wz.wz-text { width: auto; flex-basis: auto; }
+.vollbild .dok-leiste .eig-zeile .farbreihe { flex: 0 1 auto; min-width: 0; }
+/* Die Zeile zählt für die Breite der Leiste nicht mit (width 0), ihr Abstand zum Nachbarn aber schon: den gleicht der Rand aus */
+.vollbild .dok-leiste .eig-zeile { margin-right: -6px; }
+
+/* Schwebende Fenster unter der Leiste (werkzeuge.js oeffnePop): Stift, Strichstärke, Farbe */
+.wz-pop {
+  position: fixed; z-index: 72; box-sizing: border-box; width: min(372px, calc(100vw - 16px)); display: flex; flex-direction: column;
+  background: var(--blatt); color: var(--tinte); border: 1px solid var(--linie); border-radius: 16px; box-shadow: var(--schatten), 0 18px 48px rgba(0, 0, 0, .28);
+  animation: pop-auf .13s ease-out; transform-origin: var(--pfeil, 50%) 0;
+}
+.wz-pop.oben { transform-origin: var(--pfeil, 50%) 100%; }
+@keyframes pop-auf { from { opacity: 0; transform: translateY(-4px) scale(.97); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .wz-pop { animation: none; } }
+.pop-pfeil { position: absolute; left: var(--pfeil, 50%); top: -7px; width: 12px; height: 12px; margin-left: -6px; background: var(--blatt); border: 1px solid var(--linie); border-right: none; border-bottom: none; transform: rotate(45deg); border-top-left-radius: 3px; }
+.wz-pop.oben .pop-pfeil { top: auto; bottom: -7px; transform: rotate(225deg); }
+.pop-inhalt { position: relative; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 16px 12px; border-radius: 16px; background: var(--blatt); }
+.pop-groesse { width: min(336px, calc(100vw - 16px)); }
+.pop-farbe { width: min(300px, calc(100vw - 16px)); }
+.pop-titel { margin: 0; font: 700 16px/1.25 var(--f-text); }
+.pop-kopfzeile { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.pop-wert { font-size: 14px; font-weight: 700; color: var(--grau); font-variant-numeric: tabular-nums; }
+.pop-probe { display: block; width: 100%; height: 104px; margin: 4px 0 2px; color: var(--tinte); }
+.pop-probe.niedrig { height: 64px; }
+.pop-arten { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.pop-art {
+  min-width: 0; display: grid; justify-items: center; align-content: center; gap: 7px; padding: 10px 4px 9px; border: 1.5px solid transparent; border-radius: 12px;
+  background: transparent; color: var(--tinte); font: 600 12.5px/1.2 var(--f-text); letter-spacing: -.01em; cursor: pointer;
+}
+.pop-art span { max-width: 100%; text-align: center; white-space: nowrap; }
+.pop-art svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.pop-art:hover { background: var(--fueller-hell); }
+.pop-art[aria-checked="true"] { background: var(--fueller-hell); border-color: var(--fueller); color: var(--fueller); }
+.pop-art .preset-linie { width: 44px; margin: 8px 0 7px; }
+.pop-regler:not(:empty) { margin-top: 10px; padding-top: 4px; border-top: 1px solid var(--linie); }
+.pop-schieber { display: block; padding-top: 10px; }
+.pop-kopf, .pop-abschnitt { display: flex; justify-content: space-between; gap: 10px; font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--grau); }
+.pop-kopf output { letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.pop-abschnitt { margin: 12px -16px 0; padding: 12px 16px 2px; border-top: 1px solid var(--linie); }
+.wz-pop .dicke-regler { display: block; width: 100%; height: 34px; }
+.wz-pop .dicke-regler::-webkit-slider-runnable-track { height: 6px; }
+.wz-pop .dicke-regler::-webkit-slider-thumb { width: 22px; height: 22px; margin-top: -8px; }
+.pop-zeile {
+  width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0; border: 0; background: transparent;
+  color: var(--tinte); font: 600 15px/1.3 var(--f-text); text-align: left; cursor: pointer;
+}
+button.pop-zeile { margin: 0 -8px; padding: 4px 8px; width: calc(100% + 16px); border-radius: 10px; }
+button.pop-zeile:hover, button.pop-zeile:focus-visible { background: var(--fueller-hell); outline: none; }
+.pop-zeile.gefahr { color: var(--rotstift); }
+button.pop-zeile.gefahr:hover { background: var(--rot-hell); }
+.pop-weiter { font-size: 20px; line-height: 1; color: var(--grau); }
+.pop-farben { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 4px; margin: 10px -4px 6px; }
+.pop-farben .wz { width: 100%; height: 40px; }
+.pop-farben .farbpunkt { width: 26px; height: 26px; }
+.pop-farben .farbpunkt.marker { width: 28px; height: 18px; }
+.pop-eigene { position: relative; border-top: 1px solid var(--linie); margin-top: 4px; }
+.pop-eigene input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; }
+.farbpunkt.regenbogen { width: 26px; height: 26px; background: conic-gradient(#ff3b30, #ff9500, #ffcc00, #34c759, #00c7be, #007aff, #af52de, #ff2d55, #ff3b30); }
+.pop-klein { margin: 6px 0 0; font-size: 12.5px; line-height: 1.35; color: var(--grau); }
+/* Palette am Stift: Stiftarten mit Symbol */
+.pal-arten .wz svg.sym { width: 20px; height: 20px; flex: none; }

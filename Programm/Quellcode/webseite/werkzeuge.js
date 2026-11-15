@@ -6,7 +6,8 @@
     seite: 'lasso', radier: 'radierer', druck: true, druckModus: 'pencil', neigung: false, neigungAb: 30, druckKurve: 1, druckMin: 0, druckMax: 1,
     finger: false, radiermodus: 'strich', notizFarbe: 'gelb', laserFarbe: '#ff2d2d', textFarbe: 'tinte',
     glaettung: 'niedrig', halteForm: true, halteMs: 700, kritzelLoeschen: true, gesten: {},
-    stiftArt: 'fueller', schwebeVorschau: true, kreisAuswahl: true, federDrehung: true
+    stiftArt: 'fueller', schwebeVorschau: true, kreisAuswahl: true, federDrehung: true,
+    stifte: null, strichArten: null, stiftFarben: null, markerFarben: null
   };
   // Drei Grössen je Werkzeug in Millimetern (Stift, Marker: Strichbreite; Radierer: Durchmesser), jede lässt sich mit
   // dem Regler einstellen und bleibt gespeichert
@@ -26,12 +27,21 @@
   };
   // Was auf allen Geräten gleich sein soll (Datei Einstellungen, liegt im Speicherort), und was am Gerät hängt
   // (Stift, Bildschirm, Treiber: Druckkurve, Tastenbelegung, Finger, Glättung)
-  const SYNC = ['presets', 'preset', 'einheit', 'farbe', 'markerFarbe', 'eigeneFarben', 'eigeneMarker', 'radiermodus', 'notizFarbe', 'laserFarbe', 'textFarbe', 'stiftGroessen2', 'stiftArt'];
-  const ABGELEITET = ['dicke', 'markerDicke', 'radierGroesse', 'laserGroesse', 'textGroesse'];
+  const SYNC = ['presets', 'preset', 'einheit', 'farbe', 'markerFarbe', 'eigeneFarben', 'eigeneMarker', 'radiermodus', 'notizFarbe', 'laserFarbe', 'textFarbe', 'stiftGroessen2', 'stiftArt', 'stifte', 'strichArten', 'stiftFarben', 'markerFarben'];
+  const ABGELEITET = ['dicke', 'markerDicke', 'radierGroesse', 'laserGroesse', 'textGroesse', 'strichArt'];
   // Farben des Laserpunkts (Standard: Rot)
   const LASERFARBEN = { rot: '#ff2d2d', gruen: '#22e06a', blau: '#3d8bff', gelb: '#ffe030', magenta: '#ff3df0', weiss: '#ffffff' };
   const LASERNAMEN = { rot: 'Rot', gruen: 'Grün', blau: 'Blau', gelb: 'Gelb', magenta: 'Magenta', weiss: 'Weiss' };
   const MAX_EIGENE = 10;
+  // Farben in der Leiste (seit 3.15): wenige, höchstens fünf je Werkzeug; jede lässt sich ändern oder entfernen
+  const MAX_FARBEN = 5;
+  const STIFT_FARBEN = ['tinte', 'rot', 'blau', 'gruen'], MARKER_FARBEN = ['gelb', 'gruen', 'rot', 'lila'];
+  // Weitere Farben zur Wahl im Fenster "Farbe" (neben den benannten Farben der Schreibfläche)
+  const MEHR_FARBEN = { '#f97316': 'Orange', '#ec4899': 'Pink', '#06b6d4': 'Türkis', '#92400e': 'Braun', '#6b7280': 'Grau', '#1e3a8a': 'Dunkelblau', '#166534': 'Dunkelgrün', '#991b1b': 'Dunkelrot' };
+  const MEHR_MARKER = { '#ff9f1c': 'Orange', '#ff7ac8': 'Rosa', '#5ac8fa': 'Hellblau', '#30d5c8': 'Türkis' };
+  const STRICHART_NAMEN = [['', 'Durchgezogen'], ['g', 'Gestrichelt'], ['p', 'Gepunktet']];
+  // Schwarz oder Weiss, was sich von der Farbe besser abhebt (Winkel auf dem gewählten Farbpunkt)
+  const kontrast = hex => { const n = parseInt(String(hex).slice(1), 16) || 0; return ((n >> 16) & 255) * 0.299 + ((n >> 8) & 255) * 0.587 + (n & 255) * 0.114 > 150 ? '#000000' : '#ffffff'; };
   const istHex = f => typeof f === 'string' && /^#[0-9a-f]{6}$/i.test(f);
   const zwischen = (w, a, c) => Math.max(a, Math.min(c, w));
   const raster = (w, schritt) => Math.round(Math.round(w / schritt) * schritt * 100) / 100;
@@ -52,6 +62,23 @@
       if (!PRESET_NAMEN[einst.preset[art]]) einst.preset[art] = 'mittel';
       einst[g.k] = Leinwand.einheit(art, einst.presets[art][einst.preset[art]]);
     }
+    // Jede der drei Stiftstärken hat ihre Strichart: '' durchgezogen, g gestrichelt, p gepunktet
+    const sa = einst.strichArten && typeof einst.strichArten === 'object' ? einst.strichArten : {};
+    einst.strichArten = {};
+    for (const n of Object.keys(PRESET_NAMEN)) einst.strichArten[n] = Leinwand.STRICHARTEN[sa[n]] ? sa[n] : '';
+    einst.strichArt = einst.strichArten[einst.preset.stift];
+  }
+  // Farben der Leiste: gültig, ohne Doppelte, höchstens fünf; die gewählte Farbe ist immer dabei
+  function ordneFarben() {
+    const liste = (roh, namen, standard, gewaehlt) => {
+      let l = Array.isArray(roh) ? roh.map(f => (namen[f] ? f : istHex(f) ? f.toLowerCase() : null)).filter(Boolean) : [];
+      if (!l.length) l = standard.slice();
+      l = [...new Set(l)].slice(0, MAX_FARBEN);
+      if (!l.includes(gewaehlt)) { if (l.length < MAX_FARBEN) l.push(gewaehlt); else l[l.length - 1] = gewaehlt; }
+      return l;
+    };
+    einst.stiftFarben = liste(einst.stiftFarben, Leinwand.TINTE.hell, STIFT_FARBEN, einst.farbe);
+    einst.markerFarben = liste(einst.markerFarben, Leinwand.MARKER, MARKER_FARBEN, einst.markerFarbe);
   }
   // Grössen aus früherer Version (Einheiten der Schreibfläche) in Millimeter umrechnen, einmalig
   function aufMillimeter() {
@@ -112,6 +139,15 @@
         speichereEinst();
       }
       for (const k of ['eigeneFarben', 'eigeneMarker']) einst[k] = (Array.isArray(einst[k]) ? einst[k] : []).filter(istHex).slice(-MAX_EIGENE);
+      // Version 3.15: Strich-Stabilisierung je Stiftart statt einer Glättung für alle; wer die Glättung verstellt hatte,
+      // behält sie (Aus 0 %, Niedrig 27 % = Standard, Mittel 47 %, Hoch 75 %)
+      if (!einst.stifte || typeof einst.stifte !== 'object') {
+        const stabil = { aus: 0, mittel: 47, hoch: 75 }[einst.glaettung];
+        einst.stifte = {};
+        if (stabil != null) for (const a of Object.keys(Leinwand.STIFT_STANDARD)) einst.stifte[a] = Object.assign({}, Leinwand.STIFT_STANDARD[a], { stabil });
+      }
+      if (typeof einst.farbe === 'string' && istHex(einst.farbe)) einst.farbe = einst.farbe.toLowerCase();
+      ordneFarben();
       if (!geteilt || geteilt.einheit !== 'mm') speichereEinst();
     }
     return einst;
@@ -138,6 +174,7 @@
     if (neu.einheit !== 'mm') { delete neu.presets; delete neu.preset; }
     Object.assign(einst, neu);
     ordnePresets();
+    ordneFarben();
     leisten.forEach(l => l.aktualisiere());
   });
 
@@ -194,15 +231,9 @@
     kugel: 'Kugelschreiber: immer gleich breit, egal wie fest du drückst',
     pinsel: 'Pinselstift: doppelt so breit, setzt fein an und läuft spitz aus (für Überschriften und Hervorhebungen)'
   };
-  const STIFTART_KURZ = { fueller: 'Füller', kugel: 'Kuli', pinsel: 'Pinsel' };
-  // Strichprobe je Stiftart: so sieht eine Linie damit aus (Füller: mal fein, mal breit; Kugelschreiber: gleich breit;
-  // Pinselstift: breit mit spitzen Enden). Sagt mehr als ein Bild des Stifts.
-  const PROBE = {
-    fueller: '<path d="M3 13.6C9 3 15 3 22 10c6 6 12 6 19-3.6C34 18.4 27 19 21 12.6 15 6.6 10 6.6 3 13.6z"/>',
-    kugel: '<path class="linie" d="M3.5 13.5C9.5 3.5 15.5 3.5 22 10.5S35 16.5 40.5 6.5"/>',
-    pinsel: '<path d="M2.5 14.4C9 2.4 16.4 1 23.4 8.6c5.4 5.6 11 6 18.1-3.4C36.6 21 26.6 22.6 19.4 14.6 14.4 9 9.8 8.4 2.5 14.4z"/>'
-  };
-  const probe = a => `<svg class="probe" viewBox="0 0 44 20" aria-hidden="true">${PROBE[a] || ''}</svg>`;
+  // Symbol je Stiftart (Feder, Mine, Pinselspitze): im Stift-Knopf der Leiste, im Fenster "Stift", in der Palette
+  const stiftSymbol = a => `<svg class="sym" viewBox="0 0 24 24" aria-hidden="true">${SVG[a] || SVG.fueller}</svg>`;
+  const WINKEL = '<svg class="winkel" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.2 3.8L5 6.6l2.8-2.8"/></svg>';
   const GESTEN_LISTE = [['zweiFinger', 'Zwei Finger tippen'], ['dreiFinger', 'Drei Finger tippen'], ['zweiFingerLang', 'Zwei Finger halten'], ['pencilDoppel', 'Pencil doppelt tippen (iPad-App)'], ['pencilDruecken', 'Pencil zusammendrücken (iPad-App, Pencil Pro)']];
   // Was in der Leiste stehen kann (zum Ein- und Ausblenden, Werkzeugleiste anpassen)
   const LEISTE_TEILE = [['w:hand', 'Hand'], ['w:stift', 'Stift'], ['w:marker', 'Textmarker'], ['w:radierer', 'Radierer'], ['w:lasso', 'Lasso'], ['w:notiz', 'Haftnotiz'], ['w:text', 'Text'], ['w:laser', 'Laserpointer'],
@@ -219,8 +250,7 @@
 
   function baue(leiste, lw) {
     const e = lw.einst;
-    const fl = () => Leinwand.flaecheThema();
-    const plus = art => `<label class="wz plus" title="Weitere Farbe wählen" aria-label="Weitere ${art === 'marker' ? 'Markerfarbe' : art === 'text' ? 'Textfarbe' : 'Stiftfarbe'}">${icon('plus')}<input type="color" data-plus="${art}" tabindex="-1"></label>`;
+    const fl = () => (lw.flaeche ? lw.flaeche() : Leinwand.flaecheThema());
     leiste.classList.add('werkzeugleiste');
     leiste.innerHTML = `
       <div class="leiste-anfang" data-anfang></div>
@@ -234,10 +264,15 @@
       <div class="eig-zeile">
       <div class="gruppe" role="group" aria-label="Radierer" data-nur="radierer" data-eig>
         <button class="wz wz-text" type="button" data-radiermodus="strich" title="Ganze Striche radieren">Strich</button>
-        <button class="wz wz-text" type="button" data-radiermodus="bereich" title="Nur den Bereich unter dem Radierer entfernen (Grösse mit dem Regler)">Bereich</button>
+        <button class="wz wz-text" type="button" data-radiermodus="bereich" title="Nur den Bereich unter dem Radierer entfernen (Grösse: die gewählte nochmal antippen)">Bereich</button>
       </div>
-      <div class="gruppe stiftarten" role="radiogroup" aria-label="Stiftart" data-nur="stift" data-eig>
-        ${Object.entries(Leinwand.STIFTARTEN).map(([a, n]) => `<button class="wz stiftart" type="button" role="radio" data-stiftart="${a}" title="${STIFTART_TITEL[a]}" aria-label="${n}">${probe(a)}<span class="stiftart-name">${STIFTART_KURZ[a]}</span></button>`).join('')}
+      <div class="gruppe" role="group" aria-label="Stiftart" data-nur="stift" data-eig>
+        <button class="wz stift-knopf" type="button" data-pop="stift" aria-haspopup="dialog" aria-expanded="false"><span class="stift-symbol"></span>${WINKEL}</button>
+      </div>
+      <div class="gruppe groesse-gruppe" role="group" aria-label="Grösse" data-eig>
+        <div class="presets" role="radiogroup" aria-label="Drei Grössen; die gewählte nochmal antippen stellt sie ein">
+          ${Object.keys(PRESET_NAMEN).map(n => `<button class="preset" type="button" role="radio" aria-checked="false" aria-haspopup="dialog" data-preset="${n}"><span class="preset-linie" aria-hidden="true"></span><span class="preset-punkt" aria-hidden="true"></span><span class="preset-a" aria-hidden="true">A</span><span class="preset-wert"></span></button>`).join('')}
+        </div>
       </div>
       <div class="gruppe farbreihe" role="group" aria-label="Farbe der Haftnotiz" data-nur="notiz" data-eig>
         ${Object.entries(Leinwand.NOTIZFARBEN).map(([f, c]) => `<button class="wz" type="button" data-notizfarbe="${f}" title="Notiz ${Leinwand.NOTIZNAMEN[f]}" aria-label="Notiz ${Leinwand.NOTIZNAMEN[f]}"><span class="notizpunkt" style="--farbe: ${c}"></span></button>`).join('')}
@@ -246,28 +281,9 @@
         ${Object.entries(LASERFARBEN).map(([f, c]) => `<button class="wz" type="button" data-laserfarbe="${c}" title="Laser ${LASERNAMEN[f]}" aria-label="Laser ${LASERNAMEN[f]}"><span class="farbpunkt laser" style="--farbe: ${c}"></span></button>`).join('')}
         <label class="wz plus" title="Weitere Laserfarbe wählen" aria-label="Weitere Laserfarbe">${icon('plus')}<input type="color" data-plus="laser" tabindex="-1"></label>
       </div>
-      <div class="gruppe farbreihe" role="group" aria-label="Stiftfarbe" data-farben="stift" data-eig>
-        ${Object.keys(Leinwand.TINTE.hell).map(f => `<button class="wz" type="button" data-farbe="${f}" title="${Leinwand.FARBNAMEN[f]}" aria-label="${Leinwand.FARBNAMEN[f]}"><span class="farbpunkt"></span></button>`).join('')}
-        <span class="eigene" data-eigene="stift"></span>
-        ${plus('stift')}
-      </div>
-      <div class="gruppe farbreihe" role="group" aria-label="Textfarbe" data-nur="text" data-eig>
-        ${Object.keys(Leinwand.TINTE.hell).map(f => `<button class="wz" type="button" data-textfarbe="${f}" title="Text ${Leinwand.FARBNAMEN[f]}" aria-label="Text ${Leinwand.FARBNAMEN[f]}"><span class="farbpunkt"></span></button>`).join('')}
-        <span class="eigene" data-eigene="text"></span>
-        ${plus('text')}
-      </div>
-      <div class="gruppe farbreihe" role="group" aria-label="Markerfarbe" data-farben="marker" data-eig>
-        ${Object.entries(Leinwand.MARKER).map(([f, c]) => `<button class="wz" type="button" data-markerfarbe="${f}" title="Marker ${Leinwand.MARKERNAMEN[f]}" aria-label="Marker ${Leinwand.MARKERNAMEN[f]}"><span class="farbpunkt marker" style="--farbe: ${c}"></span></button>`).join('')}
-        <span class="eigene" data-eigene="marker"></span>
-        ${plus('marker')}
-      </div>
-      <div class="gruppe groesse-gruppe" role="group" aria-label="Grösse" data-eig>
-        <div class="presets" role="radiogroup" aria-label="Drei Grössen, jede mit dem Regler einstellbar">
-          ${Object.entries(PRESET_NAMEN).map(([n, t]) => `<button class="preset" type="button" role="radio" aria-checked="false" data-preset="${n}" title="${t}: wählen, dann mit dem Regler einstellen"><span class="preset-punkt" aria-hidden="true"></span><span class="preset-name">${t}</span><span class="preset-wert"></span></button>`).join('')}
-        </div>
-        <input class="dicke-regler" type="range" data-regler aria-label="Grösse">
-        <span class="dicke-wert" aria-hidden="true"></span>
-      </div>
+      <div class="gruppe farbreihe farbliste" role="group" aria-label="Stiftfarbe" data-farben="stift" data-eig></div>
+      <div class="gruppe farbreihe farbliste" role="group" aria-label="Textfarbe" data-nur="text" data-farbliste="text" data-eig></div>
+      <div class="gruppe farbreihe farbliste" role="group" aria-label="Markerfarbe" data-farben="marker" data-eig></div>
       </div>
       <div class="gruppe" role="group" aria-label="Bearbeiten">
         <button class="wz" type="button" data-ord="a:undo" data-aktion="undo" title="Rückgängig (Strg+Z)" aria-label="Rückgängig">${icon('undo')}</button>
@@ -285,7 +301,7 @@
     panel.hidden = true;
     panel.innerHTML = `
       <div class="panel-kopf"><h3>Stift einstellen</h3><button type="button" class="btn-leise klein" data-aktion="alle-einst">Alle Einstellungen …</button></div>
-      <p class="dialog-klein">Hier steht, was am Stift dieses Geräts hängt: Druck, Neigung und Tasten. Stiftart, Glättung, Halten und Gesten findest du in den Einstellungen.</p>
+      <p class="dialog-klein">Hier steht, was am Stift dieses Geräts hängt: Druck, Neigung und Tasten. Stiftart und ihre Regler stehen am Stift-Knopf der Leiste, Halten und Gesten in den Einstellungen.</p>
 
       <h3>Stift prüfen</h3>
       <p>Schreibe im Feld: die Werte zeigen, was dein Stift meldet. Das Feld ist nur zum Testen, es bleibt nichts davon stehen.</p>
@@ -328,28 +344,32 @@
     lw.el ? lw.el.appendChild(panel) : leiste.after(panel);
 
     const hexVon = (f, palette) => (istHex(f) ? f : palette[f] || '#000000');
-    function farbenMalen() {
-      const palette = Leinwand.TINTE[fl()];
-      leiste.querySelectorAll('[data-farbe] .farbpunkt').forEach(p => { p.style.setProperty('--farbe', hexVon(p.parentElement.dataset.farbe, palette)); });
-      leiste.querySelectorAll('[data-textfarbe] .farbpunkt').forEach(p => { p.style.setProperty('--farbe', hexVon(p.parentElement.dataset.textfarbe, palette)); });
-    }
+    const tinte = () => Leinwand.TINTE[fl()];
+    const farbName = f => Leinwand.FARBNAMEN[f] || MEHR_FARBEN[f] || 'Eigene Farbe ' + f;
+    const markerName = f => Leinwand.MARKERNAMEN[f] || MEHR_MARKER[f] || 'Eigene Farbe ' + f;
+    const stiftart = () => (Leinwand.STIFTARTEN[e.stiftArt] ? e.stiftArt : 'fueller');
 
-    // Eigene Farben hinter den Grundfarben; Rechtsklick (oder lange drücken) entfernt eine wieder
-    let eigeneStand = '';
-    function eigeneMalen() {
-      const stand = e.eigeneFarben.join() + '|' + e.eigeneMarker.join();
-      if (stand === eigeneStand) return;
-      eigeneStand = stand;
-      const knopf = (art, c) => `<button class="wz" type="button" ${art === 'marker' ? 'data-markerfarbe' : art === 'text' ? 'data-textfarbe' : 'data-farbe'}="${c}" data-eigen="${art}" title="Eigene Farbe ${c} (Rechtsklick entfernt sie)" aria-label="Eigene Farbe ${c}"><span class="farbpunkt${art === 'marker' ? ' marker' : ''}" style="--farbe: ${c}"></span></button>`;
-      leiste.querySelector('[data-eigene="stift"]').innerHTML = e.eigeneFarben.map(c => knopf('stift', c)).join('');
-      leiste.querySelector('[data-eigene="marker"]').innerHTML = e.eigeneMarker.map(c => knopf('marker', c)).join('');
-      leiste.querySelector('[data-eigene="text"]').innerHTML = e.eigeneFarben.map(c => knopf('text', c)).join('');
+    // Farben in der Leiste: höchstens fünf je Werkzeug (einst.stiftFarben, einst.markerFarben), dahinter "+", solange
+    // noch Platz ist. Die gewählte Farbe zeigt einen kleinen Winkel: nochmal antippen öffnet "Farbe ändern" (andere
+    // Farbe an diesen Platz oder entfernen).
+    let farbenStand = '';
+    function maleFarben() {
+      const stand = e.stiftFarben.join() + '|' + e.markerFarben.join() + '|' + fl();
+      if (stand === farbenStand) return;
+      farbenStand = stand;
+      const t = tinte();
+      const knopf = (attr, f, hex, name, marker) => `<button class="wz farbe" type="button" ${attr}="${f}" title="${name}" aria-label="${name}"><span class="farbpunkt${marker ? ' marker' : ''}" style="--farbe: ${hex}; --kontrast: ${kontrast(hex)}">${WINKEL}</span></button>`;
+      const neu = (art, n) => (n < MAX_FARBEN ? `<button class="wz farbe-neu" type="button" data-farbe-neu="${art}" title="Farbe hinzufügen (höchstens ${MAX_FARBEN})" aria-label="Farbe hinzufügen"><span class="neu-kreis">${icon('plus')}</span></button>` : '');
+      leiste.querySelector('[data-farben="stift"]').innerHTML = e.stiftFarben.map(f => knopf('data-farbe', f, hexVon(f, t), farbName(f))).join('') + neu('stift', e.stiftFarben.length);
+      leiste.querySelector('[data-farbliste="text"]').innerHTML = e.stiftFarben.map(f => knopf('data-textfarbe', f, hexVon(f, t), 'Text ' + farbName(f))).join('') + neu('text', e.stiftFarben.length);
+      leiste.querySelector('[data-farben="marker"]').innerHTML = e.markerFarben.map(f => knopf('data-markerfarbe', f, hexVon(f, Leinwand.MARKER), 'Marker ' + markerName(f), true)).join('') + neu('marker', e.markerFarben.length);
       // Wie viele Farben jede Reihe hat (für die Mindestbreite im Vollbild, style.css)
       leiste.querySelectorAll('.farbreihe').forEach(g => g.style.setProperty('--n', g.querySelectorAll('.wz').length));
     }
 
+    let stiftSymbolArt = '';
     function aktualisiere() {
-      eigeneMalen();
+      maleFarben();
       leiste.querySelectorAll('[data-werkzeug]').forEach(k => k.setAttribute('aria-pressed', String(k.dataset.werkzeug === e.werkzeug)));
       leiste.querySelectorAll('[data-farbe]').forEach(k => k.setAttribute('aria-pressed', String(k.dataset.farbe === e.farbe)));
       leiste.querySelectorAll('[data-markerfarbe]').forEach(k => k.setAttribute('aria-pressed', String(k.dataset.markerfarbe === e.markerFarbe)));
@@ -358,54 +378,269 @@
       regler();
       leiste.querySelectorAll('[data-radiermodus]').forEach(k => k.setAttribute('aria-pressed', String(k.dataset.radiermodus === e.radiermodus)));
       leiste.querySelectorAll('[data-notizfarbe]').forEach(k => k.setAttribute('aria-pressed', String(k.dataset.notizfarbe === e.notizFarbe)));
-      const art = Leinwand.STIFTARTEN[e.stiftArt] ? e.stiftArt : 'fueller';
-      leiste.querySelectorAll('[data-stiftart]').forEach(k => { const an = k.dataset.stiftart === art; k.setAttribute('aria-pressed', String(an)); k.setAttribute('aria-checked', String(an)); });
+      // Der eine Stift-Knopf zeigt die gewählte Stiftart
+      const art = stiftart(), sk = leiste.querySelector('[data-pop="stift"]');
+      if (stiftSymbolArt !== art) { stiftSymbolArt = art; sk.querySelector('.stift-symbol').innerHTML = stiftSymbol(art); }
+      sk.title = `${Leinwand.STIFTARTEN[art]}: Stiftart und ihre Einstellungen`;
+      sk.setAttribute('aria-label', `Stift: ${Leinwand.STIFTARTEN[art]}. Stiftart und Einstellungen öffnen`);
       leiste.querySelectorAll('[data-nur]').forEach(g => { g.hidden = g.dataset.nur !== e.werkzeug; });
       // Beim Textmarker seine Farben, sonst die Stiftfarben
-      leiste.querySelectorAll('[data-farben]').forEach(g => { g.hidden = g.dataset.farben === 'marker' ? e.werkzeug !== 'marker' : ['marker', 'laser', 'text'].includes(e.werkzeug); });
+      leiste.querySelectorAll('[data-farben]').forEach(g => { g.hidden = g.dataset.farben === 'marker' ? e.werkzeug !== 'marker' : ['marker', 'laser', 'text', 'radierer'].includes(e.werkzeug); });
       leiste.querySelector('[data-aktion="finger"]').setAttribute('aria-pressed', String(!!e.finger));
       leiste.querySelector('[data-aktion="undo"]').disabled = !lw.kannRueckgaengig();
       leiste.querySelector('[data-aktion="redo"]').disabled = !lw.kannWiederholen();
-      leiste.querySelector('[data-plus="stift"]').value = hexVon(e.farbe, Leinwand.TINTE[fl()]);
-      leiste.querySelector('[data-plus="marker"]').value = hexVon(e.markerFarbe, Leinwand.MARKER);
       leiste.querySelector('[data-plus="laser"]').value = istHex(e.laserFarbe) ? e.laserFarbe : STANDARD.laserFarbe;
-      leiste.querySelector('[data-plus="text"]').value = hexVon(e.textFarbe, Leinwand.TINTE[fl()]);
       // Farben für die gestalteten Symbole: Spitze des Stifts, Textmarker
-      leiste.style.setProperty('--wz-tinte', hexVon(e.farbe, Leinwand.TINTE[fl()]));
+      leiste.style.setProperty('--wz-tinte', hexVon(e.farbe, tinte()));
       leiste.style.setProperty('--wz-marker', hexVon(e.markerFarbe, Leinwand.MARKER));
       panelWerte();
       if (palette) fuellePalette();
+      if (pop && pop.frische) pop.frische();
     }
 
-    // Drei Grössen und ein Regler; was sie einstellen, hängt vom Werkzeug ab (Stift, Textmarker, Radierer je für sich)
+    // Drei Grössen je Werkzeug (Stift, Textmarker, Radierer, Laser, Text je für sich): in der Leiste nur ein Zeichen
+    // (Linie in der Stärke, beim Stift gestrichelt oder gepunktet, wenn so eingestellt). Die gewählte nochmal antippen
+    // öffnet ihre Einstellung (Regler, beim Stift dazu die Strichart).
     function reglerArt() { return ['marker', 'radierer', 'laser', 'text'].includes(e.werkzeug) ? e.werkzeug : 'stift'; }
+    const linienHoehe = (art, v) => (art === 'marker' ? zwischen(v * 4, 3, 14) : zwischen(v * 5, 1.5, 12));
     function regler() {
       const art = reglerArt(), g = GROESSE[art];
-      const name = e.preset[art], werte = e.presets[art];
-      const wert = werte[name];
-      const inp = leiste.querySelector('[data-regler]');
-      inp.min = g.min; inp.max = g.max; inp.step = g.step;
-      if (document.activeElement !== inp || inp.dataset.art !== art) inp.value = wert;
-      inp.dataset.art = art;
-      inp.title = g.titel + ' (für die gewählte Grösse)';
-      inp.setAttribute('aria-label', `${g.titel}, ${PRESET_NAMEN[name]}`);
-      inp.style.setProperty('--anteil', ((wert - g.min) / (g.max - g.min) * 100) + '%');
-      const farbe = art === 'marker' ? hexVon(e.markerFarbe, Leinwand.MARKER) : art === 'laser' ? e.laserFarbe : art === 'text' ? hexVon(e.textFarbe, Leinwand.TINTE[fl()]) : hexVon(e.farbe, Leinwand.TINTE[fl()]);
-      const masz = g.einheit || 'mm';
+      const name = e.preset[art], werte = e.presets[art], masz = g.einheit || 'mm';
+      const farbe = art === 'marker' ? hexVon(e.markerFarbe, Leinwand.MARKER) : art === 'laser' ? e.laserFarbe : art === 'text' ? hexVon(e.textFarbe, tinte()) : hexVon(e.farbe, tinte());
       const gruppe = leiste.querySelector('.presets');
       gruppe.dataset.art = art;
+      gruppe.style.setProperty('--farbe', farbe);
       leiste.querySelectorAll('[data-preset]').forEach(k => {
-        const n = k.dataset.preset, v = werte[n];
-        k.setAttribute('aria-checked', String(n === name));
+        const n = k.dataset.preset, v = werte[n], an = n === name;
+        const text = `${PRESET_NAMEN[n]}: ${zahl(v)} ${masz}${art === 'stift' && e.strichArten[n] ? ', ' + Leinwand.STRICHARTEN[e.strichArten[n]].toLowerCase() : ''}`;
+        k.setAttribute('aria-checked', String(an));
+        k.setAttribute('aria-expanded', String(an && !!pop && pop.art === 'groesse'));
+        k.title = an ? `${text} (nochmal tippen: ${art === 'stift' ? 'Stärke und Strichart' : 'Grösse'} einstellen)` : text;
+        k.setAttribute('aria-label', text);
         k.querySelector('.preset-wert').textContent = zahl(v) + ' ' + masz;
-        const punkt = k.querySelector('.preset-punkt');
-        punkt.style.setProperty('--g', Math.max(3, Math.min(24, g.px(v))) + 'px');
-        punkt.style.setProperty('--farbe', farbe);
+        const linie = k.querySelector('.preset-linie');
+        linie.style.setProperty('--g', linienHoehe(art, v) + 'px');
+        linie.dataset.l = art === 'stift' ? e.strichArten[n] || '' : '';
+        k.querySelector('.preset-punkt').style.setProperty('--g', zwischen(g.px(v), 4, 22) + 'px');
+        k.querySelector('.preset-a').style.fontSize = zwischen(v * 0.72, 11, 23) + 'px';
       });
-      leiste.querySelector('.dicke-wert').textContent = art === 'radierer' && e.radiermodus === 'strich' ? '' : zahl(wert) + ' ' + masz;
     }
 
     const zoom = s => { leiste.querySelector('[data-aktion="zoom"]').textContent = Math.round(s * 100) + ' %'; };
+
+    /* ----- Schwebende Fenster unter der Leiste: Stift, Strichstärke, Farbe ----- */
+    // Es ist immer höchstens eines offen. Es hängt am Knopf, der es geöffnet hat (kleiner Pfeil), und schliesst sich beim
+    // Tippen daneben, mit Esc, beim Schreiben und wenn derselbe Knopf nochmal getippt wird.
+    let pop = null;
+    const popAussen = ev => {
+      if (!pop || pop.el.contains(ev.target)) return;
+      const anker = leiste.querySelector(pop.ankerSel);
+      if (anker && anker.contains(ev.target)) return;      // der Klick auf den Knopf schliesst es selbst
+      schliessePop();
+    };
+    const popTaste = ev => { if (ev.key === 'Escape' && pop) { ev.stopPropagation(); schliessePop(); } };
+    function schliessePop() {
+      if (!pop) return;
+      const p = pop;
+      pop = null;
+      p.el.remove();
+      leiste.querySelectorAll('[aria-expanded="true"]').forEach(k => k.setAttribute('aria-expanded', 'false'));
+      document.removeEventListener('pointerdown', popAussen, true);
+      document.removeEventListener('keydown', popTaste, true);
+      window.removeEventListener('resize', schliessePop);
+    }
+    function legePop() {
+      if (!pop) return;
+      const anker = leiste.querySelector(pop.ankerSel);
+      if (!anker || !anker.getClientRects().length) { schliessePop(); return; }
+      anker.setAttribute('aria-expanded', 'true');
+      const el = pop.el, r = anker.getBoundingClientRect(), W = window.innerWidth, H = window.innerHeight;
+      el.style.maxHeight = '';
+      const b = el.offsetWidth, h = el.offsetHeight;
+      const x = zwischen(r.left + r.width / 2 - b / 2, 8, Math.max(8, W - b - 8));
+      // Unter dem Knopf; ist dort zu wenig Platz (Leiste unten am Rand), darüber
+      const oben = r.bottom + 12 + h > H - 8 && r.top - 12 - h >= 8;
+      const y = oben ? r.top - 12 - h : r.bottom + 12;
+      el.classList.toggle('oben', oben);
+      el.style.left = Math.round(x) + 'px';
+      el.style.top = Math.round(y) + 'px';
+      if (!oben) el.style.maxHeight = Math.max(160, H - y - 8) + 'px';
+      el.style.setProperty('--pfeil', zwischen(r.left + r.width / 2 - x, 18, b - 18) + 'px');
+    }
+    function oeffnePop(art, ankerSel, titel, fuelle, daten) {
+      const schluessel = art + ' ' + ankerSel, gleich = pop && pop.schluessel === schluessel;
+      schliessePop();
+      if (gleich) return;
+      const el = document.createElement('div');
+      el.className = 'wz-pop pop-' + art;
+      el.setAttribute('role', 'dialog');
+      el.setAttribute('aria-label', titel);
+      el.innerHTML = '<span class="pop-pfeil" aria-hidden="true"></span><div class="pop-inhalt"></div>';
+      document.body.appendChild(el);
+      pop = { el, art, ankerSel, schluessel, daten, inhalt: el.querySelector('.pop-inhalt') };
+      // Während ein Text geschrieben wird, behält das Textfeld den Fokus (auf dem iPad sonst: Tastatur weg)
+      el.addEventListener('pointerdown', ev => {
+        if (!lw.textBearbeitung || !lw.textBearbeitung()) return;
+        lw.halteTextFokus();
+        if (!ev.target.closest('input')) ev.preventDefault();
+      }, true);
+      fuelle(pop);
+      if (!pop) return;
+      if (pop.frische) pop.frische();
+      legePop();
+      document.addEventListener('pointerdown', popAussen, true);
+      document.addEventListener('keydown', popTaste, true);
+      window.addEventListener('resize', schliessePop);
+    }
+
+    // Strichprobe: der Strich, den der Stift mit den jetzigen Einstellungen schriebe (Leinwand.probeStrich), zweieinhalbmal so
+    // gross wie auf dem Blatt bei 100 %, damit man die Form sieht
+    function maleProbe(p) {
+      const cv = p.inhalt.querySelector('.pop-probe');
+      if (!cv || !lw.probeStrich) return;
+      const b = cv.clientWidth, h = cv.clientHeight, dpr = Math.min(3, window.devicePixelRatio || 1), z = 2.5;
+      if (!b || !h) return;
+      if (cv.width !== Math.round(b * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(b * dpr); cv.height = Math.round(h * dpr); }
+      const c = cv.getContext('2d');
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.clearRect(0, 0, cv.width, cv.height);
+      c.setTransform(dpr * z, 0, 0, dpr * z, 0, 0);
+      // Schwarz/Weiss richtet sich nach dem Blatt; im Fenster nimmt die Probe dafür dessen Schriftfarbe
+      Leinwand.malStrich(c, lw.probeStrich(b / z, h / z), e.farbe === 'tinte' ? getComputedStyle(cv).color : hexVon(e.farbe, tinte()));
+    }
+
+    // Stift: Füllfederhalter, Kugelschreiber oder Pinselstift, darunter die Regler dieser Stiftart
+    const REGLER_FOLGE = ['schaerfe', 'druck', 'stabil'];
+    function popStift(p) {
+      p.inhalt.innerHTML = `
+        <h3 class="pop-titel" data-p="titel"></h3>
+        <canvas class="pop-probe" aria-hidden="true"></canvas>
+        <div class="pop-arten" role="radiogroup" aria-label="Stiftart">
+          ${Object.entries(Leinwand.STIFTARTEN).map(([a, n]) => `<button type="button" class="pop-art" role="radio" data-stiftart="${a}" title="${STIFTART_TITEL[a]}">${stiftSymbol(a)}<span>${n}</span></button>`).join('')}
+        </div>
+        <div class="pop-regler" data-p="regler"></div>
+        <div class="pop-abschnitt">Einstellungen</div>
+        <label class="pop-zeile"><span>Zeichnen und Halten</span><input type="checkbox" class="schalter" data-p="halten" title="Am Ende eines Strichs ruhig halten: Linie, Pfeil oder Form wird sauber"></label>
+        <button type="button" class="pop-zeile" data-p="gesten"><span>Stiftgesten</span><span class="pop-weiter" aria-hidden="true">›</span></button>`;
+      const zeigeWert = r => { r.style.setProperty('--anteil', r.value + '%'); p.inhalt.querySelector(`[data-wert="${r.dataset.stiftwert}"]`).textContent = Math.round(r.value) + ' %'; };
+      p.inhalt.addEventListener('click', ev => {
+        const k = ev.target.closest('[data-stiftart], [data-p="gesten"]');
+        if (!k) return;
+        if (k.dataset.stiftart) lw.setzeStiftArt(k.dataset.stiftart);
+        else { schliessePop(); oeffneGesten(); }
+      });
+      p.inhalt.addEventListener('input', ev => {
+        const k = ev.target.dataset.stiftwert;
+        if (!k) return;
+        lw.setzeStiftWert(stiftart(), k, ev.target.value, false);
+        zeigeWert(ev.target);
+        maleProbe(p);
+      });
+      p.inhalt.addEventListener('change', ev => {
+        if (ev.target.dataset.stiftwert) lw.setzeStiftWert(stiftart(), ev.target.dataset.stiftwert, ev.target.value, true);
+        else if (ev.target.dataset.p === 'halten') { e.halteForm = ev.target.checked; speichereEinst(); }
+      });
+      p.frische = () => {
+        const art = stiftart(), werte = Leinwand.stiftWerte(e, art);
+        p.inhalt.querySelector('[data-p="titel"]').textContent = Leinwand.STIFTARTEN[art];
+        p.inhalt.querySelectorAll('[data-stiftart]').forEach(k => k.setAttribute('aria-checked', String(k.dataset.stiftart === art)));
+        if (p.reglerVon !== art) {
+          p.reglerVon = art;
+          p.inhalt.querySelector('[data-p="regler"]').innerHTML = REGLER_FOLGE.filter(k => werte[k] != null).map(k => `<label class="pop-schieber"><span class="pop-kopf"><span>${Leinwand.STIFT_REGLER[k]}</span><output data-wert="${k}"></output></span><input class="dicke-regler" type="range" min="0" max="100" step="1" data-stiftwert="${k}" aria-label="${Leinwand.STIFT_REGLER[k]}"></label>`).join('');
+        }
+        p.inhalt.querySelectorAll('[data-stiftwert]').forEach(r => { if (document.activeElement !== r) r.value = werte[r.dataset.stiftwert]; zeigeWert(r); });
+        p.inhalt.querySelector('[data-p="halten"]').checked = e.halteForm !== false;
+        maleProbe(p);
+        legePop();
+      };
+    }
+
+    // Strichstärke der gewählten Grösse (Regler), beim Stift dazu die Strichart
+    function popGroesse(p) {
+      const art = reglerArt(), g = GROESSE[art], stift = art === 'stift';
+      p.artVon = art;
+      p.inhalt.innerHTML = `
+        <div class="pop-kopfzeile"><h3 class="pop-titel" data-p="titel"></h3><output class="pop-wert" data-p="wert"></output></div>
+        ${stift ? '<canvas class="pop-probe niedrig" aria-hidden="true"></canvas>' : ''}
+        <input class="dicke-regler" type="range" data-regler min="${g.min}" max="${g.max}" step="${g.step}">
+        ${stift ? `<div class="pop-abschnitt">Strichart</div>
+        <div class="pop-arten" role="radiogroup" aria-label="Strichart">${STRICHART_NAMEN.map(([a, n]) => `<button type="button" class="pop-art" role="radio" data-strichart="${a}"><span class="preset-linie" data-l="${a}" style="--g: 3px" aria-hidden="true"></span><span>${n}</span></button>`).join('')}</div>` : ''}`;
+      const inp = p.inhalt.querySelector('[data-regler]');
+      // Beim Ziehen nur die Einstellung, beim Loslassen auch die Auswahl (ein Schritt im Verlauf)
+      inp.addEventListener('input', () => lw.setzeDicke(Number(inp.value), false));
+      inp.addEventListener('change', () => lw.setzeDicke(Number(inp.value), true));
+      p.inhalt.addEventListener('click', ev => { const k = ev.target.closest('[data-strichart]'); if (k) lw.setzeStrichArt(k.dataset.strichart); });
+      p.frische = () => {
+        if (reglerArt() !== p.artVon) { schliessePop(); return; }
+        const name = e.preset[art], wert = e.presets[art][name];
+        if (document.activeElement !== inp) inp.value = wert;
+        inp.title = g.titel;
+        inp.setAttribute('aria-label', `${g.titel}, ${PRESET_NAMEN[name]}`);
+        inp.style.setProperty('--anteil', ((wert - g.min) / (g.max - g.min) * 100) + '%');
+        p.inhalt.querySelector('[data-p="titel"]').textContent = `${g.titel} · ${PRESET_NAMEN[name]}`;
+        p.inhalt.querySelector('[data-p="wert"]').textContent = art === 'radierer' && e.radiermodus === 'strich' ? '' : zahl(wert) + ' ' + (g.einheit || 'mm');
+        p.inhalt.querySelectorAll('[data-strichart]').forEach(k => k.setAttribute('aria-checked', String(k.dataset.strichart === (e.strichArt || ''))));
+        maleProbe(p);
+        // Der Knopf dieser Grösse trägt das Fenster: wechselt die Grösse, wandert es mit
+        pop.ankerSel = `[data-preset="${name}"]`;
+        legePop();
+      };
+    }
+
+    // Farbe: eine andere an diesen Platz, eine neue dazu (höchstens fünf), oder entfernen
+    function popFarbe(p) {
+      const { art, index } = p.daten;                      // art: stift | text | marker; index: Platz in der Liste, -1 = neue Farbe
+      const marker = art === 'marker', liste = () => (marker ? e.markerFarben : e.stiftFarben);
+      const grund = marker ? Leinwand.MARKER : tinte(), name = marker ? markerName : farbName;
+      const jetzt = index >= 0 ? liste()[index] : null;
+      const alle = [...new Set(Object.keys(marker ? Leinwand.MARKER : Leinwand.TINTE.hell).concat(Object.keys(marker ? MEHR_MARKER : MEHR_FARBEN), marker ? e.eigeneMarker : e.eigeneFarben, liste()))];
+      p.inhalt.innerHTML = `
+        <h3 class="pop-titel">${index >= 0 ? 'Farbe ändern' : 'Farbe hinzufügen'}</h3>
+        <div class="pop-farben" role="group" aria-label="Farbe wählen">${alle.map(f => `<button type="button" class="wz farbe" data-wahl="${f}" aria-pressed="${f === jetzt}" title="${name(f)}" aria-label="${name(f)}"><span class="farbpunkt${marker ? ' marker' : ''}" style="--farbe: ${hexVon(f, grund)}"></span></button>`).join('')}</div>
+        <label class="pop-zeile pop-eigene"><span>Eigene Farbe …</span><span class="farbpunkt regenbogen" aria-hidden="true"></span><input type="color" data-eigene-farbe value="${hexVon(jetzt || liste()[0], grund)}" aria-label="Eigene Farbe wählen"></label>
+        ${index >= 0 && liste().length > 1 ? '<button type="button" class="pop-zeile gefahr" data-p="weg"><span>Farbe entfernen</span></button>' : ''}
+        <p class="pop-klein">${liste().length} von ${MAX_FARBEN} Farben in der Leiste.${index < 0 ? '' : ' Die neue Farbe ersetzt diese.'}</p>`;
+      const nimm = f => {
+        const l = liste();
+        if (!l.includes(f)) { if (index >= 0 && index < l.length) l[index] = f; else if (l.length < MAX_FARBEN) l.push(f); else l[l.length - 1] = f; }
+        // Eigene Farben merken, damit sie später wieder zur Wahl stehen
+        if (istHex(f) && !(marker ? MEHR_MARKER : MEHR_FARBEN)[f]) {
+          const eigene = marker ? e.eigeneMarker : e.eigeneFarben, i = eigene.indexOf(f);
+          if (i >= 0) eigene.splice(i, 1);
+          eigene.push(f);
+          while (eigene.length > MAX_EIGENE) eigene.shift();
+        }
+        farbenStand = '';
+        schliessePop();
+        if (marker) lw.setzeMarkerFarbe(f); else if (art === 'text') lw.setzeTextFarbe(f); else lw.setzeFarbe(f);
+        aktualisiere();
+      };
+      p.inhalt.addEventListener('click', ev => {
+        const k = ev.target.closest('[data-wahl], [data-p="weg"]');
+        if (!k) return;
+        if (k.dataset.wahl) { nimm(k.dataset.wahl); return; }
+        const l = liste(), f = l[index];
+        if (l.length <= 1 || f == null) return;
+        l.splice(index, 1);
+        const ersatz = l[Math.min(index, l.length - 1)];
+        if (marker) { if (e.markerFarbe === f) e.markerFarbe = ersatz; }
+        else {
+          if (e.farbe === f) e.farbe = ersatz;
+          if (e.textFarbe === f) { if (art === 'text') lw.setzeTextFarbe(ersatz); else e.textFarbe = ersatz; }
+        }
+        farbenStand = '';
+        schliessePop();
+        speichereEinst();
+        if (window.UI) UI.meldung('Farbe entfernt');
+      });
+      p.inhalt.querySelector('[data-eigene-farbe]').addEventListener('change', ev => { if (istHex(ev.target.value)) nimm(ev.target.value.toLowerCase()); });
+    }
+    const FARB_ATTR = { stift: 'data-farbe', text: 'data-textfarbe', marker: 'data-markerfarbe' };
+    function zeigeFarbPop(art, f) {
+      const liste = art === 'marker' ? e.markerFarben : e.stiftFarben;
+      if (f == null) oeffnePop('farbe', `[data-farbe-neu="${art}"]`, 'Farbe hinzufügen', popFarbe, { art, index: -1 });
+      else oeffnePop('farbe', `[${FARB_ATTR[art]}="${f}"]`, 'Farbe ändern', popFarbe, { art, index: liste.indexOf(f) });
+    }
 
     leiste.addEventListener('click', ev => {
       const k = ev.target.closest('button');
@@ -418,23 +653,26 @@
           const hat = ['stift', 'marker', 'radierer', 'notiz', 'laser', 'text'].includes(k.dataset.werkzeug);
           const auf = hat && (vorher === k.dataset.werkzeug ? !leiste.classList.contains('eig-offen') : true);
           leiste.classList.toggle('eig-offen', auf);
+          if (!auf) schliessePop();
         }
       }
+      else if (k.dataset.pop === 'stift') oeffnePop('stift', '[data-pop="stift"]', 'Stift', popStift);
       else if (k.dataset.preset) {
-        lw.waehleGroesse(k.dataset.preset);
-        // Mit Auswahl (Lasso) gilt die Grösse gleich für die ausgewählten Striche
-        if (e.werkzeug === 'lasso') lw.setzeDicke(e[GROESSE.stift.k], true);
+        // Die gewählte Grösse nochmal antippen: einstellen (Stärke, Strichart)
+        if (e.preset[reglerArt()] === k.dataset.preset) oeffnePop('groesse', `[data-preset="${k.dataset.preset}"]`, GROESSE[reglerArt()].titel, popGroesse);
+        else {
+          lw.waehleGroesse(k.dataset.preset);
+          // Mit Auswahl (Lasso) gilt die Grösse gleich für die ausgewählten Striche
+          if (e.werkzeug === 'lasso') lw.setzeDicke(e.presets.stift[k.dataset.preset], true);
+        }
       }
-      else if (k.dataset.farbe) lw.setzeFarbe(k.dataset.farbe);
-      else if (k.dataset.markerfarbe) lw.setzeMarkerFarbe(k.dataset.markerfarbe);
+      else if (k.dataset.farbeNeu) zeigeFarbPop(k.dataset.farbeNeu, null);
+      // Die gewählte Farbe nochmal antippen: ändern oder entfernen
+      else if (k.dataset.farbe) { if (e.farbe === k.dataset.farbe && e.werkzeug === 'stift') zeigeFarbPop('stift', k.dataset.farbe); else lw.setzeFarbe(k.dataset.farbe); }
+      else if (k.dataset.markerfarbe) { if (e.markerFarbe === k.dataset.markerfarbe && e.werkzeug === 'marker') zeigeFarbPop('marker', k.dataset.markerfarbe); else lw.setzeMarkerFarbe(k.dataset.markerfarbe); }
       else if (k.dataset.laserfarbe) lw.setzeLaserFarbe(k.dataset.laserfarbe);
-      else if (k.dataset.textfarbe) lw.setzeTextFarbe(k.dataset.textfarbe);
+      else if (k.dataset.textfarbe) { if (e.textFarbe === k.dataset.textfarbe) zeigeFarbPop('text', k.dataset.textfarbe); else lw.setzeTextFarbe(k.dataset.textfarbe); }
       else if (k.dataset.radiermodus) lw.setzeRadiermodus(k.dataset.radiermodus);
-      else if (k.dataset.stiftart) {
-        // Beim Wechsel kurz sagen, was diese Stiftart ausmacht
-        if (k.dataset.stiftart !== e.stiftArt && window.UI && UI.meldung) UI.meldung(STIFTART_TITEL[k.dataset.stiftart]);
-        lw.setzeStiftArt(k.dataset.stiftart);
-      }
       else if (k.dataset.notizfarbe) lw.setzeNotizFarbe(k.dataset.notizfarbe);
       else if (k.dataset.aktion === 'finger') lw.setzeFinger(!e.finger);
       else if (k.dataset.aktion === 'eigenschaften') {
@@ -455,53 +693,31 @@
       aktualisiere();
     });
 
-    // Regler: beim Ziehen nur die Einstellung, beim Loslassen auch die Auswahl (ein Schritt im Verlauf)
-    leiste.addEventListener('input', ev => {
-      if (ev.target.matches('[data-regler]')) lw.setzeDicke(Number(ev.target.value), false);
-    });
-    // "+": eine weitere Farbe aus dem Farbwähler übernehmen
+    // "+" beim Laser: eine weitere Farbe aus dem Farbwähler
     leiste.addEventListener('change', ev => {
-      if (ev.target.matches('[data-regler]')) { lw.setzeDicke(Number(ev.target.value), true); return; }
-      const art = ev.target.dataset.plus;
-      if (!art || !istHex(ev.target.value)) return;
-      const c = ev.target.value.toLowerCase();
-      if (art === 'laser') { lw.setzeLaserFarbe(c); aktualisiere(); return; }
-      const liste = art === 'marker' ? e.eigeneMarker : e.eigeneFarben;
-      const grund = art === 'marker' ? Leinwand.MARKER : Leinwand.TINTE[fl()];
-      lw.halteTextFokus && lw.halteTextFokus();
-      if (!Object.values(grund).includes(c)) {
-        const i = liste.indexOf(c);
-        if (i >= 0) liste.splice(i, 1);
-        liste.push(c);
-        while (liste.length > MAX_EIGENE) liste.shift();
-      }
-      if (art === 'marker') lw.setzeMarkerFarbe(c); else if (art === 'text') lw.setzeTextFarbe(c); else lw.setzeFarbe(c);
+      if (ev.target.dataset.plus !== 'laser' || !istHex(ev.target.value)) return;
+      lw.setzeLaserFarbe(ev.target.value.toLowerCase());
       aktualisiere();
     });
     // Während ein Text geschrieben wird: Farbe und Grösse wählen, ohne dass das Textfeld den Fokus (und auf dem iPad
     // die Tastatur) verliert
     leiste.addEventListener('pointerdown', ev => {
       if (!lw.textBearbeitung || !lw.textBearbeitung()) return;
-      const k = ev.target.closest('[data-textfarbe], [data-preset], [data-regler], [data-plus], .farbreihe, .groesse-gruppe');
+      const k = ev.target.closest('[data-textfarbe], [data-preset], [data-plus], .farbreihe, .groesse-gruppe');
       if (!k) return;
       lw.halteTextFokus();
       if (!ev.target.closest('input')) ev.preventDefault();
     }, true);
     lw.on('text', aktualisiere);
+    // Rechtsklick (oder lange drücken) auf eine Farbe: ändern oder entfernen
     leiste.addEventListener('contextmenu', ev => {
-      const k = ev.target.closest('[data-eigen]');
-      if (!k) return;
+      const k = ev.target.closest('.farbe');
+      if (!k || !(k.dataset.farbe || k.dataset.markerfarbe || k.dataset.textfarbe)) return;
       ev.preventDefault();
-      const art = k.dataset.eigen;
-      const c = art === 'marker' ? k.dataset.markerfarbe : art === 'text' ? k.dataset.textfarbe : k.dataset.farbe;
-      const liste = art === 'marker' ? e.eigeneMarker : e.eigeneFarben;
-      const i = liste.indexOf(c);
-      if (i >= 0) liste.splice(i, 1);
-      if (art === 'marker' && e.markerFarbe === c) e.markerFarbe = 'gelb';
-      if (art !== 'marker' && e.farbe === c) e.farbe = 'tinte';
-      if (art !== 'marker' && e.textFarbe === c) e.textFarbe = 'tinte';
-      speichereEinst();
-      if (window.UI) UI.meldung('Eigene Farbe entfernt');
+      const art = k.dataset.markerfarbe ? 'marker' : k.dataset.textfarbe ? 'text' : 'stift';
+      const f = k.dataset.farbe || k.dataset.markerfarbe || k.dataset.textfarbe;
+      if (pop && pop.art === 'farbe') schliessePop();
+      zeigeFarbPop(art, f);
     });
 
     /* ----- Stift-Panel: Einstellungen, Diagnose, Druckkurve ----- */
@@ -666,7 +882,7 @@
 
     lw.on('werkzeug', aktualisiere);
     // Im Vollbild verschwinden Farben und Grössen, sobald man zu schreiben anfängt
-    lw.on('schreibstart', () => { if (leiste.classList.contains('eig-offen') && document.documentElement.classList.contains('vollbild')) leiste.classList.remove('eig-offen'); });
+    lw.on('schreibstart', () => { schliessePop(); if (leiste.classList.contains('eig-offen') && document.documentElement.classList.contains('vollbild')) leiste.classList.remove('eig-offen'); });
 
     /* ----- Symbole per Ziehen umsortieren (Maus, Stift, Finger); die Reihenfolge bleibt auf dem Gerät gespeichert ----- */
     const REIHEN_KEY = 'lokal:leiste-reihenfolge';
@@ -763,10 +979,8 @@
       const w = e.werkzeug, art = reglerArt(), g = GROESSE[art], masz = g.einheit || 'mm';
       const tinte = Leinwand.TINTE[fl()];
       const farben = w === 'marker'
-        ? Object.entries(Leinwand.MARKER).map(([f, c]) => [f, c, e.markerFarbe === f]).concat(e.eigeneMarker.map(c => [c, c, e.markerFarbe === c]))
-        : w === 'text'
-          ? Object.keys(Leinwand.TINTE.hell).map(f => [f, tinte[f], e.textFarbe === f]).concat(e.eigeneFarben.map(c => [c, c, e.textFarbe === c]))
-          : Object.keys(Leinwand.TINTE.hell).map(f => [f, tinte[f], e.farbe === f]).concat(e.eigeneFarben.map(c => [c, c, e.farbe === c]));
+        ? e.markerFarben.map(f => [f, hexVon(f, Leinwand.MARKER), e.markerFarbe === f])
+        : e.stiftFarben.map(f => [f, hexVon(f, tinte), (w === 'text' ? e.textFarbe : e.farbe) === f]);
       const mitFarbe = ['stift', 'marker', 'text', 'lasso'].includes(w), mitGroesse = ['stift', 'marker', 'radierer', 'text', 'lasso'].includes(w);
       const stiftart = Leinwand.STIFTARTEN[e.stiftArt] ? e.stiftArt : 'fueller';
       const punktFarbe = art === 'marker' ? hexVon(e.markerFarbe, Leinwand.MARKER) : art === 'text' ? hexVon(e.textFarbe, tinte) : hexVon(e.farbe, tinte);
@@ -777,8 +991,8 @@
           <button class="wz" type="button" data-pa="undo" aria-label="Rückgängig" ${lw.kannRueckgaengig() ? '' : 'disabled'}>${icon('undo')}</button>
           <button class="wz" type="button" data-pa="redo" aria-label="Wiederholen" ${lw.kannWiederholen() ? '' : 'disabled'}>${icon('redo')}</button>
         </div>
-        ${w === 'stift' ? `<div class="pal-reihe pal-arten" role="radiogroup" aria-label="Stiftart">${Object.entries(Leinwand.STIFTARTEN).map(([a, n]) => `<button class="wz wz-text" type="button" role="radio" data-part="${a}" aria-checked="${a === stiftart}" aria-pressed="${a === stiftart}" title="${STIFTART_TITEL[a]}">${probe(a)}<span>${n}</span></button>`).join('')}</div>` : ''}
-        ${mitFarbe ? `<div class="pal-reihe pal-farben" role="group" aria-label="Farbe">${farben.map(([f, c, an]) => `<button class="wz" type="button" data-pf="${f}" aria-pressed="${an}" aria-label="Farbe ${Leinwand.FARBNAMEN[f] || Leinwand.MARKERNAMEN[f] || f}"><span class="farbpunkt${w === 'marker' ? ' marker' : ''}" style="--farbe: ${c}"></span></button>`).join('')}</div>` : ''}
+        ${w === 'stift' ? `<div class="pal-reihe pal-arten" role="radiogroup" aria-label="Stiftart">${Object.entries(Leinwand.STIFTARTEN).map(([a, n]) => `<button class="wz wz-text" type="button" role="radio" data-part="${a}" aria-checked="${a === stiftart}" aria-pressed="${a === stiftart}" title="${STIFTART_TITEL[a]}">${stiftSymbol(a)}<span>${n}</span></button>`).join('')}</div>` : ''}
+        ${mitFarbe ? `<div class="pal-reihe pal-farben" role="group" aria-label="Farbe">${farben.map(([f, c, an]) => `<button class="wz" type="button" data-pf="${f}" aria-pressed="${an}" aria-label="Farbe ${w === 'marker' ? markerName(f) : farbName(f)}"><span class="farbpunkt${w === 'marker' ? ' marker' : ''}" style="--farbe: ${c}"></span></button>`).join('')}</div>` : ''}
         ${mitGroesse ? `<div class="pal-reihe pal-groessen" role="radiogroup" aria-label="Grösse">${Object.keys(PRESET_NAMEN).map(n => `<button class="preset" type="button" role="radio" data-pg="${n}" aria-checked="${e.preset[art] === n}"><span class="preset-punkt" style="--g: ${Math.max(3, Math.min(22, g.px(e.presets[art][n])))}px; --farbe: ${punktFarbe}" aria-hidden="true"></span><span class="preset-wert">${zahl(e.presets[art][n])} ${masz}</span></button>`).join('')}</div>` : ''}`;
       palette.dataset.art = art;
     }
@@ -835,9 +1049,8 @@
     lw.on('verlauf', aktualisiere);
     lw.on('ansicht', zoom);
     lw.on('stifttaste', text => { panel.querySelector('.tasten-test').textContent = text; });
-    const themaBeobachter = new MutationObserver(() => { farbenMalen(); aktualisiere(); zeichneKurve(); });
+    const themaBeobachter = new MutationObserver(() => { aktualisiere(); zeichneKurve(); });
     themaBeobachter.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-    farbenMalen();
     sichtbarkeit();
     aktualisiere();
     zoom(lw.ansicht().s);
@@ -856,11 +1069,12 @@
       reihenfolgeZuruecksetzen: () => { wendeOrdnungAn(standardOrdnung); Daten.set(REIHEN_KEY, standardOrdnung); },
       tastenOffen: () => !panel.hidden,
       schliesseTasten: () => { panel.hidden = true; leiste.querySelector('[data-aktion="tasten"]').setAttribute('aria-pressed', 'false'); },
-      zerstoere: () => { leisten.delete(eintrag); schliessePalette(); themaBeobachter.disconnect(); clearTimeout(feld._t); panel.remove(); leiste.innerHTML = ''; }
+      schliessePop,
+      zerstoere: () => { leisten.delete(eintrag); schliessePalette(); schliessePop(); themaBeobachter.disconnect(); clearTimeout(feld._t); panel.remove(); leiste.innerHTML = ''; }
     };
     leisten.add(eintrag);
     return eintrag;
   }
 
-  window.Werkzeuge = { baue, einstellungen, speichereEinst, GESTEN_LISTE, STIFTART_TITEL, stiftProbe: probe, symbol: icon, anpassen: () => { const l = [...leisten][0]; if (l) l.anpassen(); } };
+  window.Werkzeuge = { baue, einstellungen, speichereEinst, GESTEN_LISTE, STIFTART_TITEL, stiftSymbol, MAX_FARBEN, symbol: icon, anpassen: () => { const l = [...leisten][0]; if (l) l.anpassen(); } };
 })();

@@ -86,10 +86,28 @@
   //   kugel    überall gleich breit, ohne Druck (eine Linie: am schnellsten zu zeichnen)
   //   pinsel   weiche Spitze: setzt fein an, wird mit Druck (ohne Druck: langsam) breit und läuft am Ende spitz aus;
   //            doppelte Strichbreite, damit die feinen Stellen wirklich fein sind
-  const STIFTARTEN = { fueller: 'Füller', kugel: 'Kugelschreiber', pinsel: 'Pinselstift' };
+  const STIFTARTEN = { fueller: 'Füllfederhalter', kugel: 'Kugelschreiber', pinsel: 'Pinselstift' };
   const PINSEL_FAKTOR = 2;
   const stiftArt = einst => (STIFTARTEN[einst.stiftArt] ? einst.stiftArt : 'fueller');
-  const stiftDicke = einst => einst.dicke * (stiftArt(einst) === 'pinsel' ? PINSEL_FAKTOR : 1);
+  // Gestrichelt und gepunktet sind immer eine gleich breite Linie in der eingestellten Stärke (auch mit dem Pinselstift)
+  const stiftDicke = einst => einst.dicke * (stiftArt(einst) === 'pinsel' && !STRICHARTEN[einst.strichArt] ? PINSEL_FAKTOR : 1);
+  // Einstellungen je Stiftart (seit 3.15, einst.stifte), alle von 0 bis 100:
+  //   stabil    Strich-Stabilisierung: nimmt das Zittern aus der Linie (0 = aus; 27 entspricht dem früheren "Niedrig")
+  //   druck     Druckempfindlichkeit: wie stark der Druck die Breite ändert (50 = wie bisher, 0 = gar nicht)
+  //   schaerfe  Schärfe der Spitze (Füllfederhalter): wie fein der Strich ansetzt und ausläuft (0 = stumpf wie bisher)
+  const STIFT_STANDARD = { fueller: { schaerfe: 25, druck: 50, stabil: 27 }, kugel: { stabil: 27 }, pinsel: { druck: 50, stabil: 27 } };
+  const STIFT_REGLER = { schaerfe: 'Schärfe der Spitze', druck: 'Druckempfindlichkeit', stabil: 'Strich-Stabilisierung' };
+  const stiftRegler = (einst, art) => {
+    const a = STIFTARTEN[art] ? art : stiftArt(einst), eigene = einst.stifte && einst.stifte[a], w = {};
+    for (const k of Object.keys(STIFT_STANDARD[a])) { const v = eigene ? Number(eigene[k]) : NaN; w[k] = v >= 0 && v <= 100 ? v : STIFT_STANDARD[a][k]; }
+    return w;
+  };
+  // Stabilisierung in Bildschirm-px (Sigma der Glättung): 100 % = 6 px
+  const stabilPx = einst => stiftRegler(einst).stabil * 0.06;
+  // Stricharten (seit 3.15): Feld "l" des Strichs. Muster in Vielfachen der Strichbreite, mit runden Enden gemalt
+  // (ein Strich der Länge 0 ist dann ein Punkt).
+  const STRICHARTEN = { g: 'Gestrichelt', p: 'Gepunktet' };
+  const strichMuster = (art, w) => (art === 'g' ? [3 * w, 3 * w] : art === 'p' ? [0.01 * w, 2.4 * w] : null);
   const weich = t => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
   const TIPP_MS = 350, TIPP_TOL = 12, HALTEN_MS = 600, HALTEN_TOL = 32;
   const LASER_NACHLEUCHTEN = 1400;   // ms, bis die Spur des Laserpunkts ganz verblasst ist
@@ -539,21 +557,28 @@
   function malTeil(ctx, t) {
     ctx.globalAlpha = t.a;
     if (t.fuellen) ctx.fill(t.pfad);
+    else if (t.muster) { ctx.lineWidth = t.w; ctx.setLineDash(t.muster); ctx.stroke(t.pfad); ctx.setLineDash([]); }
     else { ctx.lineWidth = t.w; ctx.stroke(t.pfad); }
   }
+  // Die Kurve durch alle Punkte als ein Pfad (für gleich breite und gestrichelte Striche)
+  function kurvenPfad(p, a, z) {
+    const pfad = new Path2D();
+    for (let k = a; k < z; k++) {
+      const c = crStueck(p, k);
+      if (k === a) pfad.moveTo(c[0], c[1]);
+      pfad.bezierCurveTo(c[2], c[3], c[4], c[5], c[6], c[7]);
+    }
+    return pfad;
+  }
+  // Breite eines gestrichelten oder gepunkteten Strichs: überall gleich, aus dem mittleren Druck
+  const musterBreite = s => breite(s, s.p.length ? s.p[Math.floor(s.p.length / 2)][2] : 0.5, 0);
   function baueTeile(s, von, bis) {
     const p = s.p, n = p.length, a = Math.max(0, von), z = Math.min(bis, n - 1);
     // Überall gleich breit (Formen, Maus, Stift ohne Druck): eine Linie mit runden Enden und Ecken. Das sieht genauso aus
     // wie die Fläche, kostet aber weniger (eine Kurve statt Bänder und Kreise).
-    if (n > 1 && z > a && gleichBreit(p)) {
-      const pfad = new Path2D();
-      for (let k = a; k < z; k++) {
-        const c = crStueck(p, k);
-        if (k === a) pfad.moveTo(c[0], c[1]);
-        pfad.bezierCurveTo(c[2], c[3], c[4], c[5], c[6], c[7]);
-      }
-      return [{ w: breite(s, p[0][2], s.w === 'marker' ? 0 : p[0][3] || 0), a: 1, pfad }];
-    }
+    // Gestrichelt oder gepunktet: immer eine Linie, mit ihrem Muster
+    if (n > 1 && z > a && STRICHARTEN[s.l] && s.w !== 'marker') { const w = musterBreite(s); return [{ w, a: 1, pfad: kurvenPfad(p, a, z), muster: strichMuster(s.l, w) }]; }
+    if (n > 1 && z > a && gleichBreit(p)) return [{ w: breite(s, p[0][2], s.w === 'marker' ? 0 : p[0][3] || 0), a: 1, pfad: kurvenPfad(p, a, z) }];
     const pfad = new Path2D();
     fuelleStrich(pfad, strichProben(s, von, bis));
     return [{ fuellen: true, a: 1, pfad }];
@@ -759,9 +784,9 @@
   function teileVon(s) {
     const p = s.p, n = p.length, l = p[n - 1];
     const z = pfadSpeicher.get(s);
-    if (z && z.p === p && z.n === n && z.d === s.d && z.w === s.w && z.x === p[0][0] && z.y === p[0][1] && z.lx === l[0] && z.ly === l[1]) return z.teile;
+    if (z && z.p === p && z.n === n && z.d === s.d && z.w === s.w && z.l === s.l && z.x === p[0][0] && z.y === p[0][1] && z.lx === l[0] && z.ly === l[1]) return z.teile;
     const teile = s.w === 'marker' ? markerTeile(s) : baueTeile(s, 0, n - 1);
-    pfadSpeicher.set(s, { p, n, d: s.d, w: s.w, x: p[0][0], y: p[0][1], lx: l[0], ly: l[1], teile });
+    pfadSpeicher.set(s, { p, n, d: s.d, w: s.w, l: s.l, x: p[0][0], y: p[0][1], lx: l[0], ly: l[1], teile });
     return teile;
   }
   // Textmarker in einem Zug, damit sich die Transparenz nicht aufaddiert
@@ -1119,6 +1144,8 @@
     live.className = 'lw-live';
     // "spitze" liegt über "live" und trägt nur das letzte Stück des Strichs bis genau unter den Stift (dazu die vom
     // Browser vorhergesagten Punkte). Es wird jedes Bild neu gemalt, damit die Linie nicht hinter dem Stift herläuft.
+    // Seit 3.15 ist es eine kleine Fläche (SPITZE_GROESSE CSS-px im Quadrat), die dem Stift folgt (spitzeNach), statt
+    // einer zweiten Ebene über das ganze Bild: was sich in jedem Bild ändert, soll so klein wie möglich sein.
     const spitze = document.createElement('canvas');
     spitze.className = 'lw-live lw-spitze';
     const menue = document.createElement('div');
@@ -1169,6 +1196,8 @@
     let transformStand = '';             // zuletzt gesetzte CSS-Verschiebung der Kacheln
     let bewegtZeit = 0;                  // wann sich die Ansicht zuletzt bewegt hat (Scrollen, Zoomen, Schwung)
     let spitzeRect = null;               // wo die Spitze des Strichs zuletzt gemalt wurde (Pixel von "spitze")
+    const SPITZE_GROESSE = 384;
+    const spitzeOrt = { x: 0, y: 0 };    // linke obere Ecke von "spitze" im Bild (CSS-px, auf ganzen Bildschirmpixeln)
     let textEdit = null, textOffenSeit = 0, textHalten = 0, textFingerTipp = null;   // Text, der gerade geschrieben wird
     let tippen = null;                   // Finger tippen für Gesten: { start, max, bewegt, pos, lang, fertig }
     let vorherigesWerkzeug = 'stift';
@@ -1325,9 +1354,11 @@
     // Glas, also unabhängig vom Zoom), Feder aus der Drehung des Stifts, Ansatz des Pinsels aus dem Weg seit dem Aufsetzen
     function stilDruck(a, i, dr) {
       if (a.stil === 'kugel') return 0.5;
-      const pinsel = a.stil === 'pinsel';
+      const pinsel = a.stil === 'pinsel', sw = a.stiftWerte || STIFT_STANDARD[a.stil];
       const roh = a.roh, n = roh.length, w = a.weg, z = a.zeit, zoom = a.zoom || 1;
       if (pinsel) dr = a.stiftDruck ? Math.min(1, 1.05 * Math.pow(dr, 1.6)) : 0.55;
+      // Druckempfindlichkeit: 50 = wie gemessen, 0 = der Druck ändert nichts, 100 = doppelt so stark
+      if (a.stiftDruck && sw.druck !== 50) dr = Math.max(0.02, Math.min(1, 0.5 + (dr - 0.5) * sw.druck / 50));
       let k = 1;
       const i0 = Math.max(0, i - 3), i1 = Math.min(n - 1, i + 3), dt = z[i1] - z[i0];
       if (dt > 0) {
@@ -1340,6 +1371,8 @@
         k *= 0.72 + 0.56 * Math.abs(Math.sin(Math.atan2(v[1] - u[1], v[0] - u[0]) - feder));
       }
       if (pinsel) k *= 0.3 + 0.7 * weich(w[i] * zoom / (2.2 * MM));
+      // Schärfe der Spitze (Füllfederhalter): der Strich setzt über ein kurzes Stück fein an
+      else if (sw.schaerfe > 0) { const sch = sw.schaerfe / 100; k *= 1 - 0.75 * sch * (1 - weich(w[i] * zoom / ((0.6 + 1.6 * sch) * MM))); }
       if (k === 1) return dr;
       return Math.max(pinsel ? 0 : 0.03, Math.min(1, druckVonBreite(breiteVonDruck(dr) * k)));
     }
@@ -1354,6 +1387,43 @@
         p[i][2] = stufe(Math.max(0, Math.min(1, druckVonBreite(breiteVonDruck(p[i][2] == null ? 0.5 : p[i][2]) * (lo + (1 - lo) * weich(weg / lang))))), DRUCK_STUFEN);
       }
     }
+    // Füllfederhalter mit scharfer Spitze: beim Abheben läuft das letzte Stück fein aus (wie der Ansatz, siehe stilDruck)
+    function federAuslauf(a) {
+      const sch = (a.stiftWerte ? a.stiftWerte.schaerfe : 0) / 100;
+      if (!(sch > 0)) return;
+      const p = a.strich.p, zoom = a.zoom || 1, lang = (0.6 + 1.6 * sch) * MM / zoom, lo = 1 - 0.75 * sch;
+      let weg = 0;
+      for (let i = p.length - 1; i >= 0 && weg < lang; i--) {
+        if (i < p.length - 1) weg += Math.hypot(p[i + 1][0] - p[i][0], p[i + 1][1] - p[i][1]);
+        if (weg >= lang) break;
+        p[i][2] = stufe(Math.max(0.03, Math.min(1, druckVonBreite(breiteVonDruck(p[i][2] == null ? 0.5 : p[i][2]) * (lo + (1 - lo) * weich(weg / lang))))), DRUCK_STUFEN);
+      }
+    }
+    // Ein Strich, wie ihn der Stift mit den jetzigen Einstellungen schriebe (für die Vorschau in der Werkzeugleiste):
+    // eine Welle über b x h Einheiten, mit wachsendem und wieder nachlassendem Druck, durch dieselben Schritte wie ein
+    // echter Strich (Stabilisierung, Druckformung der Stiftart, Auslauf).
+    L.probeStrich = (b, h) => {
+      const art = stiftArt(einst), muster = STRICHARTEN[einst.strichArt] ? einst.strichArt : null;
+      const strich = { id: 'probe', w: 'stift', f: einst.farbe, d: stiftDicke(einst), p: [] };
+      if (muster) strich.l = muster;
+      const a = { strich, roh: [], weg: [0], zeit: [], dreh: [], hatDreh: false, zoom: 1, stiftDruck: true, stil: muster ? 'kugel' : art };
+      a.stiftWerte = stiftRegler(einst, a.stil);
+      const px = stabilPx(einst);
+      a.sigma = px; a.fenster = px > 0 ? Math.ceil(px * 2.5 / 0.8) : 0;
+      const n = 90, rand = Math.min(26, b * 0.12);
+      for (let i = 0; i <= n; i++) {
+        const t = i / n, x = rand + t * (b - 2 * rand), y = h / 2 - Math.sin(t * Math.PI * 2 - 0.5) * h * 0.26 + Math.sin(t * 75) * 0.18;
+        const druck = 0.22 + 0.55 * Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.06)), 1.3);
+        a.roh.push([x, y, druck]);
+        if (i) a.weg.push(a.weg[i - 1] + Math.hypot(x - a.roh[i - 1][0], y - a.roh[i - 1][1]));
+        // in der Mitte schneller als an den Enden (Tempo formt Füller und Pinselstift)
+        a.zeit.push(i ? a.zeit[i - 1] + 7 + 22 * Math.abs(Math.cos(Math.PI * t)) : 0);
+        a.dreh.push(0);
+      }
+      strich.p = a.roh.map((_, i) => festerPunkt(a, i));
+      if (a.stil === 'pinsel') pinselAuslauf(a); else if (a.stil === 'fueller') federAuslauf(a);
+      return strich;
+    };
     // Alle Punkte festlegen, deren Nachbarn schon da sind (ende: alle)
     function festige(a, ende) {
       if (!a.roh) return;
@@ -1402,11 +1472,11 @@
       // Schreiben (test/strich.js).
       const lw0 = Math.round(b * dpr), lh0 = Math.round(h * dpr);
       richteKachelnEin();
-      for (const c of [live, spitze]) {
-        c.width = lw0; c.height = lh0;
-        c.style.width = lw0 / dpr + 'px';
-        c.style.height = lh0 / dpr + 'px';
-      }
+      live.width = lw0; live.height = lh0;
+      live.style.width = lw0 / dpr + 'px';
+      live.style.height = lh0 / dpr + 'px';
+      spitze.width = spitze.height = Math.round(SPITZE_GROESSE * dpr);
+      spitze.style.width = spitze.style.height = spitze.width / dpr + 'px';
       // Gleich einmal benutzen: sonst legt der Browser die Zeichenflächen erst beim ersten Strich an, und gerade der
       // erste Strich nach dem Öffnen hakt (test/leistung.js)
       // Dazu ein unsichtbarer Probestrich durch dieselben Funktionen wie beim Schreiben (übersetzt sie vorab)
@@ -1603,6 +1673,8 @@
     const liveTransform = () => lctx.setTransform(dpr * ansicht.s, 0, 0, dpr * ansicht.s, dpr * ansicht.x, dpr * ansicht.y);
 
     function flaecheSeite(s) { return opt.flaeche ? opt.flaeche(s) : flaecheThema(); }
+    // Hell oder dunkel: das Blatt, auf dem gerade geschrieben wird (die Farbpunkte der Leiste zeigen, was der Stift dort schreibt)
+    L.flaeche = () => { const s = seiten[L.aktuelleSeite ? L.aktuelleSeite() : 0]; return s ? flaecheSeite(s) : flaecheThema(); };
 
     function zeichneRaster(oben, unten, links, rechts) {
       ctx.fillStyle = thema.aussen;
@@ -1826,7 +1898,7 @@
     // Jede Kachel ist KACHEL_UEBER Pixel grösser als ihr Platz und überlappt die nächste: sonst zeigt Safari beim Zoomen
     // (Behälter skaliert) feine Fugen zwischen den Ebenen. Der Hintergrund ist überall deckend, die doppelten Pixel
     // sind gleich.
-    const KACHEL = 512, KACHEL_UEBER = 2, KACHELN_JE_BILD = 2, KACHEL_RESERVE = 3;
+    const KACHEL = 512, KACHEL_UEBER = 2, KACHELN_JE_BILD = 2, KACHEL_RESERVE = 3, KACHEL_ZEIT = 5;
     let kacheln = [], kachelP = 0, kachelMax = 0, kachelJetzt = null, kachelBereich = '', kachelTimer = 0;
     let laufY = 0, laufMerk = 0;         // Scrollrichtung (1 = nach unten) für die Reserve, mit etwas Trägheit
     // Grösse der Kacheln und wie viele es höchstens gibt: genug, um das Bild in jeder Lage zu bedecken, plus die
@@ -1959,14 +2031,41 @@
         if (kachelSichtbar(t, f)) rendereKachel(t); else (hinten || (hinten = [])).push(t);
       }
       if (!hinten) return;
-      const beschaeftigt = !!aktion && aktion.art !== 'schieben';
+      const beschaeftigt = (!!aktion && aktion.art !== 'schieben') || performance.now() - stiftZuletzt < 700;
       if (beschaeftigt) { clearTimeout(kachelTimer); kachelTimer = setTimeout(anfordern, 140); return; }
       const my = (f.y1 + f.y2) / 2, mx = (f.x1 + f.x2) / 2, P = kachelP;
       const weit = t => { const dy = (t.j + 0.5) * P - my, dx = (t.i + 0.5) * P - mx; return Math.abs(dy) * (dy * laufY < 0 ? 2 : 1) + Math.abs(dx) * 0.5; };
       hinten.sort((a, c) => weit(a) - weit(c));
-      const n = Math.min(KACHELN_JE_BILD, hinten.length);
-      for (let i = 0; i < n; i++) rendereKachel(hinten[i]);
-      if (hinten.length > n) anfordern();
+      // Je Bild höchstens KACHEL_ZEIT ms eigene Arbeit: zuerst werden die Pfade der Striche gebaut, die auf der Kachel
+      // liegen (das ist der teure Teil, bei einer vollen Seite 20 bis 35 ms je Kachel), in Häppchen über mehrere Bilder;
+      // erst wenn alle da sind, wird die Kachel gemalt. So bleibt auch auf vollen Seiten jedes Bild kurz.
+      const frist = performance.now() + KACHEL_ZEIT;
+      let gemalt = 0, offen = hinten.length;
+      for (const t of hinten) {
+        if (gemalt >= KACHELN_JE_BILD || (gemalt && performance.now() > frist)) break;
+        if (!bereiteKachelVor(t, frist)) break;
+        rendereKachel(t);
+        gemalt++; offen--;
+      }
+      if (offen) anfordern();
+    }
+    // Pfade aller Striche bauen, die auf der Kachel liegen, solange die Frist reicht. true: alles da.
+    function bereiteKachelVor(t, frist) {
+      const k = dpr * basis.s, ox = dpr * basis.x - t.i * kachelP, oy = dpr * basis.y - t.j * kachelP;
+      const x1 = -ox / k, y1 = -oy / k, x2 = (t.cv.width - ox) / k, y2 = (t.cv.height - oy) / k;
+      for (const sd of sichtbareSeiten(y1, y2)) {
+        const lx1 = x1 - sd.x, ly1 = y1 - sd.y, lx2 = x2 - sd.x, ly2 = y2 - sd.y;
+        for (const e of inhalt(sd.id).e) {
+          if (istKasten(e) || !e.p || e.p.length < 2) continue;
+          const c = pfadSpeicher.get(e);
+          if (c && c.p === e.p) continue;
+          const g = umriss(e);
+          if (g.x2 < lx1 || g.x1 > lx2 || g.y2 < ly1 || g.y1 > ly2) continue;
+          teileVon(e);
+          if (performance.now() > frist) return false;
+        }
+      }
+      return true;
     }
     // Für Tests: alles sofort neu malen, genau an der Stelle, an der es liegt
     L.neuAnDerStelle = () => { if (basis) for (const t of kacheln) if (t.belegt) rendereKachel(t); };
@@ -2013,6 +2112,8 @@
     function frame() {
       geplant = false;
       if (!b || !h || !aktiv) return;
+      // Für die Messung (Einstellungen › Erweitert): wie lange dieses Bild hier rechnet
+      const messStart = window.Messung && Messung.laeuft() ? performance.now() : 0;
       host.classList.toggle('mit-hand', einst.werkzeug === 'hand');
       aktualisiereCursor();
       begrenze();
@@ -2057,17 +2158,22 @@
       zeichneOverlay();
       pruefeSchaerfe(a);
       planeVorbau();
+      if (messStart) Messung.frame(performance.now() - messStart);
     }
 
     // In ruhigen Momenten die Pfade der Striche auf den Seiten rund um das Bild schon bauen (teileVon), in Häppchen von
     // wenigen Millisekunden: kommt eine Seite beim Scrollen ins Bild, muss sie nur noch gemalt werden.
     let vorbauTimer = 0;
     const textBereit = new WeakSet();
+    // Schreibt der Stift gerade oder eben noch (0,7 s)? Dann wartet alles, was nicht sofort nötig ist.
+    const stiftNah = () => performance.now() - stiftZuletzt < 700;
     function planeVorbau() { if (!vorbauTimer) vorbauTimer = setTimeout(vorbau, 250); }
     function vorbau() {
       vorbauTimer = 0;
       if (!aktiv || !b || !seiten.length) return;
-      if (aktion || finger.size || geste || L.inBewegung()) { planeVorbau(); return; }
+      // Nicht, solange geschrieben wird: auch nicht in den kurzen Pausen zwischen zwei Strichen (stiftNah), sonst käme
+      // der nächste Strich mitten in ein solches Häppchen
+      if (aktion || finger.size || geste || L.inBewegung() || stiftNah()) { planeVorbau(); return; }
       const oben = zuDok(0, 0)[1], unten = zuDok(0, h)[1], hoehe = unten - oben;
       const t0 = performance.now();
       for (const sd of sichtbareSeiten(oben - 2 * hoehe, unten + 2 * hoehe)) {
@@ -2101,6 +2207,16 @@
       sctx.setTransform(1, 0, 0, 1, 0, 0);
       sctx.clearRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
     }
+    // Die kleine Fläche "spitze" dorthin legen, wo gleich gemalt wird: der Kasten x1..y2 (CSS-px im Bild) soll ganz
+    // darauf liegen. Liegt er schon darauf, bleibt sie, wo sie ist; sonst rückt sie mit ihm in die Mitte.
+    function spitzeNach(x1, y1, x2, y2) {
+      const g = SPITZE_GROESSE, rand = 8;
+      if (x1 >= spitzeOrt.x + rand && y1 >= spitzeOrt.y + rand && x2 <= spitzeOrt.x + g - rand && y2 <= spitzeOrt.y + g - rand) return;
+      leereSpitze();
+      spitzeOrt.x = Math.round(((x1 + x2) / 2 - g / 2) * dpr) / dpr;
+      spitzeOrt.y = Math.round(((y1 + y2) / 2 - g / 2) * dpr) / dpr;
+      spitze.style.transform = `translate(${spitzeOrt.x}px, ${spitzeOrt.y}px)`;
+    }
     // Vorschau beim Schweben (Apple Pencil über dem Glas, ohne es zu berühren): ein Punkt in Farbe und Breite des
     // Stifts zeigt, wo und wie breit der Strich ansetzt; beim Radierer ein Ring in seiner Grösse. Nur auf Geräten ohne
     // Mauszeiger (dort zeigt schon der Zeiger den Punkt, punktCursor). Liegt auf "spitze", geleert wird nur sein Bereich.
@@ -2128,13 +2244,14 @@
       else if (w === 'laser') { r = Math.max(5, laserDurchmesser() * 0.35); farbe = laserFarbe(); ring = true; }
       else return;
       r = Math.max(ring ? 3 : 1.2, r);
-      sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      spitzeNach(schwebe.x - r - 4, schwebe.y - r - 4, schwebe.x + r + 4, schwebe.y + r + 4);
+      sctx.setTransform(dpr, 0, 0, dpr, -spitzeOrt.x * dpr, -spitzeOrt.y * dpr);
       sctx.beginPath();
       sctx.arc(schwebe.x, schwebe.y, r, 0, Math.PI * 2);
       if (ring) { sctx.globalAlpha = 0.9; sctx.lineWidth = 1.5; sctx.strokeStyle = farbe; sctx.stroke(); }
       else { sctx.globalAlpha = alpha; sctx.fillStyle = farbe; sctx.fill(); }
       sctx.globalAlpha = 1;
-      const g = (r + 3) * dpr, x = schwebe.x * dpr, y = schwebe.y * dpr;
+      const g = (r + 3) * dpr, x = (schwebe.x - spitzeOrt.x) * dpr, y = (schwebe.y - spitzeOrt.y) * dpr;
       spitzeRect = { x1: Math.max(0, Math.floor(x - g)), y1: Math.max(0, Math.floor(y - g)), x2: Math.min(spitze.width, Math.ceil(x + g)), y2: Math.min(spitze.height, Math.ceil(y + g)) };
     }
     function zeichneSpitze() {
@@ -2153,31 +2270,29 @@
       const q = offen.length || extra.length ? p.concat(offen, extra) : p;
       if (!q.length) return;
       const ox = s.x + (a.notiz ? a.notiz.x : 0), oy = s.y + (a.notiz ? a.notiz.y : 0);
-      const k = dpr * ansicht.s, dx = dpr * ansicht.x, dy = dpr * ansicht.y;
+      const von = Math.max(0, p.length - 2);   // der erste Abschnitt, den "live" noch nicht hat
+      // Wo das Stück im Bild liegt (CSS-px): dorthin kommt die kleine Fläche
+      let wMax = 0, x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+      for (let i = Math.max(0, von - 1); i < q.length; i++) {
+        wMax = Math.max(wMax, breite(a.strich, q[i][2], q[i][3]));
+        const x = (q[i][0] + ox) * ansicht.s + ansicht.x, y = (q[i][1] + oy) * ansicht.s + ansicht.y;
+        if (x < x1) x1 = x; if (x > x2) x2 = x; if (y < y1) y1 = y; if (y > y2) y2 = y;
+      }
+      const r = wMax * ansicht.s / 2 + 2;
+      spitzeNach(x1 - r, y1 - r, x2 + r, y2 + r);
+      const k = dpr * ansicht.s, dx = dpr * (ansicht.x - spitzeOrt.x), dy = dpr * (ansicht.y - spitzeOrt.y);
       sctx.setTransform(k, 0, 0, k, dx, dy);
       sctx.translate(ox, oy);
       sctx.lineCap = sctx.lineJoin = 'round';
       sctx.strokeStyle = sctx.fillStyle = a.farbe != null ? a.farbe : (a.farbe = strichFarbeLive(s, a));
-      const von = Math.max(0, p.length - 2);   // der erste Abschnitt, den "live" noch nicht hat
-      let wMax = 0;
       if (q.length === 1) {
-        const w = breite(a.strich, q[0][2], q[0][3]);
-        wMax = w;
         sctx.beginPath();
-        sctx.arc(q[0][0], q[0][1], w / 2, 0, Math.PI * 2);
+        sctx.arc(q[0][0], q[0][1], wMax / 2, 0, Math.PI * 2);
         sctx.fill();
-      } else {
-        for (let i = Math.max(0, von - 1); i < q.length; i++) wMax = Math.max(wMax, breite(a.strich, q[i][2], q[i][3]));
-        malAbschnitte(sctx, { ...a.strich, p: q }, von, q.length - 1);
-      }
-      // Bereich merken, damit das nächste Bild genau ihn leert
-      let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
-      for (let i = Math.max(0, von - 1); i < q.length; i++) {
-        const x = (q[i][0] + ox) * k + dx, y = (q[i][1] + oy) * k + dy;
-        if (x < x1) x1 = x; if (x > x2) x2 = x; if (y < y1) y1 = y; if (y > y2) y2 = y;
-      }
-      const r = wMax * k / 2 + 3;
-      spitzeRect = { x1: Math.max(0, Math.floor(x1 - r)), y1: Math.max(0, Math.floor(y1 - r)), x2: Math.min(spitze.width, Math.ceil(x2 + r)), y2: Math.min(spitze.height, Math.ceil(y2 + r)) };
+      } else malAbschnitte(sctx, { ...a.strich, p: q }, von, q.length - 1);
+      // Bereich merken, damit das nächste Bild genau ihn leert (Pixel von "spitze")
+      const g = 2 * dpr, X = v => (v - spitzeOrt.x) * dpr, Y = v => (v - spitzeOrt.y) * dpr;
+      spitzeRect = { x1: Math.max(0, Math.floor(X(x1 - r) - g)), y1: Math.max(0, Math.floor(Y(y1 - r) - g)), x2: Math.min(spitze.width, Math.ceil(X(x2 + r) + g)), y2: Math.min(spitze.height, Math.ceil(Y(y2 + r) + g)) };
     }
 
     /* ----- Laserpointer: leuchtender Punkt mit kurzer Spur, die nach etwa 1,4 s verblasst ----- */
@@ -2364,6 +2479,38 @@
       ol.leer = false;
     }
 
+    // Gestrichelter oder gepunkteter Strich unter dem Stift: das Muster läuft vom Anfang des Strichs durch, deshalb wird
+    // er in jedem Bild ganz gemalt (eine Linie, das ist billig), bis unter den Stift; gelöscht wird nur sein Kasten.
+    function zeichneMusterStrich() {
+      const a = aktion, s = seiteMitId(a.sid);
+      if (!s) return;
+      if (a.farbe == null) a.farbe = strichFarbeLive(s, a);
+      const q = a.strich.p.concat(offenePunkte(a), a.spitze || []);
+      const ox = s.x + (a.notiz ? a.notiz.x : 0), oy = s.y + (a.notiz ? a.notiz.y : 0);
+      const w = musterBreite(a.strich), f = dpr * ansicht.s, dx = dpr * ansicht.x + ox * f, dy = dpr * ansicht.y + oy * f;
+      let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+      for (const pt of q) { if (pt[0] < x1) x1 = pt[0]; if (pt[0] > x2) x2 = pt[0]; if (pt[1] < y1) y1 = pt[1]; if (pt[1] > y2) y2 = pt[1]; }
+      const r = w / 2 + 2 / f;
+      const k = { x1: Math.max(0, Math.floor((x1 - r) * f + dx) - 2), y1: Math.max(0, Math.floor((y1 - r) * f + dy) - 2), x2: Math.min(live.width, Math.ceil((x2 + r) * f + dx) + 2), y2: Math.min(live.height, Math.ceil((y2 + r) * f + dy) + 2) };
+      // der Kasten vom letzten Bild und der neue zusammen
+      const v = a.musterKasten, K = v ? { x1: Math.min(v.x1, k.x1), y1: Math.min(v.y1, k.y1), x2: Math.max(v.x2, k.x2), y2: Math.max(v.y2, k.y2) } : k;
+      a.musterKasten = k;
+      a.gemalt = a.strich.p.length - 1;
+      if (K.x2 <= K.x1 || K.y2 <= K.y1) return;
+      lctx.save();
+      lctx.setTransform(1, 0, 0, 1, 0, 0);
+      lctx.clearRect(K.x1, K.y1, K.x2 - K.x1, K.y2 - K.y1);
+      liveTransform();
+      lctx.translate(ox, oy);
+      lctx.lineCap = lctx.lineJoin = 'round';
+      lctx.strokeStyle = lctx.fillStyle = a.farbe;
+      if (q.length === 1) { lctx.beginPath(); lctx.arc(q[0][0], q[0][1], w / 2, 0, Math.PI * 2); lctx.fill(); }
+      else { lctx.lineWidth = w; lctx.setLineDash(strichMuster(a.strich.l, w)); lctx.stroke(kurvenPfad(q, 0, q.length - 1)); lctx.setLineDash([]); }
+      lctx.restore();
+      zaehl.live++;
+      ol.leer = false;
+    }
+
     function zeichneOverlay() {
       zeichneLaser();
       const stand = ol.x !== ansicht.x || ol.y !== ansicht.y || ol.s !== ansicht.s;
@@ -2372,8 +2519,8 @@
         if (overlayNeu || stand || aktion.gemalt == null) { olLeeren(); aktion.gemalt = 0; }
         // Textmarker leuchtet durch: Deckkraft der ganzen Ebene, damit sich überlappende Stücke nicht aufaddieren
         live.style.opacity = aktion.strich.w === 'marker' ? '0.35' : '';
-        zeichneLiveStrich();
-        zeichneSpitze();
+        if (aktion.strich.l && !aktion.fertig) { leereSpitze(); zeichneMusterStrich(); }
+        else { zeichneLiveStrich(); zeichneSpitze(); }
       } else {
         leereSpitze();
         zeichneSchwebe();
@@ -2830,10 +2977,31 @@
       if (!einst.presets || !einst.presets[art] || einst.presets[art][name] == null) return;
       einst.preset[art] = name;
       einst[GROESSE[art]] = einheit(art, einst.presets[art][name]);
+      // jede der drei Stiftstärken hat ihre eigene Strichart (durchgezogen, gestrichelt, gepunktet)
+      if (art === 'stift') einst.strichArt = (einst.strichArten && einst.strichArten[name]) || '';
       if (einst.werkzeug === 'radierer' && einst.radiermodus === 'strich') einst.radiermodus = 'bereich';
       if (art === 'text') wendeTextGroesseAn(true);
       opt.einstGeaendert && opt.einstGeaendert();
       emit('werkzeug', einst.werkzeug);
+    };
+    // Strichart der gewählten Stiftstärke: '' durchgezogen, 'g' gestrichelt, 'p' gepunktet. Mit dem Lasso gilt sie
+    // gleich für die ausgewählten Stiftstriche (ein Schritt im Verlauf).
+    L.setzeStrichArt = art => {
+      const a = STRICHARTEN[art] ? art : '';
+      einst.strichArten = Object.assign({}, einst.strichArten);
+      einst.strichArten[(einst.preset && einst.preset.stift) || 'mittel'] = a;
+      einst.strichArt = a;
+      if (einst.werkzeug === 'lasso') aendereAuswahl(el => { if (!istKasten(el) && el.w !== 'marker') { if (a) el.l = a; else delete el.l; } });
+      opt.einstGeaendert && opt.einstGeaendert();
+      emit('werkzeug', einst.werkzeug);
+    };
+    // Einstellung einer Stiftart (Schärfe, Druckempfindlichkeit, Stabilisierung: 0 bis 100); speichern = false solange
+    // der Regler gezogen wird
+    L.setzeStiftWert = (art, k, v, speichern) => {
+      if (!STIFT_STANDARD[art] || STIFT_STANDARD[art][k] == null) return;
+      einst.stifte = Object.assign({}, einst.stifte);
+      einst.stifte[art] = Object.assign({}, stiftRegler(einst, art), { [k]: Math.max(0, Math.min(100, Math.round(Number(v) || 0))) });
+      if (speichern !== false) { opt.einstGeaendert && opt.einstGeaendert(); emit('werkzeug', einst.werkzeug); }
     };
     L.setzeNotizFarbe = f => {
       einst.notizFarbe = f;
@@ -3394,9 +3562,11 @@
       const bilder = [...auswahl.keys()].filter(istBild);
       // Nur Textmarker ausgewählt: Markerfarben anbieten, sonst die Stiftfarben
       const nurMarker = striche.length && striche.every(e => e.w === 'marker');
+      // dieselben Farben wie in der Werkzeugleiste (höchstens fünf je Werkzeug)
+      const tinte = TINTE[flaecheThema()];
       const farben = nurMarker
-        ? Object.entries(MARKER).map(([f, c]) => [f, c, MARKERNAMEN[f]]).concat((einst.eigeneMarker || []).map(c => [c, c, 'Eigene Farbe']))
-        : Object.entries(TINTE[flaecheThema()]).map(([f, c]) => [f, c, FARBNAMEN[f]]).concat((einst.eigeneFarben || []).map(c => [c, c, 'Eigene Farbe']));
+        ? (Array.isArray(einst.markerFarben) && einst.markerFarben.length ? einst.markerFarben : Object.keys(MARKER)).map(f => [f, MARKER[f] || f, MARKERNAMEN[f] || 'Eigene Farbe'])
+        : (Array.isArray(einst.stiftFarben) && einst.stiftFarben.length ? einst.stiftFarben : Object.keys(tinte)).map(f => [f, tinte[f] || f, FARBNAMEN[f] || 'Eigene Farbe']);
       menue.innerHTML = `
         ${notizen.length === 1 && auswahl.size === 1 ? '<button type="button" data-m="text">Text</button>' : ''}
         ${texte.length === 1 && auswahl.size === 1 ? '<button type="button" data-m="textbearbeiten">Bearbeiten</button>' : ''}
@@ -3426,7 +3596,7 @@
       const r = !aktion && !geste && !editiert && !textEdit ? auswahlRahmen() : null;
       menue.hidden = !r;
       if (!r) { menueInhalt = ''; return; }
-      const sig = [...auswahl.keys()].map(e => (istNotiz(e) ? 'n' : istBild(e) ? 'b' : istText(e) ? 't' : e.w === 'marker' ? 'm' : 's')).join('') + flaecheThema();
+      const sig = [...auswahl.keys()].map(e => (istNotiz(e) ? 'n' : istBild(e) ? 'b' : istText(e) ? 't' : e.w === 'marker' ? 'm' : 's')).join('') + flaecheThema() + (einst.stiftFarben || '') + '|' + (einst.markerFarben || '');
       if (sig !== menueInhalt) { baueMenue(); menueInhalt = sig; }
       const [x, y] = zuSchirm(r.x1, r.y1);
       const [, y2] = zuSchirm(r.x2, r.y2);
@@ -3979,6 +4149,7 @@
       }
       const marker = wz === 'marker';
       const strich = { id: kurzId(), w: marker ? 'marker' : 'stift', f: marker ? einst.markerFarbe || 'gelb' : einst.farbe, d: marker ? einst.markerDicke || einst.dicke : stiftDicke(einst) };
+      if (!marker && STRICHARTEN[einst.strichArt]) strich.l = einst.strichArt;
       // Auf einer Haftnotiz gehört der Strich zur Notiz: er wandert mit, wird mit ihr zugeklappt und gelöscht
       const t = notizBei(dx, dy);
       if (t && !t.n.zu) {
@@ -3999,7 +4170,7 @@
     function schreibStart(a, sx, sy, e) {
       // Glättung in Bildschirm-px, gerechnet in Einheiten der Seite; das Fenster reicht über 2,5 Sigma (Punkte liegen
       // mindestens 0,8 px auseinander)
-      const px = GLAETTUNG[einst.glaettung] != null ? GLAETTUNG[einst.glaettung] : GLAETTUNG.niedrig;
+      const px = stabilPx(einst);
       a.sigma = px / ansicht.s;
       a.fenster = px > 0 ? Math.ceil(px * 2.5 / 0.8) : 0;
       a.roh = [a.strich.p[0]];
@@ -4010,7 +4181,9 @@
       a.hatDreh = !!(e && e.twist);
       a.zoom = ansicht.s;
       a.stiftDruck = !!(e && e.pointerType === 'pen' && einst.druck);
-      a.stil = a.strich.w === 'stift' ? stiftArt(einst) : null;
+      // Gestrichelt und gepunktet: überall gleich breit, wie der Kugelschreiber
+      a.stil = a.strich.w === 'stift' ? (a.strich.l ? 'kugel' : stiftArt(einst)) : null;
+      a.stiftWerte = a.stil ? stiftRegler(einst, a.stil) : null;
       if (a.stil) a.strich.p = [festerPunkt(a, 0)];
       halteStarten(a, sx, sy);
       emit('schreibstart');
@@ -4337,7 +4510,7 @@
       if (e.pointerType === 'pen') penZeit = performance.now();
       clearTimeout(a.halteTimer);
       if (a.art === 'zeichnen' && e.type === 'pointerup') { aktion = a; strichPunkt(e, true); aktion = null; }   // der letzte Punkt beim Abheben
-      if (a.art === 'zeichnen' && !a.formFertig) { festige(a, true); if (a.stil === 'pinsel') pinselAuslauf(a); }
+      if (a.art === 'zeichnen' && !a.formFertig) { festige(a, true); if (a.stil === 'pinsel') pinselAuslauf(a); else if (a.stil === 'fueller') federAuslauf(a); }
       abschliessen(a, e);
     }
 
@@ -4787,6 +4960,15 @@
   Leinwand.GESTEN_STANDARD = GESTEN_STANDARD;
   Leinwand.GESTEN_AKTIONEN = GESTEN_AKTIONEN;
   Leinwand.STIFTARTEN = STIFTARTEN;
+  Leinwand.STIFT_STANDARD = STIFT_STANDARD;
+  Leinwand.STIFT_REGLER = STIFT_REGLER;
+  Leinwand.stiftWerte = stiftRegler;
+  Leinwand.STRICHARTEN = STRICHARTEN;
+  Leinwand.strichMuster = strichMuster;
+  Leinwand.musterBreite = musterBreite;
+  // Die Kurve eines gleich breiten oder gestrichelten Strichs als Bezier-Stücke [x0, y0, c1x, c1y, c2x, c2y, x, y] (PDF-Export)
+  Leinwand.strichKurve = s => { const r = []; for (let k = 0; k < s.p.length - 1; k++) r.push(crStueck(s.p, k)); return r; };
+  Leinwand.malStrich = malStrich;
   Leinwand.stiftDicke = stiftDicke;
   Leinwand.drehungVon = drehungVon;
   Leinwand.seitenFormat = seitenFormat;

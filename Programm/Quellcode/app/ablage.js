@@ -57,7 +57,7 @@ function dokAlsTextAlt(d) {
 // beschaeftigt(): ms, die das Schreiben noch warten soll (iPad: solange der Stift schreibt, sonst stockt der Strich,
 // weil Packen und Speichern im selben Ablauf wie die Oberfläche laufen). Höchstens WARTEN_MAX ms.
 // packStufe: gzip-Stufe für Seiten (Standard 6).
-function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei, beschaeftigt, packStufe }) {
+function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei, beschaeftigt, packStufe, wartenMax }) {
   const F = format;
   // Wie stark Seiten gepackt werden (gzip 1 bis 9). Am PC 6; das iPad nimmt 2: dort läuft das Packen im selben Ablauf
   // wie die Schreibfläche, Stufe 2 braucht ein Drittel der Zeit und die Datei wird nur rund 10 % grösser.
@@ -289,7 +289,8 @@ function erstelleAblage({ wurzel, altDaten, melde, format, lokalDatei, beschaeft
   // Kurz gesammelt schreiben: Änderungen, die direkt aufeinander folgen, werden zu einem Schreibvorgang. Danach geht es
   // sofort auf die Platte (die Oberfläche hat selbst schon nur kurz gewartet), so geht bei einem Absturz höchstens der
   // Strich verloren, der gerade geschrieben wird.
-  const WARTEN_MAX = 4000;
+  // wartenMax: so lange darf "beschaeftigt" das Schreiben höchstens aufschieben (Standard 4 s)
+  const WARTEN_MAX = wartenMax > 0 ? wartenMax : 4000;
   let wartetSeit = 0;
   function plane() { if (!schreibTimer) schreibTimer = setTimeout(geplantSchreiben, 200); }
   function geplantSchreiben() {

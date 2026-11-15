@@ -6,7 +6,8 @@
 //   npm install --no-save playwright && npx playwright install chromium
 // Aufruf jeweils: node test/browser/<test>.js [ausgabeordner]
 const http = require('http'), fs = require('fs'), path = require('path');
-const { chromium } = require('playwright');
+// Playwright nur für Chromium; mit LH_BROWSER=webkit wird es nicht gebraucht
+let chromium = null; try { chromium = require('playwright').chromium; } catch (e) { /* nur WebKit */ }
 const QUELLCODE = path.resolve(__dirname, '..', '..', '..');
 const SEITE = process.env.LH_SEITE || path.join(QUELLCODE, 'webseite');
 // pdf.js und pdf-lib: aus app\node_modules oder ipad\node_modules, je nachdem, wo installiert wurde
@@ -18,13 +19,34 @@ function server(wurzel) {
       let p = decodeURIComponent(req.url.split('?')[0]); if (p === '/') p = '/index.html';
       const VENDOR = { '/vendor/pdf.min.js': path.join(modul('pdfjs-dist'), 'build', 'pdf.min.js'), '/vendor/pdf.worker.min.js': path.join(modul('pdfjs-dist'), 'build', 'pdf.worker.min.js'), '/vendor/pdf-lib.min.js': path.join(modul('pdf-lib'), 'dist', 'pdf-lib.min.js') };
       const f = VENDOR[p] || path.join(wurzel || SEITE, p);
-      fs.readFile(f, (e, d) => { if (e) { res.writeHead(404); res.end(); return; } res.writeHead(200, { 'content-type': TYP[path.extname(f)] || 'application/octet-stream', 'cache-control': 'no-store' }); res.end(d); });
+      fs.readFile(f, (e, d) => {
+        if (e) { res.writeHead(404); res.end(); return; }
+        // Die Schriften von Google sind im Test nicht erreichbar; WebKit wartet auf sie, bevor es Skripte ausführt
+        // (Chromium bricht die Anfragen über ctx.route ab): für WebKit stehen sie gar nicht erst in der Seite
+        if (process.env.LH_BROWSER === 'webkit' && p === '/index.html') d = Buffer.from(d.toString('utf8').split('\n').filter(z => !/fonts\.(googleapis|gstatic)\.com/.test(z)).join('\n'));
+        res.writeHead(200, { 'content-type': TYP[path.extname(f)] || 'application/octet-stream', 'cache-control': 'no-store' });
+        res.end(d);
+      });
     });
     s.listen(0, '127.0.0.1', () => ok({ s, url: 'http://127.0.0.1:' + s.address().port + '/' }));
   });
 }
+// LH_BROWSER=webkit: in WebKit statt Chromium (die Engine von Safari, siehe webkit.js)
+const WEBKIT = process.env.LH_BROWSER === 'webkit';
 async function starte(o = {}) {
   const sv = await server(o.wurzel);
+  if (WEBKIT) {
+    const w = await require('./webkit').starteWebkit(o);
+    const page = w.page, fehler = [];
+    await page.goto(sv.url);
+    // o.roh: nicht auf die Bibliothek warten (z. B. die Web-App, die zuerst ihre Einrichtung zeigt)
+    if (!o.roh) await page.waitForFunction(() => window.Dokument && window.Bibliothek && window.Daten && document.querySelector('#ansicht-bibliothek'));
+    // Fehler der Seite sammeln (WebDriver meldet sie nicht von selbst)
+    await page.evaluate(() => { window.__fehler = []; window.addEventListener('error', e => window.__fehler.push(String(e.error && e.error.stack || e.message))); window.addEventListener('unhandledrejection', e => window.__fehler.push('Versprechen: ' + String(e.reason && e.reason.stack || e.reason))); });
+    await page.waitForTimeout(500);
+    const sammle = async () => { try { for (const f of await page.evaluate(() => window.__fehler.splice(0))) fehler.push(f); } catch (e) { /* Seite schon zu */ } };
+    return { sv, page, webkit: true, cdp: { send: async () => {} }, fehler, sammle, ctx: { newPage: async () => { throw new Error('Zweite Seite: nur mit Chromium'); } }, zu: async () => { await sammle(); await w.zu(); sv.s.close(); } };
+  }
   const browser = await chromium.launch({ args: ['--disable-web-security'] });
   const ctx = await browser.newContext({ viewport: { width: o.b || 1194, height: o.h || 834 }, deviceScaleFactor: o.dpr || 2, hasTouch: !!o.touch });
   await ctx.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
@@ -33,7 +55,7 @@ async function starte(o = {}) {
   page.on('pageerror', e => fehler.push(String(e && e.stack || e)));
   page.on('console', m => { if (m.type() === 'error') fehler.push('console: ' + m.text()); });
   await page.goto(sv.url);
-  await page.waitForFunction(() => window.Dokument && window.Bibliothek && window.Daten && document.querySelector('#ansicht-bibliothek'));
+  if (!o.roh) await page.waitForFunction(() => window.Dokument && window.Bibliothek && window.Daten && document.querySelector('#ansicht-bibliothek'));
   await page.waitForTimeout(500);
   const cdp = await ctx.newCDPSession(page);
   return { sv, browser, ctx, page, cdp, fehler, zu: async () => { await browser.close(); sv.s.close(); } };

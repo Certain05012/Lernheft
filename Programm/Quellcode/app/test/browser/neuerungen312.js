@@ -122,8 +122,15 @@ const AUS = ausgabe('neuerungen312');
   await page.evaluate(() => { const lw = Dokument.leinwand(); lw.setzeWerkzeug('stift'); lw.setzeStiftArt('fueller'); });
 
   // --- Leiste: Stiftart ---
-  ok('leiste zeigt Stiftarten', await page.evaluate(() => { const g = document.querySelector('#dok-leiste [data-stiftart="fueller"]'); return !!g && g.getAttribute('aria-pressed') === 'true' && !g.closest('.gruppe').hidden; }));
-  await page.evaluate(async () => { document.querySelector('#dok-leiste [data-stiftart="pinsel"]').click(); await __bild(); });
+  // seit 3.15: ein Stift-Knopf, die Stiftarten stehen in seinem Fenster
+  ok('leiste zeigt Stiftarten', await page.evaluate(async () => {
+    const k = document.querySelector('#dok-leiste [data-pop="stift"]');
+    if (!k || k.closest('.gruppe').hidden) return false;
+    k.click(); await __bild();
+    const g = document.querySelector('.wz-pop [data-stiftart="fueller"]');
+    return !!g && g.getAttribute('aria-checked') === 'true';
+  }));
+  await page.evaluate(async () => { document.querySelector('.wz-pop [data-stiftart="pinsel"]').click(); await __bild(); document.querySelector('#dok-leiste [data-pop="stift"]').click(); await __bild(); });
   ok('leiste setzt Stiftart', await page.evaluate(() => Dokument.leinwand().einst.stiftArt === 'pinsel' && Daten.get('einst:stift').stiftArt === 'pinsel'));
   await page.screenshot({ path: path.join(AUS, 'leiste.png'), clip: { x: 0, y: 0, width: 1194, height: 190 } });
 
